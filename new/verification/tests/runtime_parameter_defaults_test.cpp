@@ -393,6 +393,73 @@ int main(int argc, char** argv) {
         Expect(element.find("\"CIRCLE_PRESENT_") == std::string::npos,
                "BEV_ELEMENT must not retain legacy circle confidence keys");
 
+        const std::string alignment = ObjectBody(json, "REFERENCE_TIME_ALIGNMENT");
+        ExpectBool(params.reference_time_alignment.enabled,
+                   NumberField(alignment, "ENABLED"),
+                   "REFERENCE_TIME_ALIGNMENT.ENABLED");
+        ExpectInt(params.reference_time_alignment.max_age_ms,
+                  NumberField(alignment, "MAX_AGE_MS"),
+                  "REFERENCE_TIME_ALIGNMENT.MAX_AGE_MS");
+        ExpectInt(params.reference_time_alignment.effective_delay_ms,
+                  NumberField(alignment, "EFFECTIVE_DELAY_MS"),
+                  "REFERENCE_TIME_ALIGNMENT.EFFECTIVE_DELAY_MS");
+        ExpectInt(params.reference_time_alignment.future_prediction_max_ms,
+                  NumberField(alignment, "FUTURE_PREDICTION_MAX_MS"),
+                  "REFERENCE_TIME_ALIGNMENT.FUTURE_PREDICTION_MAX_MS");
+        ExpectInt(params.reference_time_alignment.max_integration_gap_ms,
+                  NumberField(alignment, "MAX_INTEGRATION_GAP_MS"),
+                  "REFERENCE_TIME_ALIGNMENT.MAX_INTEGRATION_GAP_MS");
+        ExpectInt(params.reference_time_alignment.min_aligned_samples,
+                  NumberField(alignment, "MIN_ALIGNED_SAMPLES"),
+                  "REFERENCE_TIME_ALIGNMENT.MIN_ALIGNED_SAMPLES");
+        ExpectBool(params.reference_time_alignment.use_encoder_forward,
+                   NumberField(alignment, "USE_ENCODER_FORWARD"),
+                   "REFERENCE_TIME_ALIGNMENT.USE_ENCODER_FORWARD");
+        ExpectNear(params.reference_time_alignment.encoder_ticks_to_meter,
+                   NumberField(alignment, "ENCODER_TICKS_TO_METER"),
+                   "REFERENCE_TIME_ALIGNMENT.ENCODER_TICKS_TO_METER");
+        ExpectNear(params.reference_time_alignment.wheel_track_m,
+                   NumberField(alignment, "WHEEL_TRACK_M"),
+                   "REFERENCE_TIME_ALIGNMENT.WHEEL_TRACK_M");
+        ExpectBool(params.reference_time_alignment.use_imu_yaw,
+                   NumberField(alignment, "USE_IMU_YAW"),
+                   "REFERENCE_TIME_ALIGNMENT.USE_IMU_YAW");
+        ExpectBool(params.reference_time_alignment.use_wheel_yaw_fallback,
+                   NumberField(alignment, "USE_WHEEL_YAW_FALLBACK"),
+                   "REFERENCE_TIME_ALIGNMENT.USE_WHEEL_YAW_FALLBACK");
+        ExpectBool(params.reference_time_alignment.future_prediction_enabled,
+                   NumberField(alignment, "FUTURE_PREDICTION_ENABLED"),
+                   "REFERENCE_TIME_ALIGNMENT.FUTURE_PREDICTION_ENABLED");
+        ExpectBool(params.reference_time_alignment.command_yaw_prediction_enabled,
+                   NumberField(alignment, "COMMAND_YAW_PREDICTION_ENABLED"),
+                   "REFERENCE_TIME_ALIGNMENT.COMMAND_YAW_PREDICTION_ENABLED");
+        ExpectNear(params.reference_time_alignment.turn_output_to_yaw_rate_gain,
+                   NumberField(alignment, "TURN_OUTPUT_TO_YAW_RATE_GAIN"),
+                   "REFERENCE_TIME_ALIGNMENT.TURN_OUTPUT_TO_YAW_RATE_GAIN");
+        ExpectNear(params.reference_time_alignment.actuator_yaw_tau_ms,
+                   NumberField(alignment, "ACTUATOR_YAW_TAU_MS"),
+                   "REFERENCE_TIME_ALIGNMENT.ACTUATOR_YAW_TAU_MS");
+        ExpectNear(params.reference_time_alignment.max_delta_forward_m,
+                   NumberField(alignment, "MAX_DELTA_FORWARD_M"),
+                   "REFERENCE_TIME_ALIGNMENT.MAX_DELTA_FORWARD_M");
+        ExpectNear(params.reference_time_alignment.max_delta_lateral_m,
+                   NumberField(alignment, "MAX_DELTA_LATERAL_M"),
+                   "REFERENCE_TIME_ALIGNMENT.MAX_DELTA_LATERAL_M");
+        ExpectNear(params.reference_time_alignment.max_delta_yaw_rad,
+                   NumberField(alignment, "MAX_DELTA_YAW_RAD"),
+                   "REFERENCE_TIME_ALIGNMENT.MAX_DELTA_YAW_RAD");
+        Expect(!params.reference_time_alignment.enabled,
+               "REFERENCE_TIME_ALIGNMENT must default disabled");
+        Expect(!params.reference_time_alignment.use_encoder_forward,
+               "USE_ENCODER_FORWARD must default disabled");
+        Expect(!params.reference_time_alignment.future_prediction_enabled,
+               "FUTURE_PREDICTION_ENABLED must default disabled");
+        Expect(!params.reference_time_alignment.command_yaw_prediction_enabled,
+               "COMMAND_YAW_PREDICTION_ENABLED must default disabled");
+        const std::string removed_forward_alias = std::string("\"delta_") + "s_m\"";
+        Expect(alignment.find(removed_forward_alias) == std::string::npos,
+               "REFERENCE_TIME_ALIGNMENT must not retain removed forward compatibility field");
+
         Expect(json.find("\"BEV_ELEMENT_RASTER\"") == std::string::npos,
                "default_params.json must not retain runtime BEV_ELEMENT_RASTER");
 

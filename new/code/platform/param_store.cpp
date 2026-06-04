@@ -627,9 +627,17 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
 
 bool ValidateReferenceTimeAlignment(const port::ReferenceTimeAlignmentParameters& params) {
     return params.max_age_ms >= 1 &&
+           params.effective_delay_ms >= 0 &&
+           params.future_prediction_max_ms >= 0 &&
            params.max_integration_gap_ms >= 1 &&
-           IsFiniteInRange(params.max_delta_yaw_rad, 0.0, 6.28319) &&
-           params.min_aligned_samples >= 1;
+           params.min_aligned_samples >= 1 &&
+           IsFiniteInRange(params.encoder_ticks_to_meter, 0.0, 1.0) &&
+           IsFiniteInRange(params.wheel_track_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.turn_output_to_yaw_rate_gain, -100.0, 100.0) &&
+           IsFiniteInRange(params.actuator_yaw_tau_ms, 0.0, 1000.0) &&
+           IsFiniteInRange(params.max_delta_forward_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.max_delta_lateral_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.max_delta_yaw_rad, 0.0, 6.28319);
 }
 
 bool ValidateCameraSource(const port::CameraSourceParameters& params) {
@@ -1095,19 +1103,84 @@ public:
                               optional_malformed);
         ReadOptionalNestedInt(root,
                               "REFERENCE_TIME_ALIGNMENT",
+                              "EFFECTIVE_DELAY_MS",
+                              parsed.reference_time_alignment.effective_delay_ms,
+                              optional_malformed);
+        ReadOptionalNestedInt(root,
+                              "REFERENCE_TIME_ALIGNMENT",
+                              "FUTURE_PREDICTION_MAX_MS",
+                              parsed.reference_time_alignment.future_prediction_max_ms,
+                              optional_malformed);
+        ReadOptionalNestedInt(root,
+                              "REFERENCE_TIME_ALIGNMENT",
                               "MAX_INTEGRATION_GAP_MS",
                               parsed.reference_time_alignment.max_integration_gap_ms,
                               optional_malformed);
-        ReadOptionalNestedNumber(root,
-                                 "REFERENCE_TIME_ALIGNMENT",
-                                 "MAX_DELTA_YAW_RAD",
-                                 parsed.reference_time_alignment.max_delta_yaw_rad,
-                                 optional_malformed);
         ReadOptionalNestedInt(root,
                               "REFERENCE_TIME_ALIGNMENT",
                               "MIN_ALIGNED_SAMPLES",
                               parsed.reference_time_alignment.min_aligned_samples,
                               optional_malformed);
+        ReadOptionalNestedBool(root,
+                               "REFERENCE_TIME_ALIGNMENT",
+                               "USE_ENCODER_FORWARD",
+                               parsed.reference_time_alignment.use_encoder_forward,
+                               optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "ENCODER_TICKS_TO_METER",
+                                 parsed.reference_time_alignment.encoder_ticks_to_meter,
+                                 optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "WHEEL_TRACK_M",
+                                 parsed.reference_time_alignment.wheel_track_m,
+                                 optional_malformed);
+        ReadOptionalNestedBool(root,
+                               "REFERENCE_TIME_ALIGNMENT",
+                               "USE_IMU_YAW",
+                               parsed.reference_time_alignment.use_imu_yaw,
+                               optional_malformed);
+        ReadOptionalNestedBool(root,
+                               "REFERENCE_TIME_ALIGNMENT",
+                               "USE_WHEEL_YAW_FALLBACK",
+                               parsed.reference_time_alignment.use_wheel_yaw_fallback,
+                               optional_malformed);
+        ReadOptionalNestedBool(root,
+                               "REFERENCE_TIME_ALIGNMENT",
+                               "FUTURE_PREDICTION_ENABLED",
+                               parsed.reference_time_alignment.future_prediction_enabled,
+                               optional_malformed);
+        ReadOptionalNestedBool(root,
+                               "REFERENCE_TIME_ALIGNMENT",
+                               "COMMAND_YAW_PREDICTION_ENABLED",
+                               parsed.reference_time_alignment.command_yaw_prediction_enabled,
+                               optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "TURN_OUTPUT_TO_YAW_RATE_GAIN",
+                                 parsed.reference_time_alignment.turn_output_to_yaw_rate_gain,
+                                 optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "ACTUATOR_YAW_TAU_MS",
+                                 parsed.reference_time_alignment.actuator_yaw_tau_ms,
+                                 optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "MAX_DELTA_FORWARD_M",
+                                 parsed.reference_time_alignment.max_delta_forward_m,
+                                 optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "MAX_DELTA_LATERAL_M",
+                                 parsed.reference_time_alignment.max_delta_lateral_m,
+                                 optional_malformed);
+        ReadOptionalNestedNumber(root,
+                                 "REFERENCE_TIME_ALIGNMENT",
+                                 "MAX_DELTA_YAW_RAD",
+                                 parsed.reference_time_alignment.max_delta_yaw_rad,
+                                 optional_malformed);
         if (!ValidateReferenceTimeAlignment(parsed.reference_time_alignment)) {
             optional_malformed = true;
         }

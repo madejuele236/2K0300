@@ -144,6 +144,7 @@ transport::SteeringMediaConfigSnapshot SteeringMediaService::BuildConfigSnapshot
     snapshot.param_snapshot.bev_classification = params_.bev_classification;
     snapshot.param_snapshot.bev_control_model = params_.bev_control_model;
     snapshot.param_snapshot.bev_element = params_.bev_element;
+    snapshot.param_snapshot.reference_time_alignment = params_.reference_time_alignment;
     return snapshot;
 }
 
@@ -184,6 +185,42 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.tracking_geometry.curvature_m_inv = snapshot.tracking_geometry.curvature_m_inv;
     view.tracking_geometry.sample_count = snapshot.tracking_geometry.sample_count;
     view.tracking_geometry.reason = snapshot.tracking_geometry.reason;
+    view.reference_time_alignment.enabled = snapshot.reference_time_alignment.enabled;
+    view.reference_time_alignment.valid = snapshot.reference_time_alignment.valid;
+    view.reference_time_alignment.reason = snapshot.reference_time_alignment.reason;
+    view.reference_time_alignment.age_ms = snapshot.reference_time_alignment.age_ms;
+    view.reference_time_alignment.reference_capture_time_ms =
+        snapshot.reference_time_alignment.reference_capture_time_ms;
+    view.reference_time_alignment.control_time_ms =
+        snapshot.reference_time_alignment.control_time_ms;
+    view.reference_time_alignment.control_effective_time_ms =
+        snapshot.reference_time_alignment.control_effective_time_ms;
+    view.reference_time_alignment.measured_until_ms =
+        snapshot.reference_time_alignment.measured_until_ms;
+    view.reference_time_alignment.predicted_ms = snapshot.reference_time_alignment.predicted_ms;
+    view.reference_time_alignment.delta_forward_m =
+        snapshot.reference_time_alignment.delta_forward_m;
+    view.reference_time_alignment.delta_lateral_m =
+        snapshot.reference_time_alignment.delta_lateral_m;
+    view.reference_time_alignment.delta_yaw_rad = snapshot.reference_time_alignment.delta_yaw_rad;
+    view.reference_time_alignment.measured_forward_mps =
+        snapshot.reference_time_alignment.measured_forward_mps;
+    view.reference_time_alignment.measured_yaw_rate_radps =
+        snapshot.reference_time_alignment.measured_yaw_rate_radps;
+    view.reference_time_alignment.predicted_forward_mps =
+        snapshot.reference_time_alignment.predicted_forward_mps;
+    view.reference_time_alignment.predicted_yaw_rate_radps =
+        snapshot.reference_time_alignment.predicted_yaw_rate_radps;
+    view.reference_time_alignment.used_encoder_forward =
+        snapshot.reference_time_alignment.used_encoder_forward;
+    view.reference_time_alignment.used_imu_yaw = snapshot.reference_time_alignment.used_imu_yaw;
+    view.reference_time_alignment.used_wheel_yaw = snapshot.reference_time_alignment.used_wheel_yaw;
+    view.reference_time_alignment.used_command_prediction =
+        snapshot.reference_time_alignment.used_command_prediction;
+    view.reference_time_alignment.input_sample_count =
+        snapshot.reference_time_alignment.input_sample_count;
+    view.reference_time_alignment.aligned_sample_count =
+        snapshot.reference_time_alignment.aligned_sample_count;
     view.reference_control.ready = snapshot.reference_control.ready;
     view.reference_control.reason = snapshot.reference_control.reason;
     view.safety_gate.veto_active = snapshot.safety_gate.veto_active;

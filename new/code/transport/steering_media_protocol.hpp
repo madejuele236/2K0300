@@ -15,6 +15,7 @@
 #include "port/bev_geometry_types.hpp"
 #include "port/camera_frame_types.hpp"
 #include "port/perception_result.hpp"
+#include "port/runtime_parameter_types.hpp"
 #include "port/visual_element_evidence_types.hpp"
 
 namespace ls2k::transport {
@@ -61,6 +62,8 @@ struct SteeringMediaParamSnapshotView {
     port::BEVControlModelParameters bev_control_model{};
     /** BEV 元素检测参数（含圆形/路口退出） */
     port::BEVElementParameters bev_element{};
+    /** reference 时间对齐参数 */
+    port::ReferenceTimeAlignmentParameters reference_time_alignment{};
 };
 
 /**
@@ -149,6 +152,34 @@ struct SteeringMediaTrackingGeometryView {
     std::uint64_t sample_count = 0;
     /** 计算失败的原因描述 */
     std::string reason = "reference_unusable";
+};
+
+/**
+ * reference 时间对齐视图 —— 描述 control-effective-time 对齐事实。
+ */
+struct SteeringMediaReferenceTimeAlignmentView {
+    bool enabled = false;
+    bool valid = false;
+    std::string reason = "disabled";
+    std::uint64_t age_ms = 0;
+    std::uint64_t reference_capture_time_ms = 0;
+    std::uint64_t control_time_ms = 0;
+    std::uint64_t control_effective_time_ms = 0;
+    std::uint64_t measured_until_ms = 0;
+    std::uint64_t predicted_ms = 0;
+    double delta_forward_m = 0.0;
+    double delta_lateral_m = 0.0;
+    double delta_yaw_rad = 0.0;
+    double measured_forward_mps = 0.0;
+    double measured_yaw_rate_radps = 0.0;
+    double predicted_forward_mps = 0.0;
+    double predicted_yaw_rate_radps = 0.0;
+    bool used_encoder_forward = false;
+    bool used_imu_yaw = false;
+    bool used_wheel_yaw = false;
+    bool used_command_prediction = false;
+    std::uint64_t input_sample_count = 0;
+    std::uint64_t aligned_sample_count = 0;
 };
 
 /**
@@ -243,6 +274,8 @@ struct SteeringMediaSnapshotView {
     SteeringMediaLateralErrorView lateral_error{};
     /** 跟踪几何 */
     SteeringMediaTrackingGeometryView tracking_geometry{};
+    /** reference 时间对齐 */
+    SteeringMediaReferenceTimeAlignmentView reference_time_alignment{};
     /** 参考控制就绪状态 */
     SteeringMediaReferenceControlView reference_control{};
     /** 安全门禁状态 */

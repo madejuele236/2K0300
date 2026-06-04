@@ -1,0 +1,22 @@
+{
+  "change": "implement-time-aligned-path-tracking",
+  "verifier_evidence": {
+    "review_goal": "implementation_correctness",
+    "review_phase": "source_first",
+    "template_id": "verify-reviewer-inline-v3",
+    "findings_contract": "shared-findings-v1",
+    "agent_id": "verify-reviewer-source-first-20260604T103331+0800",
+    "final_state": "completed_pass",
+    "review_coverage": {
+      "coverage_status": "complete",
+      "exhaustive": true,
+      "summary": "The full scoped source-first surface was re-reviewed against the OpenSpec artifacts and implementation note. The repaired steering-media live image-frame path now carries the full reference-time-alignment fact set, the steering-media selftest now verifies the live per-frame fields and the removed forward-alias absence, the previously blocked observability gap is resolved, and the rerun focused checks and no-upload build passed on the current tree."
+    },
+    "reviewed_axes": [
+      "Completeness",
+      "Correctness",
+      "Coherence"
+    ],
+    "unreviewed_axes": []
+  }
+}

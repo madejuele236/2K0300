@@ -119,8 +119,20 @@ struct ReferenceTimeAlignmentFacts {
     uint64_t age_ms = 0;                   ///< reference 年龄
     uint64_t reference_capture_time_ms = 0; ///< reference 图像时间
     uint64_t control_time_ms = 0;          ///< 控制时间
-    double delta_s_m = 0.0;                ///< 对齐区间前进距离
+    uint64_t control_effective_time_ms = 0; ///< 控制生效时间
+    uint64_t measured_until_ms = 0;        ///< 历史积分覆盖时间
+    uint64_t predicted_ms = 0;             ///< now -> effective 预测时长
+    double delta_forward_m = 0.0;          ///< 对齐区间前向位移
+    double delta_lateral_m = 0.0;          ///< 对齐区间横向位移
     double delta_yaw_rad = 0.0;            ///< 对齐区间 yaw 变化
+    double measured_forward_mps = 0.0;     ///< 历史测得前向速度
+    double measured_yaw_rate_radps = 0.0;  ///< 历史测得 yaw rate
+    double predicted_forward_mps = 0.0;    ///< 预测前向速度
+    double predicted_yaw_rate_radps = 0.0; ///< 预测 yaw rate
+    bool used_encoder_forward = false;     ///< 是否使用编码器前向积分
+    bool used_imu_yaw = false;             ///< 是否使用 IMU yaw 积分
+    bool used_wheel_yaw = false;           ///< 是否使用轮速 yaw fallback
+    bool used_command_prediction = false;  ///< 是否使用命令 yaw 预测
     std::size_t input_sample_count = 0;    ///< 输入 reference 样本数
     std::size_t aligned_sample_count = 0;  ///< 输出 reference 样本数
 };

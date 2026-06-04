@@ -48,8 +48,8 @@ public:
         }
 
         enabled_ = true;
-        expected_width_ = params.camera_frame_width;
-        expected_height_ = params.camera_frame_height;
+        expected_width_ = params.camera_source.width;
+        expected_height_ = params.camera_source.height;
         adaptation_hook_ = profile.camera.mode == port::SubsystemMode::kAdaptationHook;
         hook_name_ = profile.camera.hook;
 
@@ -58,7 +58,7 @@ public:
             expected_height_ > port::kCompiledCameraFrameHeight) {
             diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
                               "camera.geometry.invalid",
-                              "configured camera_frame_width/camera_frame_height exceed compiled frame storage",
+                              "configured CAMERA_SOURCE.WIDTH/HEIGHT exceed compiled frame storage",
                               port::NowMs()});
             enabled_ = false;
             ready_ = false;
