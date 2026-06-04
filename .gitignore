@@ -1,7 +1,0 @@
-# Keep repository history focused
-*
-!.gitignore
-!README*
-!new/
-!new/**
-!**/README*
