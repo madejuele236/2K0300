@@ -4,7 +4,7 @@
 // 元素证据提取层 —— 从稀疏采样网格中检测十字路口（cross band）
 // 和环岛转角（circle corner）。这是场景 FSM 的底层输入。
 
-#include "legacy/steering_bev_projector.hpp"
+#include "vision/bev/bev_projector.hpp"
 #include "legacy/steering_bev_sparse_sampler.hpp"
 #include "port/control_types.hpp"
 

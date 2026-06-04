@@ -46,9 +46,22 @@ struct AssistantTcpParameters {
 struct ReferenceTimeAlignmentParameters {
     bool enabled = false;                  ///< 是否启用控制侧 reference 时间对齐
     int max_age_ms = 120;                  ///< 最大可对齐 reference 年龄
+    int effective_delay_ms = 0;            ///< now -> control effective 的估计延迟
+    int future_prediction_max_ms = 80;     ///< 允许预测的最大未来时间
     int max_integration_gap_ms = 30;       ///< motion history 最大允许采样空洞
-    double max_delta_yaw_rad = 0.80;       ///< 单次对齐最大 yaw 积分
     int min_aligned_samples = 3;           ///< 对齐后最少前方样本数
+    bool use_encoder_forward = false;      ///< 是否用编码器积分前进距离
+    double encoder_ticks_to_meter = 0.0;   ///< 编码器 delta -> meter 的比例
+    double wheel_track_m = 0.0;            ///< 左右轮距，用于轮速 yaw fallback
+    bool use_imu_yaw = true;               ///< 是否使用 IMU gyro_z 积分 yaw
+    bool use_wheel_yaw_fallback = false;   ///< IMU 不可用时是否用左右轮差估 yaw
+    bool future_prediction_enabled = false;      ///< 是否预测 now -> effective
+    bool command_yaw_prediction_enabled = false; ///< 是否用 applied turn 输出预测 yaw
+    double turn_output_to_yaw_rate_gain = 0.0;   ///< turn output -> yaw rate(rad/s)
+    double actuator_yaw_tau_ms = 35.0;           ///< yaw 响应一阶时间常数
+    double max_delta_forward_m = 0.60;      ///< 单次对齐最大前向位移
+    double max_delta_lateral_m = 0.40;      ///< 单次对齐最大横向位移
+    double max_delta_yaw_rad = 0.80;        ///< 单次对齐最大 yaw 积分
 };
 
 /// Camera source 参数，独立于 BEV/circle/cross 语义

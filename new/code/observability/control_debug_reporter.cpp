@@ -232,10 +232,34 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.reference_time_alignment.reference_capture_time_ms
                      << " reference_time_alignment.control_time_ms="
                      << snapshot.steering.reference_time_alignment.control_time_ms
-                     << " reference_time_alignment.delta_s_m="
-                     << snapshot.steering.reference_time_alignment.delta_s_m
+                     << " reference_time_alignment.control_effective_time_ms="
+                     << snapshot.steering.reference_time_alignment.control_effective_time_ms
+                     << " reference_time_alignment.measured_until_ms="
+                     << snapshot.steering.reference_time_alignment.measured_until_ms
+                     << " reference_time_alignment.predicted_ms="
+                     << snapshot.steering.reference_time_alignment.predicted_ms
+                     << " reference_time_alignment.delta_forward_m="
+                     << snapshot.steering.reference_time_alignment.delta_forward_m
+                     << " reference_time_alignment.delta_lateral_m="
+                     << snapshot.steering.reference_time_alignment.delta_lateral_m
                      << " reference_time_alignment.delta_yaw_rad="
                      << snapshot.steering.reference_time_alignment.delta_yaw_rad
+                     << " reference_time_alignment.measured_forward_mps="
+                     << snapshot.steering.reference_time_alignment.measured_forward_mps
+                     << " reference_time_alignment.measured_yaw_rate_radps="
+                     << snapshot.steering.reference_time_alignment.measured_yaw_rate_radps
+                     << " reference_time_alignment.predicted_forward_mps="
+                     << snapshot.steering.reference_time_alignment.predicted_forward_mps
+                     << " reference_time_alignment.predicted_yaw_rate_radps="
+                     << snapshot.steering.reference_time_alignment.predicted_yaw_rate_radps
+                     << " reference_time_alignment.used_encoder_forward="
+                     << BoolToken(snapshot.steering.reference_time_alignment.used_encoder_forward)
+                     << " reference_time_alignment.used_imu_yaw="
+                     << BoolToken(snapshot.steering.reference_time_alignment.used_imu_yaw)
+                     << " reference_time_alignment.used_wheel_yaw="
+                     << BoolToken(snapshot.steering.reference_time_alignment.used_wheel_yaw)
+                     << " reference_time_alignment.used_command_prediction="
+                     << BoolToken(snapshot.steering.reference_time_alignment.used_command_prediction)
                      << " reference_time_alignment.input_sample_count="
                      << snapshot.steering.reference_time_alignment.input_sample_count
                      << " reference_time_alignment.aligned_sample_count="

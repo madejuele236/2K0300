@@ -9,6 +9,7 @@
 #include <mutex>
 
 #include "port/camera_frame_types.hpp"
+#include "port/control_command_history_types.hpp"
 #include "port/motion_history_types.hpp"
 #include "port/perception_result.hpp"
 #include "port/sensor_sample_types.hpp"
@@ -222,6 +223,7 @@ struct RuntimeState {
     observability::ControlDebugSnapshot control_debug_snapshot{};  ///< 控制调试快照
     port::LowVoltageSample low_voltage_last_sample{};     ///< 上次低电压采样结果
     port::MotionHistory motion_history{};                 ///< control tick 运动历史
+    port::ControlCommandHistory command_history{};         ///< control tick 命令历史
 
     // Lifecycle flags.
     bool startup_complete = false;                        ///< 启动是否完成

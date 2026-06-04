@@ -1,4 +1,4 @@
-#include "runtime/detail/steering_circle_v2_internal.hpp"
+#include "vision/elements/circle_v2/detail/circle_v2_internal.hpp"
 
 namespace ls2k::runtime::detail {
 std::optional<CircleV2ReferencePlan> ComposeCircleV2Reference(

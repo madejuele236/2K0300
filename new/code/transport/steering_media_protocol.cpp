@@ -302,6 +302,49 @@ std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot)
     stream << ",\"reason\":";
     AppendJsonString(stream, snapshot.tracking_geometry.reason);
     stream << "}";
+    stream << ",\"reference_time_alignment\":{\"enabled\":";
+    AppendJsonBool(stream, snapshot.reference_time_alignment.enabled);
+    stream << ",\"valid\":";
+    AppendJsonBool(stream, snapshot.reference_time_alignment.valid);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, snapshot.reference_time_alignment.reason);
+    stream << ",\"age_ms\":" << snapshot.reference_time_alignment.age_ms;
+    stream << ",\"reference_capture_time_ms\":"
+           << snapshot.reference_time_alignment.reference_capture_time_ms;
+    stream << ",\"control_time_ms\":"
+           << snapshot.reference_time_alignment.control_time_ms;
+    stream << ",\"control_effective_time_ms\":"
+           << snapshot.reference_time_alignment.control_effective_time_ms;
+    stream << ",\"measured_until_ms\":"
+           << snapshot.reference_time_alignment.measured_until_ms;
+    stream << ",\"predicted_ms\":" << snapshot.reference_time_alignment.predicted_ms;
+    stream << ",\"delta_forward_m\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.delta_forward_m);
+    stream << ",\"delta_lateral_m\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.delta_lateral_m);
+    stream << ",\"delta_yaw_rad\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.delta_yaw_rad);
+    stream << ",\"measured_forward_mps\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.measured_forward_mps);
+    stream << ",\"measured_yaw_rate_radps\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.measured_yaw_rate_radps);
+    stream << ",\"predicted_forward_mps\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.predicted_forward_mps);
+    stream << ",\"predicted_yaw_rate_radps\":";
+    AppendJsonNumber(stream, snapshot.reference_time_alignment.predicted_yaw_rate_radps);
+    stream << ",\"used_encoder_forward\":";
+    AppendJsonBool(stream, snapshot.reference_time_alignment.used_encoder_forward);
+    stream << ",\"used_imu_yaw\":";
+    AppendJsonBool(stream, snapshot.reference_time_alignment.used_imu_yaw);
+    stream << ",\"used_wheel_yaw\":";
+    AppendJsonBool(stream, snapshot.reference_time_alignment.used_wheel_yaw);
+    stream << ",\"used_command_prediction\":";
+    AppendJsonBool(stream, snapshot.reference_time_alignment.used_command_prediction);
+    stream << ",\"input_sample_count\":"
+           << snapshot.reference_time_alignment.input_sample_count;
+    stream << ",\"aligned_sample_count\":"
+           << snapshot.reference_time_alignment.aligned_sample_count;
+    stream << "}";
     stream << ",\"reference_control\":{\"ready\":";
     AppendJsonBool(stream, snapshot.reference_control.ready);
     stream << ",\"reason\":";
@@ -592,6 +635,56 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header,
                      snapshot.param_snapshot.bev_element
                          .circle_v2_entry_bottom_forward_max_m);
+    header << "}";
+    header << ",\"REFERENCE_TIME_ALIGNMENT\":{";
+    header << "\"ENABLED\":";
+    AppendJsonBool(header, snapshot.param_snapshot.reference_time_alignment.enabled);
+    header << ",\"MAX_AGE_MS\":"
+           << snapshot.param_snapshot.reference_time_alignment.max_age_ms;
+    header << ",\"EFFECTIVE_DELAY_MS\":"
+           << snapshot.param_snapshot.reference_time_alignment.effective_delay_ms;
+    header << ",\"FUTURE_PREDICTION_MAX_MS\":"
+           << snapshot.param_snapshot.reference_time_alignment.future_prediction_max_ms;
+    header << ",\"MAX_INTEGRATION_GAP_MS\":"
+           << snapshot.param_snapshot.reference_time_alignment.max_integration_gap_ms;
+    header << ",\"MIN_ALIGNED_SAMPLES\":"
+           << snapshot.param_snapshot.reference_time_alignment.min_aligned_samples;
+    header << ",\"USE_ENCODER_FORWARD\":";
+    AppendJsonBool(header,
+                   snapshot.param_snapshot.reference_time_alignment.use_encoder_forward);
+    header << ",\"ENCODER_TICKS_TO_METER\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.reference_time_alignment.encoder_ticks_to_meter);
+    header << ",\"WHEEL_TRACK_M\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.reference_time_alignment.wheel_track_m);
+    header << ",\"USE_IMU_YAW\":";
+    AppendJsonBool(header, snapshot.param_snapshot.reference_time_alignment.use_imu_yaw);
+    header << ",\"USE_WHEEL_YAW_FALLBACK\":";
+    AppendJsonBool(header,
+                   snapshot.param_snapshot.reference_time_alignment.use_wheel_yaw_fallback);
+    header << ",\"FUTURE_PREDICTION_ENABLED\":";
+    AppendJsonBool(header,
+                   snapshot.param_snapshot.reference_time_alignment.future_prediction_enabled);
+    header << ",\"COMMAND_YAW_PREDICTION_ENABLED\":";
+    AppendJsonBool(header,
+                   snapshot.param_snapshot.reference_time_alignment
+                       .command_yaw_prediction_enabled);
+    header << ",\"TURN_OUTPUT_TO_YAW_RATE_GAIN\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.reference_time_alignment
+                         .turn_output_to_yaw_rate_gain);
+    header << ",\"ACTUATOR_YAW_TAU_MS\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.reference_time_alignment.actuator_yaw_tau_ms);
+    header << ",\"MAX_DELTA_FORWARD_M\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.reference_time_alignment.max_delta_forward_m);
+    header << ",\"MAX_DELTA_LATERAL_M\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.reference_time_alignment.max_delta_lateral_m);
+    header << ",\"MAX_DELTA_YAW_RAD\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.reference_time_alignment.max_delta_yaw_rad);
     header << "}";
     header << "}}";
     return EncodeEnvelope(header.str(), nullptr, 0, encoded, error);

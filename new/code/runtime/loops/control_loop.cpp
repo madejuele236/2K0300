@@ -8,6 +8,7 @@
 #include <cmath>
 #include <string>
 
+#include "estimation/vehicle_pose_delta_estimator.hpp"
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_lateral_error.hpp"
 #include "reference/reference_tracking_geometry.hpp"
@@ -213,24 +214,49 @@ struct ControlDebugSnapshotInputs {
 
 port::PerceptionResult BuildControlTimePerception(const port::PerceptionResult& perception,
                                                   const port::MotionHistory& motion_history,
+                                                  const port::ControlCommandHistory& command_history,
                                                   uint64_t now_ms,
                                                   const port::RuntimeParameters& params) {
+    const uint64_t effective_delay_ms =
+        static_cast<uint64_t>(std::max(0, params.reference_time_alignment.effective_delay_ms));
+    const uint64_t control_effective_time_ms = now_ms + effective_delay_ms;
     if (!perception.published || !perception.fresh || !params.reference_time_alignment.enabled) {
         port::PerceptionResult out = perception;
         out.reference_time_alignment.enabled = params.reference_time_alignment.enabled;
         out.reference_time_alignment.valid = !params.reference_time_alignment.enabled;
         out.reference_time_alignment.reason =
             params.reference_time_alignment.enabled ? "perception_unavailable" : "disabled";
+        out.reference_time_alignment.reference_capture_time_ms = perception.reference_capture_time_ms;
+        out.reference_time_alignment.control_time_ms = now_ms;
+        out.reference_time_alignment.control_effective_time_ms = control_effective_time_ms;
+        if (params.reference_time_alignment.enabled) {
+            out.reference_usability = {};
+            out.reference_usability.reason = "reference_time_alignment_perception_unavailable";
+            out.reference_lateral_error = {};
+            out.reference_lateral_error.reason = out.reference_usability.reason;
+            out.reference_tracking_geometry = {};
+            out.reference_tracking_geometry.reason = out.reference_usability.reason;
+            out.reference_control = {};
+            out.reference_control.reason = out.reference_usability.reason;
+        }
         return out;
     }
 
     port::PerceptionResult out = perception;
+    const port::VehiclePoseDelta pose_delta =
+        estimation::EstimateVehiclePoseDelta(perception.reference_capture_time_ms,
+                                             now_ms,
+                                             control_effective_time_ms,
+                                             motion_history,
+                                             command_history,
+                                             params.reference_time_alignment);
     const reference::ReferenceTimeAlignmentResult alignment =
-        reference::AlignReferencePathToControlTime(perception.reference_path,
-                                                   perception.reference_capture_time_ms,
-                                                   now_ms,
-                                                   motion_history,
-                                                   params);
+        reference::AlignReferencePathToVehiclePoseDelta(perception.reference_path,
+                                                       perception.reference_capture_time_ms,
+                                                       now_ms,
+                                                       control_effective_time_ms,
+                                                       pose_delta,
+                                                       params);
     out.reference_time_alignment = alignment.facts;
     out.reference_path = alignment.reference_path;
     if (!alignment.facts.valid) {
@@ -351,10 +377,34 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
         perception.reference_time_alignment.reference_capture_time_ms;
     debug_snapshot.steering.reference_time_alignment.control_time_ms =
         perception.reference_time_alignment.control_time_ms;
-    debug_snapshot.steering.reference_time_alignment.delta_s_m =
-        perception.reference_time_alignment.delta_s_m;
+    debug_snapshot.steering.reference_time_alignment.control_effective_time_ms =
+        perception.reference_time_alignment.control_effective_time_ms;
+    debug_snapshot.steering.reference_time_alignment.measured_until_ms =
+        perception.reference_time_alignment.measured_until_ms;
+    debug_snapshot.steering.reference_time_alignment.predicted_ms =
+        perception.reference_time_alignment.predicted_ms;
+    debug_snapshot.steering.reference_time_alignment.delta_forward_m =
+        perception.reference_time_alignment.delta_forward_m;
+    debug_snapshot.steering.reference_time_alignment.delta_lateral_m =
+        perception.reference_time_alignment.delta_lateral_m;
     debug_snapshot.steering.reference_time_alignment.delta_yaw_rad =
         perception.reference_time_alignment.delta_yaw_rad;
+    debug_snapshot.steering.reference_time_alignment.measured_forward_mps =
+        perception.reference_time_alignment.measured_forward_mps;
+    debug_snapshot.steering.reference_time_alignment.measured_yaw_rate_radps =
+        perception.reference_time_alignment.measured_yaw_rate_radps;
+    debug_snapshot.steering.reference_time_alignment.predicted_forward_mps =
+        perception.reference_time_alignment.predicted_forward_mps;
+    debug_snapshot.steering.reference_time_alignment.predicted_yaw_rate_radps =
+        perception.reference_time_alignment.predicted_yaw_rate_radps;
+    debug_snapshot.steering.reference_time_alignment.used_encoder_forward =
+        perception.reference_time_alignment.used_encoder_forward;
+    debug_snapshot.steering.reference_time_alignment.used_imu_yaw =
+        perception.reference_time_alignment.used_imu_yaw;
+    debug_snapshot.steering.reference_time_alignment.used_wheel_yaw =
+        perception.reference_time_alignment.used_wheel_yaw;
+    debug_snapshot.steering.reference_time_alignment.used_command_prediction =
+        perception.reference_time_alignment.used_command_prediction;
     debug_snapshot.steering.reference_time_alignment.input_sample_count =
         perception.reference_time_alignment.input_sample_count;
     debug_snapshot.steering.reference_time_alignment.aligned_sample_count =
@@ -488,6 +538,7 @@ void ResetControllerState(control::SteeringYawController& yaw_controller,
     right_wheel_pid.Reset();
     ResetSteeringControlMemory(control_memory);
     state.perception_memory_reset_generation.fetch_add(1);
+    state.command_history.Clear();
 }
 
 // 发射运动阶段诊断 —— 阶段转换、启动阻塞、故障复位准备状态
@@ -715,6 +766,7 @@ bool ControlLoop::Start(const port::RuntimeParameters& params) {
     state_.actuators_armed = false;
     state_.control_observation = {};
     state_.control_debug_snapshot = {};
+    state_.command_history.Clear();
     ResetSteeringControlMemory(steering_control_memory_);
     state_.perception_memory_reset_generation.fetch_add(1);
     state_.motion_state.phase = MotionPhase::kDisarmed;
@@ -808,6 +860,7 @@ void ControlLoop::ResetDisarmedControlState() {
     state_.last_command = {};
     state_.control_observation = {};
     state_.control_debug_snapshot = {};
+    state_.command_history.Clear();
     ResetSteeringControlMemory(steering_control_memory_);
     state_.perception_memory_reset_generation.fetch_add(1);
     state_.motion_state.phase = MotionPhase::kDisarmed;
@@ -828,6 +881,7 @@ void ControlLoop::LatchTimerFailureState(uint64_t now_ms) {
     state_.control_observation.hold_disarmed = true;
     state_.control_observation.motion_reset_ready = false;
     state_.control_debug_snapshot = {};
+    state_.command_history.Clear();
     ResetSteeringControlMemory(steering_control_memory_);
     state_.perception_memory_reset_generation.fetch_add(1);
     state_.control_debug_snapshot.valid = true;
@@ -873,6 +927,7 @@ void ControlLoop::Tick() {
     RuntimeTuningSnapshot tuning_snapshot{};
     ControlCycleObservation previous_observation{};
     port::MotionHistory motion_history{};
+    port::ControlCommandHistory command_history{};
     {
         std::lock_guard<std::mutex> lock(state_.shared_mutex);
         state_.imu = imu;
@@ -888,6 +943,7 @@ void ControlLoop::Tick() {
         }
         perception = state_.perception;
         motion_history = state_.motion_history;
+        command_history = state_.command_history;
         previous_command = state_.last_command;
         previous_motion_state = state_.motion_state;
         motion_intent = state_.motion_intent;
@@ -895,7 +951,7 @@ void ControlLoop::Tick() {
         previous_observation = state_.control_observation;
     }
 
-    perception = BuildControlTimePerception(perception, motion_history, now_ms, params_);
+    perception = BuildControlTimePerception(perception, motion_history, command_history, now_ms, params_);
     // --- 第 2 阶段：门控评估 ---
     ControlGateDecision gate{};
     {
@@ -1052,6 +1108,23 @@ void ControlLoop::Tick() {
                                    steering_terms_valid});
     debug_reporter_.MaybeEmit(debug_snapshot, diagnostics_);
 
+    port::ControlCommandHistorySample command_history_sample{};
+    command_history_sample.time_ms = now_ms;
+    command_history_sample.valid = true;
+    command_history_sample.actuator_applied =
+        apply_ok && !diagnostics_only_actuator && !hold_disarmed && !command.emergency_stop;
+    command_history_sample.diagnostics_only = diagnostics_only_actuator;
+    command_history_sample.hold_disarmed = hold_disarmed;
+    command_history_sample.emergency_stop = command.emergency_stop;
+    command_history_sample.raw_turn_output = raw_turn_output;
+    command_history_sample.applied_turn_output = applied_turn_output;
+    command_history_sample.left_wheel_target = wheel_targets.left;
+    command_history_sample.right_wheel_target = wheel_targets.right;
+    command_history_sample.left_drive_pwm = command.left_drive_pwm;
+    command_history_sample.right_drive_pwm = command.right_drive_pwm;
+    command_history_sample.left_brushless_pwm = command.left_brushless_pwm;
+    command_history_sample.right_brushless_pwm = command.right_brushless_pwm;
+
     {
         std::lock_guard<std::mutex> lock(state_.shared_mutex);
         state_.motion_state = final_motion.state;
@@ -1065,6 +1138,7 @@ void ControlLoop::Tick() {
         state_.control_observation = observation;
         state_.control_debug_snapshot = debug_snapshot;
         state_.actuators_armed = observation.actuators_armed;
+        state_.command_history.Push(command_history_sample);
     }
     ++state_.control_cycle_count;
 }

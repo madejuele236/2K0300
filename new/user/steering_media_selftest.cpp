@@ -231,6 +231,28 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.tracking_geometry.curvature_m_inv = 0.12;
     snapshot.steering.tracking_geometry.sample_count = 5;
     snapshot.steering.tracking_geometry.reason = "ok";
+    snapshot.steering.reference_time_alignment.enabled = true;
+    snapshot.steering.reference_time_alignment.valid = true;
+    snapshot.steering.reference_time_alignment.reason = "aligned_effective_se2";
+    snapshot.steering.reference_time_alignment.age_ms = 45;
+    snapshot.steering.reference_time_alignment.reference_capture_time_ms = 1000;
+    snapshot.steering.reference_time_alignment.control_time_ms = 1030;
+    snapshot.steering.reference_time_alignment.control_effective_time_ms = 1045;
+    snapshot.steering.reference_time_alignment.measured_until_ms = 1030;
+    snapshot.steering.reference_time_alignment.predicted_ms = 15;
+    snapshot.steering.reference_time_alignment.delta_forward_m = 0.12;
+    snapshot.steering.reference_time_alignment.delta_lateral_m = -0.03;
+    snapshot.steering.reference_time_alignment.delta_yaw_rad = 0.04;
+    snapshot.steering.reference_time_alignment.measured_forward_mps = 1.1;
+    snapshot.steering.reference_time_alignment.measured_yaw_rate_radps = 0.2;
+    snapshot.steering.reference_time_alignment.predicted_forward_mps = 1.0;
+    snapshot.steering.reference_time_alignment.predicted_yaw_rate_radps = 0.3;
+    snapshot.steering.reference_time_alignment.used_encoder_forward = true;
+    snapshot.steering.reference_time_alignment.used_imu_yaw = true;
+    snapshot.steering.reference_time_alignment.used_wheel_yaw = false;
+    snapshot.steering.reference_time_alignment.used_command_prediction = true;
+    snapshot.steering.reference_time_alignment.input_sample_count = 8;
+    snapshot.steering.reference_time_alignment.aligned_sample_count = 6;
     snapshot.steering.reference_control.ready = true;
     snapshot.steering.reference_control.reason = "reference_hold";
     snapshot.steering.safety_gate.veto_active = false;
@@ -415,6 +437,24 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_control_model.curvature_to_wheel_delta_gain = 34.0;
     config.param_snapshot.bev_control_model.tracking_fit_min_samples = 5;
     config.param_snapshot.bev_element.cross_exit_takeover_enabled = false;
+    config.param_snapshot.reference_time_alignment.enabled = true;
+    config.param_snapshot.reference_time_alignment.max_age_ms = 120;
+    config.param_snapshot.reference_time_alignment.effective_delay_ms = 25;
+    config.param_snapshot.reference_time_alignment.future_prediction_max_ms = 80;
+    config.param_snapshot.reference_time_alignment.max_integration_gap_ms = 30;
+    config.param_snapshot.reference_time_alignment.min_aligned_samples = 3;
+    config.param_snapshot.reference_time_alignment.use_encoder_forward = true;
+    config.param_snapshot.reference_time_alignment.encoder_ticks_to_meter = 0.001;
+    config.param_snapshot.reference_time_alignment.wheel_track_m = 0.42;
+    config.param_snapshot.reference_time_alignment.use_imu_yaw = true;
+    config.param_snapshot.reference_time_alignment.use_wheel_yaw_fallback = true;
+    config.param_snapshot.reference_time_alignment.future_prediction_enabled = true;
+    config.param_snapshot.reference_time_alignment.command_yaw_prediction_enabled = true;
+    config.param_snapshot.reference_time_alignment.turn_output_to_yaw_rate_gain = 0.02;
+    config.param_snapshot.reference_time_alignment.actuator_yaw_tau_ms = 35.0;
+    config.param_snapshot.reference_time_alignment.max_delta_forward_m = 0.6;
+    config.param_snapshot.reference_time_alignment.max_delta_lateral_m = 0.4;
+    config.param_snapshot.reference_time_alignment.max_delta_yaw_rad = 0.8;
     config.param_snapshot.bev_projector.projector_hash = "unit-test-projector-hash";
     config.param_snapshot.bev_geometry.search_lateral_limit_m = 0.72F;
     config.param_snapshot.bev_geometry.sparse_row_count = 12;
@@ -523,6 +563,31 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must not include legacy circle confidence parameters");
     Require(!Contains(header_json, "\"BEV_ELEMENT_RASTER\""),
             "config snapshot must not include probe-only BEV element raster settings");
+    Require(Contains(header_json, "\"REFERENCE_TIME_ALIGNMENT\""),
+            "config snapshot must include reference time alignment group");
+    Require(Contains(header_json, "\"EFFECTIVE_DELAY_MS\":25"),
+            "config snapshot must include effective delay");
+    Require(Contains(header_json, "\"FUTURE_PREDICTION_MAX_MS\":80"),
+            "config snapshot must include future prediction horizon");
+    Require(Contains(header_json, "\"USE_ENCODER_FORWARD\":true"),
+            "config snapshot must include encoder forward gate");
+    Require(Contains(header_json, "\"ENCODER_TICKS_TO_METER\":0.001"),
+            "config snapshot must include encoder scale");
+    Require(Contains(header_json, "\"WHEEL_TRACK_M\":0.42"),
+            "config snapshot must include wheel track");
+    Require(Contains(header_json, "\"USE_WHEEL_YAW_FALLBACK\":true"),
+            "config snapshot must include wheel yaw fallback gate");
+    Require(Contains(header_json, "\"COMMAND_YAW_PREDICTION_ENABLED\":true"),
+            "config snapshot must include command yaw prediction gate");
+    Require(Contains(header_json, "\"TURN_OUTPUT_TO_YAW_RATE_GAIN\":0.02"),
+            "config snapshot must include turn-output yaw gain");
+    Require(Contains(header_json, "\"MAX_DELTA_FORWARD_M\":0.6"),
+            "config snapshot must include forward delta limit");
+    Require(Contains(header_json, "\"MAX_DELTA_LATERAL_M\":0.4"),
+            "config snapshot must include lateral delta limit");
+    const std::string removed_forward_alias = std::string("\"delta_") + "s_m\"";
+    Require(!Contains(header_json, removed_forward_alias),
+            "config snapshot must not expose removed forward compatibility field");
     Require(!Contains(header_json, std::string("CURVATURE_TO_") + "W_" + "TARGET_GAIN"),
             "config snapshot must not include removed legacy angular target gain key");
     Require(!Contains(header_json, std::string("\"BEV_") + "TOPOLOGY"),
@@ -690,6 +755,14 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
     first_frame.height = 240;
     first_frame.motion_phase = "RUNNING";
     first_frame.steering_snapshot.reference_control.ready = true;
+    first_frame.steering_snapshot.reference_time_alignment.enabled = true;
+    first_frame.steering_snapshot.reference_time_alignment.valid = true;
+    first_frame.steering_snapshot.reference_time_alignment.reason = "aligned_effective_se2";
+    first_frame.steering_snapshot.reference_time_alignment.control_time_ms = 1030;
+    first_frame.steering_snapshot.reference_time_alignment.control_effective_time_ms = 1045;
+    first_frame.steering_snapshot.reference_time_alignment.delta_forward_m = 0.12;
+    first_frame.steering_snapshot.reference_time_alignment.delta_lateral_m = -0.03;
+    first_frame.steering_snapshot.reference_time_alignment.used_command_prediction = true;
     first_frame.steering_snapshot.safety_gate.veto_active = false;
     first_frame.pixel_data = image_payload.data();
     first_frame.pixel_size = image_payload.size();
@@ -763,6 +836,16 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
             "image frame must expose frame-store lookup misses");
     Require(Contains(header_json, "\"reference_control\":{\"ready\":true"),
             "image frame snapshot must nest reference-control readiness");
+    Require(Contains(header_json, "\"reference_time_alignment\":{\"enabled\":true"),
+            "image frame snapshot must nest reference time alignment");
+    Require(Contains(header_json, "\"control_effective_time_ms\":1045"),
+            "image frame snapshot must expose control effective time");
+    Require(Contains(header_json, "\"delta_forward_m\":0.12"),
+            "image frame snapshot must expose aligned forward delta");
+    Require(Contains(header_json, "\"delta_lateral_m\":-0.03"),
+            "image frame snapshot must expose aligned lateral delta");
+    Require(Contains(header_json, "\"used_command_prediction\":true"),
+            "image frame snapshot must expose command prediction source flag");
     Require(Contains(header_json, "\"safety_gate\":{\"veto_active\":false"),
             "image frame snapshot must nest safety-gate state");
     Require(!Contains(header_json, std::string("\"w_") + "target\""),
@@ -896,6 +979,22 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.tracking_geometry.curvature_m_inv = 0.12;
         state.control_debug_snapshot.steering.tracking_geometry.sample_count = 5;
         state.control_debug_snapshot.steering.tracking_geometry.reason = "ok";
+        state.control_debug_snapshot.steering.reference_time_alignment.enabled = true;
+        state.control_debug_snapshot.steering.reference_time_alignment.valid = true;
+        state.control_debug_snapshot.steering.reference_time_alignment.reason = "aligned_effective_se2";
+        state.control_debug_snapshot.steering.reference_time_alignment.age_ms = 45;
+        state.control_debug_snapshot.steering.reference_time_alignment.reference_capture_time_ms = 1000;
+        state.control_debug_snapshot.steering.reference_time_alignment.control_time_ms = 1030;
+        state.control_debug_snapshot.steering.reference_time_alignment.control_effective_time_ms = 1045;
+        state.control_debug_snapshot.steering.reference_time_alignment.measured_until_ms = 1030;
+        state.control_debug_snapshot.steering.reference_time_alignment.predicted_ms = 15;
+        state.control_debug_snapshot.steering.reference_time_alignment.delta_forward_m = 0.12;
+        state.control_debug_snapshot.steering.reference_time_alignment.delta_lateral_m = -0.03;
+        state.control_debug_snapshot.steering.reference_time_alignment.delta_yaw_rad = 0.04;
+        state.control_debug_snapshot.steering.reference_time_alignment.used_encoder_forward = true;
+        state.control_debug_snapshot.steering.reference_time_alignment.used_command_prediction = true;
+        state.control_debug_snapshot.steering.reference_time_alignment.input_sample_count = 8;
+        state.control_debug_snapshot.steering.reference_time_alignment.aligned_sample_count = 6;
         state.control_debug_snapshot.steering.reference_control.ready = true;
         state.control_debug_snapshot.steering.reference_control.reason = "ok";
         state.control_debug_snapshot.steering.safety_gate.veto_active = false;
@@ -954,6 +1053,15 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must expose boundary trace distance");
     Require(Contains(header_json, "\"BEV_ELEMENT\""),
             "service config snapshot must expose BEV element settings");
+    Require(Contains(header_json, "\"REFERENCE_TIME_ALIGNMENT\""),
+            "service config snapshot must expose reference time alignment settings");
+    Require(Contains(header_json, "\"EFFECTIVE_DELAY_MS\":0"),
+            "service config snapshot must expose default effective delay");
+    Require(Contains(header_json, "\"USE_ENCODER_FORWARD\":false"),
+            "service config snapshot must expose default encoder forward gate");
+    const std::string removed_forward_alias = std::string("\"delta_") + "s_m\"";
+    Require(!Contains(header_json, removed_forward_alias),
+            "service config snapshot must not expose removed forward compatibility field");
     Require(Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\":0.930000007153"),
             "service config snapshot must expose cross white-ratio settings");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
@@ -1061,6 +1169,30 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include tracking curvature");
     Require(Contains(header_json, "\"sample_count\":5"),
             "image frame must include tracking sample count");
+    Require(Contains(header_json, "\"reference_time_alignment\":{\"enabled\":true"),
+            "image frame must include reference-time-alignment group");
+    Require(Contains(header_json, "\"reason\":\"aligned_effective_se2\""),
+            "image frame must include reference-time-alignment reason");
+    Require(Contains(header_json, "\"control_time_ms\":1030"),
+            "image frame must include control time");
+    Require(Contains(header_json, "\"control_effective_time_ms\":1045"),
+            "image frame must include control effective time");
+    Require(Contains(header_json, "\"measured_until_ms\":1030"),
+            "image frame must include measured-until time");
+    Require(Contains(header_json, "\"predicted_ms\":15"),
+            "image frame must include predicted horizon");
+    Require(Contains(header_json, "\"delta_forward_m\":0.12"),
+            "image frame must include aligned forward delta");
+    Require(Contains(header_json, "\"delta_lateral_m\":-0.03"),
+            "image frame must include aligned lateral delta");
+    Require(Contains(header_json, "\"delta_yaw_rad\":0.04"),
+            "image frame must include aligned yaw delta");
+    Require(Contains(header_json, "\"used_encoder_forward\":true"),
+            "image frame must include encoder-forward source flag");
+    Require(Contains(header_json, "\"used_command_prediction\":true"),
+            "image frame must include command-prediction source flag");
+    Require(!Contains(header_json, removed_forward_alias),
+            "image frame must not include removed forward compatibility field");
     Require(Contains(header_json, "\"turn_output_target\":-0.2"),
             "image frame must include turn-output target");
     Require(Contains(header_json, "\"lateral_term\":-0.12"),

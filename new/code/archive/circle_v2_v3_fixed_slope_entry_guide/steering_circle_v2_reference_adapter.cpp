@@ -1,4 +1,4 @@
-#include "runtime/steering_circle_v2_reference_adapter.hpp"
+#include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 
 namespace ls2k::runtime {
 

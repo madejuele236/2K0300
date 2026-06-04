@@ -4,7 +4,7 @@
 #include <optional>
 #include <vector>
 
-#include "legacy/steering_bev_simple_perception.hpp"
+#include "vision/bev/bev_simple_perception.hpp"
 #include "port/bev_reference_types.hpp"
 #include "port/runtime_parameter_types.hpp"
 
@@ -21,7 +21,7 @@ struct BoundaryOverrideRequest {
 };
 
 std::optional<port::BEVReferencePath> BuildReferencePathWithBoundaryOverride(
-    const std::vector<legacy::BEVSimpleRowScan>& rows,
+    const std::vector<vision::BEVSimpleRowScan>& rows,
     const BoundaryOverrideRequest& request,
     const port::RuntimeParameters& params);
 

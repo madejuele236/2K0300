@@ -8,7 +8,7 @@
 #include <array>
 #include <vector>
 
-#include "legacy/steering_bev_projector.hpp"
+#include "vision/bev/bev_projector.hpp"
 #include "port/control_types.hpp"
 
 namespace ls2k::legacy {

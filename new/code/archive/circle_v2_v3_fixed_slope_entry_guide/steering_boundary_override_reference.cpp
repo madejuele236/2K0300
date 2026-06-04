@@ -16,15 +16,15 @@ bool IsFiniteSample(const port::BEVPathSample& sample) {
            std::isfinite(sample.point.lateral_m);
 }
 
-bool LateralInsideInterval(const legacy::BEVSimpleWhiteInterval& interval,
+bool LateralInsideInterval(const vision::BEVSimpleWhiteInterval& interval,
                            float lateral_m) {
     return lateral_m + kWhiteContainmentToleranceM >= interval.left_m &&
            lateral_m - kWhiteContainmentToleranceM <= interval.right_m;
 }
 
-bool LateralInsideAnyWhiteInterval(const legacy::BEVSimpleRowScan& row,
+bool LateralInsideAnyWhiteInterval(const vision::BEVSimpleRowScan& row,
                                    float lateral_m) {
-    for (const legacy::BEVSimpleWhiteInterval& interval : row.intervals) {
+    for (const vision::BEVSimpleWhiteInterval& interval : row.intervals) {
         if (LateralInsideInterval(interval, lateral_m)) {
             return true;
         }
@@ -32,12 +32,12 @@ bool LateralInsideAnyWhiteInterval(const legacy::BEVSimpleRowScan& row,
     return false;
 }
 
-const legacy::BEVSimpleWhiteInterval* FindBaseInterval(
-    const legacy::BEVSimpleRowScan& row,
+const vision::BEVSimpleWhiteInterval* FindBaseInterval(
+    const vision::BEVSimpleRowScan& row,
     float ordinary_lateral_m) {
-    const legacy::BEVSimpleWhiteInterval* best = nullptr;
+    const vision::BEVSimpleWhiteInterval* best = nullptr;
     float best_cost = 0.0F;
-    for (const legacy::BEVSimpleWhiteInterval& interval : row.intervals) {
+    for (const vision::BEVSimpleWhiteInterval& interval : row.intervals) {
         if (LateralInsideInterval(interval, ordinary_lateral_m)) {
             return &interval;
         }
@@ -50,11 +50,11 @@ const legacy::BEVSimpleWhiteInterval* FindBaseInterval(
     return best;
 }
 
-bool BuildPatchedInterval(const legacy::BEVSimpleWhiteInterval& base,
+bool BuildPatchedInterval(const vision::BEVSimpleWhiteInterval& base,
                           BoundaryOverrideSide side,
                           float boundary_lateral_m,
                           float min_width_m,
-                          legacy::BEVSimpleWhiteInterval& patched) {
+                          vision::BEVSimpleWhiteInterval& patched) {
     patched = base;
     if (side == BoundaryOverrideSide::kLeft) {
         patched.left_m = boundary_lateral_m;
@@ -69,14 +69,14 @@ bool BuildPatchedInterval(const legacy::BEVSimpleWhiteInterval& base,
     return std::isfinite(patched.center_m);
 }
 
-void StopReferenceAt(std::vector<legacy::BEVSimpleRowScan>& rows,
+void StopReferenceAt(std::vector<vision::BEVSimpleRowScan>& rows,
                      std::size_t index) {
     if (index < rows.size()) {
         rows[index].intervals.clear();
     }
 }
 
-std::size_t ApplyBoundaryOverride(std::vector<legacy::BEVSimpleRowScan>& patched_rows,
+std::size_t ApplyBoundaryOverride(std::vector<vision::BEVSimpleRowScan>& patched_rows,
                                   const port::BEVReferencePath& ordinary_reference,
                                   const BoundaryOverrideRequest& request,
                                   const port::RuntimeParameters& params) {
@@ -86,7 +86,7 @@ std::size_t ApplyBoundaryOverride(std::vector<legacy::BEVSimpleRowScan>& patched
          index < patched_rows.size() && index < request.boundary_path.sampled_path.size() &&
          index < ordinary_reference.sampled_path.size();
          ++index) {
-        legacy::BEVSimpleRowScan& row = patched_rows[index];
+        vision::BEVSimpleRowScan& row = patched_rows[index];
         const port::BEVPathSample& boundary_sample =
             request.boundary_path.sampled_path[index];
         const port::BEVPathSample& ordinary_sample =
@@ -98,14 +98,14 @@ std::size_t ApplyBoundaryOverride(std::vector<legacy::BEVSimpleRowScan>& patched
             break;
         }
 
-        const legacy::BEVSimpleWhiteInterval* base =
+        const vision::BEVSimpleWhiteInterval* base =
             FindBaseInterval(row, ordinary_sample.point.lateral_m);
         if (base == nullptr) {
             StopReferenceAt(patched_rows, index);
             break;
         }
 
-        legacy::BEVSimpleWhiteInterval patched{};
+        vision::BEVSimpleWhiteInterval patched{};
         if (!BuildPatchedInterval(*base,
                                   request.side,
                                   boundary_sample.point.lateral_m,
@@ -124,7 +124,7 @@ std::size_t ApplyBoundaryOverride(std::vector<legacy::BEVSimpleRowScan>& patched
 }
 
 std::size_t KeepWhiteLeadingSegment(port::BEVReferencePath& reference,
-                                    const std::vector<legacy::BEVSimpleRowScan>& rows) {
+                                    const std::vector<vision::BEVSimpleRowScan>& rows) {
     std::size_t leading_count = 0;
     for (std::size_t index = 0; index < reference.sampled_path.size(); ++index) {
         port::BEVPathSample& sample = reference.sampled_path[index];
@@ -149,12 +149,12 @@ std::size_t KeepWhiteLeadingSegment(port::BEVReferencePath& reference,
 }  // namespace
 
 std::optional<port::BEVReferencePath> BuildReferencePathWithBoundaryOverride(
-    const std::vector<legacy::BEVSimpleRowScan>& rows,
+    const std::vector<vision::BEVSimpleRowScan>& rows,
     const BoundaryOverrideRequest& request,
     const port::RuntimeParameters& params) {
-    std::vector<legacy::BEVSimpleRowScan> patched_rows = rows;
+    std::vector<vision::BEVSimpleRowScan> patched_rows = rows;
     const port::BEVReferencePath ordinary_reference =
-        legacy::BuildReferencePath(rows, params);
+        vision::BuildReferencePath(rows, params);
     const std::size_t patched_count =
         ApplyBoundaryOverride(patched_rows, ordinary_reference, request, params);
     if (patched_count < kMinLeadingReferenceSamples) {
@@ -162,7 +162,7 @@ std::optional<port::BEVReferencePath> BuildReferencePathWithBoundaryOverride(
     }
 
     port::BEVReferencePath reference =
-        legacy::BuildReferencePath(patched_rows, params);
+        vision::BuildReferencePath(patched_rows, params);
     const std::size_t white_count = KeepWhiteLeadingSegment(reference, rows);
     if (white_count < kMinLeadingReferenceSamples) {
         return std::nullopt;

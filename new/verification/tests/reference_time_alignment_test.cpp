@@ -32,39 +32,50 @@ ls2k::port::BEVReferencePath MakeStraightPath() {
     return path;
 }
 
-ls2k::port::MotionHistory MakeMotionHistory(float gyro_z, std::uint64_t step_ms = 10) {
-    ls2k::port::MotionHistory history{};
-    for (std::uint64_t time_ms = 100; time_ms <= 130; time_ms += step_ms) {
-        history.Push({time_ms, true, gyro_z, true, 0, 0});
-    }
-    return history;
-}
-
-ls2k::port::MotionHistory MakeMotionHistoryRange(std::uint64_t start_ms,
-                                                    std::uint64_t end_ms,
-                                                    float gyro_z,
-                                                    std::uint64_t step_ms = 10) {
-    ls2k::port::MotionHistory history{};
-    for (std::uint64_t time_ms = start_ms; time_ms <= end_ms; time_ms += step_ms) {
-        history.Push({time_ms, true, gyro_z, true, 0, 0});
-    }
-    return history;
-}
-
 ls2k::port::RuntimeParameters EnabledParams() {
     ls2k::port::RuntimeParameters params{};
     params.reference_time_alignment.enabled = true;
     params.reference_time_alignment.max_age_ms = 120;
     params.reference_time_alignment.max_integration_gap_ms = 30;
-    params.reference_time_alignment.max_delta_yaw_rad = 0.8;
     params.reference_time_alignment.min_aligned_samples = 3;
+    params.reference_time_alignment.max_delta_forward_m = 1.0;
+    params.reference_time_alignment.max_delta_lateral_m = 1.0;
+    params.reference_time_alignment.max_delta_yaw_rad = 0.8;
     return params;
+}
+
+ls2k::port::VehiclePoseDelta MakePoseDelta(double forward_m,
+                                           double lateral_m,
+                                           double yaw_rad,
+                                           std::uint64_t start_ms = 100,
+                                           std::uint64_t now_ms = 130,
+                                           std::uint64_t end_ms = 130) {
+    ls2k::port::VehiclePoseDelta delta{};
+    delta.valid = true;
+    delta.reason = "test";
+    delta.start_time_ms = start_ms;
+    delta.now_time_ms = now_ms;
+    delta.end_time_ms = end_ms;
+    delta.measured_until_ms = now_ms;
+    delta.delta_forward_m = forward_m;
+    delta.delta_lateral_m = lateral_m;
+    delta.delta_yaw_rad = yaw_rad;
+    delta.measured_forward_mps = 1.0;
+    delta.measured_yaw_rate_radps = yaw_rad == 0.0 ? 0.0 : 1.0;
+    delta.used_encoder_forward = forward_m != 0.0;
+    delta.used_imu_yaw = yaw_rad != 0.0;
+    return delta;
 }
 
 void TestDisabledKeepsPath() {
     const auto path = MakeStraightPath();
-    const auto result = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistory(0.0F), ls2k::port::RuntimeParameters{});
+    const auto result = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.1, 0.0, 0.0),
+        ls2k::port::RuntimeParameters{});
     Expect(result.facts.valid, "disabled alignment must be valid");
     Expect(result.facts.reason == "disabled", "disabled reason mismatch");
     Expect(result.reference_path.sampled_path[0].present, "disabled path sample missing");
@@ -74,51 +85,128 @@ void TestDisabledKeepsPath() {
 void TestIdentityAndYawSign() {
     const auto path = MakeStraightPath();
     auto params = EnabledParams();
-    auto zero = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistory(0.0F), params);
-    Expect(zero.facts.valid, "zero yaw alignment invalid");
-    Expect(zero.facts.reason == "aligned_yaw_only", "zero yaw reason mismatch");
+    auto zero = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.0, 0.0, 0.0),
+        params);
+    Expect(zero.facts.valid, "zero delta alignment invalid");
+    Expect(zero.facts.reason == "aligned_measured_se2", "zero delta reason mismatch");
     ExpectNear(zero.reference_path.sampled_path[2].point.forward_m,
                path.sampled_path[2].point.forward_m,
                1.0e-6,
                "identity forward mismatch");
     ExpectNear(zero.reference_path.sampled_path[2].point.lateral_m, 0.0, 1.0e-6, "identity lateral mismatch");
 
-    auto yaw = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistory(1.0F), params);
+    auto yaw = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.0, 0.0, 0.03),
+        params);
     Expect(yaw.facts.valid, "yaw alignment invalid");
-    ExpectNear(yaw.facts.delta_yaw_rad, 0.03, 1.0e-6, "yaw integral mismatch");
+    ExpectNear(yaw.facts.delta_yaw_rad, 0.03, 1.0e-6, "yaw delta mismatch");
     Expect(yaw.reference_path.sampled_path[2].point.lateral_m < 0.0F,
            "positive yaw should rotate old forward point to negative lateral in current frame");
+}
+
+void TestForwardShift() {
+    const auto path = MakeStraightPath();
+    auto params = EnabledParams();
+    params.reference_time_alignment.min_aligned_samples = 1;
+    auto result = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.1, 0.0, 0.0),
+        params);
+    Expect(result.facts.valid, "forward SE2 alignment invalid");
+    ExpectNear(result.reference_path.sampled_path[0].point.forward_m,
+               0.1,
+               1.0e-6,
+               "forward shift mismatch");
+}
+
+void TestLateralShift() {
+    const auto path = MakeStraightPath();
+    auto params = EnabledParams();
+    auto result = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.0, 0.05, 0.0),
+        params);
+    Expect(result.facts.valid, "lateral SE2 alignment invalid");
+    ExpectNear(result.reference_path.sampled_path[0].point.lateral_m,
+               -0.05,
+               1.0e-6,
+               "lateral shift mismatch");
+}
+
+void TestFutureEffectiveTimeFacts() {
+    const auto path = MakeStraightPath();
+    auto params = EnabledParams();
+    auto delta = MakePoseDelta(0.1, 0.0, 0.0, 100, 130, 150);
+    delta.predicted_ms = 20;
+    delta.predicted_forward_mps = 1.0;
+    auto result = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        150,
+        delta,
+        params);
+    Expect(result.facts.valid, "effective time alignment invalid");
+    Expect(result.facts.control_time_ms == 130, "control_time_ms mismatch");
+    Expect(result.facts.control_effective_time_ms == 150, "control_effective_time_ms mismatch");
+    Expect(result.facts.predicted_ms == 20, "predicted_ms mismatch");
+    Expect(result.facts.reason == "aligned_effective_se2", "reason mismatch");
 }
 
 void TestFailClosed() {
     const auto path = MakeStraightPath();
     auto params = EnabledParams();
     params.reference_time_alignment.max_age_ms = 20;
-    auto aged = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistory(0.0F), params);
+    auto aged = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.0, 0.0, 0.0),
+        params);
     Expect(!aged.facts.valid && aged.facts.reason == "age_exceeded", "age fail reason mismatch");
 
     params = EnabledParams();
-    params.reference_time_alignment.max_integration_gap_ms = 5;
-    auto gap = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistory(0.0F, 10), params);
-    Expect(!gap.facts.valid && gap.facts.reason == "motion_history_unavailable",
-           "gap fail reason mismatch");
+    auto delta = MakePoseDelta(0.0, 0.0, 0.0);
+    delta.valid = false;
+    delta.reason = "yaw_history_unavailable";
+    auto unavailable = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        delta,
+        params);
+    Expect(!unavailable.facts.valid &&
+               unavailable.facts.reason == "pose_delta_yaw_history_unavailable",
+           "pose delta fail reason mismatch");
 
     params = EnabledParams();
-    auto missing_start = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistoryRange(110, 130, 0.0F), params);
-    Expect(!missing_start.facts.valid &&
-               missing_start.facts.reason == "motion_history_unavailable",
-           "missing start coverage must fail closed");
-
-    auto missing_end = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistoryRange(100, 120, 0.0F), params);
-    Expect(!missing_end.facts.valid &&
-               missing_end.facts.reason == "motion_history_unavailable",
-           "missing end coverage must fail closed");
+    params.reference_time_alignment.max_delta_forward_m = 0.05;
+    auto exceeded = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.1, 0.0, 0.0),
+        params);
+    Expect(!exceeded.facts.valid && exceeded.facts.reason == "delta_forward_exceeded",
+           "forward delta fail reason mismatch");
 }
 
 void TestDoesNotCrossInputReferenceGap() {
@@ -126,8 +214,13 @@ void TestDoesNotCrossInputReferenceGap() {
     path.sampled_path[1].present = false;
     auto params = EnabledParams();
     params.reference_time_alignment.min_aligned_samples = 1;
-    auto result = ls2k::reference::AlignReferencePathToControlTime(
-        path, 100, 130, MakeMotionHistory(0.0F), params);
+    auto result = ls2k::reference::AlignReferencePathToVehiclePoseDelta(
+        path,
+        100,
+        130,
+        130,
+        MakePoseDelta(0.0, 0.0, 0.0),
+        params);
     Expect(result.facts.valid, "single leading prefix sample should remain alignable");
     Expect(result.facts.aligned_sample_count == 1,
            "alignment must not compact samples across an input reference gap");
@@ -143,6 +236,9 @@ int main() {
     try {
         TestDisabledKeepsPath();
         TestIdentityAndYawSign();
+        TestForwardShift();
+        TestLateralShift();
+        TestFutureEffectiveTimeFacts();
         TestFailClosed();
         TestDoesNotCrossInputReferenceGap();
     } catch (const std::exception& error) {

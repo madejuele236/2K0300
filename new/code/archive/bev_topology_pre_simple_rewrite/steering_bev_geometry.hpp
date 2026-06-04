@@ -8,7 +8,7 @@
 #include <array>
 #include <cstddef>
 
-#include "legacy/steering_bev_projector.hpp"
+#include "vision/bev/bev_projector.hpp"
 #include "legacy/steering_bev_element_evidence.hpp"
 #include "legacy/steering_bev_sparse_sampler.hpp"
 #include "legacy/steering_corridor_graph.hpp"

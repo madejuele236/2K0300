@@ -113,6 +113,7 @@ set(NEW_SRCS
     ../code/control/motion_supervisor.cpp
     ../code/safety/control_gate.cpp
     ../code/safety/control_apply_observation.cpp
+    ../code/estimation/vehicle_pose_delta_estimator.cpp
     ../code/reference/reference_time_alignment.cpp
     ../code/runtime/loops/control_loop.cpp
     ../code/observability/control_debug_reporter.cpp

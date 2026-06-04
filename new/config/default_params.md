@@ -124,11 +124,31 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `REFERENCE_TIME_ALIGNMENT.ENABLED` | `0` | control-side reference facts | 开启后控制侧在计算 usability/lateral error/readiness 前把 reference 从 capture time 对齐到 control time。当前默认关闭，便于先验证 debug facts。 |
+| `REFERENCE_TIME_ALIGNMENT.ENABLED` | `0` | control-side reference facts | 开启后控制侧在计算 usability/lateral error/tracking geometry/readiness 前，把 reference 从 capture time 对齐到 control-effective time。默认关闭，保持当前运行行为。 |
 | `REFERENCE_TIME_ALIGNMENT.MAX_AGE_MS` | `120` | reference time alignment | reference 最大可对齐年龄。超过说明视觉事实太旧，fail closed。 |
+| `REFERENCE_TIME_ALIGNMENT.EFFECTIVE_DELAY_MS` | `0` | control loop orchestration | `now_ms -> control_effective_time_ms` 的估计延迟。未完成板端延迟标定前保持 0。 |
+| `REFERENCE_TIME_ALIGNMENT.FUTURE_PREDICTION_MAX_MS` | `80` | vehicle pose delta estimator | 允许从当前控制时刻预测到 control-effective time 的最大未来窗口。 |
 | `REFERENCE_TIME_ALIGNMENT.MAX_INTEGRATION_GAP_MS` | `30` | motion history | motion history 允许的最大采样空洞。 |
-| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_YAW_RAD` | `0.8` | reference time alignment | 单次对齐允许的最大 yaw 积分量。 |
 | `REFERENCE_TIME_ALIGNMENT.MIN_ALIGNED_SAMPLES` | `3` | reference time alignment | 对齐后最少前方样本数。 |
+| `REFERENCE_TIME_ALIGNMENT.USE_ENCODER_FORWARD` | `0` | vehicle pose delta estimator | 是否用编码器积分前向位移。默认关闭，直到 `ENCODER_TICKS_TO_METER` 实测完成。 |
+| `REFERENCE_TIME_ALIGNMENT.ENCODER_TICKS_TO_METER` | `0.0` | vehicle pose delta estimator | 编码器 delta 到米的比例，合法范围 `[0, 1]`。启用 encoder forward 前必须实测。 |
+| `REFERENCE_TIME_ALIGNMENT.WHEEL_TRACK_M` | `0.0` | vehicle pose delta estimator | 轮距，用于 IMU yaw 不可用时的 wheel-yaw fallback，合法范围 `[0, 2]`。 |
+| `REFERENCE_TIME_ALIGNMENT.USE_IMU_YAW` | `1` | vehicle pose delta estimator | 是否优先使用 IMU `gyro_z` 积分 yaw。 |
+| `REFERENCE_TIME_ALIGNMENT.USE_WHEEL_YAW_FALLBACK` | `0` | vehicle pose delta estimator | IMU yaw 不可用时是否使用左右编码器差估 yaw。默认关闭，直到轮距和编码器尺度标定完成。 |
+| `REFERENCE_TIME_ALIGNMENT.FUTURE_PREDICTION_ENABLED` | `0` | vehicle pose delta estimator | 是否允许预测 `now_ms -> control_effective_time_ms`。默认关闭。 |
+| `REFERENCE_TIME_ALIGNMENT.COMMAND_YAW_PREDICTION_ENABLED` | `0` | vehicle pose delta estimator | 是否使用已施加 turn output 预测未来 yaw rate。默认关闭。 |
+| `REFERENCE_TIME_ALIGNMENT.TURN_OUTPUT_TO_YAW_RATE_GAIN` | `0.0` | vehicle pose delta estimator | `applied_turn_output -> yaw_rate(rad/s)` 的实测增益，合法范围 `[-100, 100]`。 |
+| `REFERENCE_TIME_ALIGNMENT.ACTUATOR_YAW_TAU_MS` | `35.0` | vehicle pose delta estimator | 命令 yaw 预测的一阶执行响应时间常数，合法范围 `[0, 1000]`。 |
+| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_FORWARD_M` | `0.6` | reference time alignment | 单次对齐允许的最大前向位移，超限 fail closed。 |
+| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_LATERAL_M` | `0.4` | reference time alignment | 单次对齐允许的最大横向位移，超限 fail closed。 |
+| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_YAW_RAD` | `0.8` | reference time alignment | 单次对齐允许的最大 yaw 积分量，超限 fail closed。 |
+
+组合约束在参数加载阶段提前校验：当 `REFERENCE_TIME_ALIGNMENT.ENABLED=1`
+时，`USE_ENCODER_FORWARD=1` 要求 `ENCODER_TICKS_TO_METER > 0`；
+`USE_WHEEL_YAW_FALLBACK=1` 要求 `ENCODER_TICKS_TO_METER > 0` 且
+`WHEEL_TRACK_M > 0`；`COMMAND_YAW_PREDICTION_ENABLED=1` 要求
+`FUTURE_PREDICTION_ENABLED=1` 且 `TURN_OUTPUT_TO_YAW_RATE_GAIN != 0`。
+这些组合不满足时配置加载回退默认参数，而不是等 estimator 运行时再 fail closed。
 
 ## 6. 执行器与运动状态机
 

@@ -1,4 +1,4 @@
-#include "runtime/detail/steering_circle_v2_internal.hpp"
+#include "vision/elements/circle_v2/detail/circle_v2_internal.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,13 +10,13 @@ namespace {
 constexpr std::size_t kMinCircleV2LeadingSamples = 3U;
 constexpr float kExitTraceMaxLateralSpanM = 0.12F;
 
-bool FindOuterRowEdge(const legacy::BEVSimpleRowScan& row,
+bool FindOuterRowEdge(const vision::BEVSimpleRowScan& row,
                       float center_lateral_m,
                       CircleDir side,
                       float& edge_lateral_m) {
     float best_distance = std::numeric_limits<float>::infinity();
     bool found = false;
-    for (const legacy::BEVSimpleWhiteInterval& interval : row.intervals) {
+    for (const vision::BEVSimpleWhiteInterval& interval : row.intervals) {
         float near_edge = 0.0F;
         float outer_edge = 0.0F;
         bool on_requested_side = false;
@@ -52,11 +52,11 @@ CircleDir Opposite(CircleDir dir) {
     return CircleDir::kNone;
 }
 
-const legacy::BEVSimpleRowScan* ConsumeNextRow(const SceneFrameView& frame,
+const vision::BEVSimpleRowScan* ConsumeNextRow(const SceneFrameView& frame,
                                                float forward_m,
                                                std::size_t& row_index) {
     while (row_index < frame.rows.rows.size()) {
-        const legacy::BEVSimpleRowScan& row = frame.rows.rows[row_index];
+        const vision::BEVSimpleRowScan& row = frame.rows.rows[row_index];
         ++row_index;
         if (!row.valid || row.intervals.empty() || row.forward_m < forward_m) {
             continue;
@@ -160,7 +160,7 @@ CircleV2Geometry ObserveInnerTraceGeometry(const SceneFrameView& frame,
     for (std::size_t index = 0;
          index < frame.rows.rows.size() && index < edge_path.sampled_path.size();
          ++index) {
-        const legacy::BEVSimpleRowScan& row = frame.rows.rows[index];
+        const vision::BEVSimpleRowScan& row = frame.rows.rows[index];
         if (!row.valid || row.intervals.empty() || !std::isfinite(row.forward_m)) {
             break;
         }
@@ -215,7 +215,7 @@ CircleV2Geometry ObserveCircleV2Geometry(const SceneFrameView& frame,
         if (!IsFiniteSample(center_sample)) {
             break;
         }
-        const legacy::BEVSimpleRowScan* row =
+        const vision::BEVSimpleRowScan* row =
             ConsumeNextRow(frame, center_sample.point.forward_m, row_index);
         if (row == nullptr) {
             break;
