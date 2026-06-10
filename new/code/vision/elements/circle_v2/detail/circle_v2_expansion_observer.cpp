@@ -96,34 +96,34 @@ std::optional<float> CenterLateralForRow(const SceneFrameView& frame,
     return std::nullopt;
 }
 
-float IntervalDistanceToLateral(const vision::BEVSimpleWhiteInterval& interval,
-                                float lateral_m) {
-    if (lateral_m < interval.left_m) {
-        return interval.left_m - lateral_m;
+float SpanDistanceToLateral(const vision::BEVBoundarySpan& span,
+                            float lateral_m) {
+    if (lateral_m < span.left_m) {
+        return span.left_m - lateral_m;
     }
-    if (lateral_m > interval.right_m) {
-        return lateral_m - interval.right_m;
+    if (lateral_m > span.right_m) {
+        return lateral_m - span.right_m;
     }
     return 0.0F;
 }
 
-const vision::BEVSimpleWhiteInterval* SelectRoadConnectedInterval(
+const vision::BEVBoundarySpan* SelectRoadConnectedSpan(
     const vision::BEVSimpleRowScan& scan,
     const std::optional<float>& center_lateral) {
-    const vision::BEVSimpleWhiteInterval* selected = nullptr;
+    const vision::BEVBoundarySpan* selected = nullptr;
     float best_distance = std::numeric_limits<float>::max();
-    for (const vision::BEVSimpleWhiteInterval& interval : scan.intervals) {
-        if (!std::isfinite(interval.left_m) ||
-            !std::isfinite(interval.right_m) ||
-            interval.right_m < interval.left_m) {
+    for (const vision::BEVBoundarySpan& span : scan.spans) {
+        if (!std::isfinite(span.left_m) ||
+            !std::isfinite(span.right_m) ||
+            span.right_m < span.left_m) {
             continue;
         }
         if (!center_lateral.has_value()) {
             return nullptr;
         }
-        const float distance = IntervalDistanceToLateral(interval, *center_lateral);
+        const float distance = SpanDistanceToLateral(span, *center_lateral);
         if (selected == nullptr || distance < best_distance) {
-            selected = &interval;
+            selected = &span;
             best_distance = distance;
         }
     }
@@ -145,30 +145,30 @@ std::vector<RowObservation> CollectRows(const SceneFrameView& frame) {
         observation.forward_m = scan.forward_m;
         const std::optional<float> center_lateral =
             CenterLateralForRow(frame, index, scan.forward_m);
-        const vision::BEVSimpleWhiteInterval* connected_interval =
-            SelectRoadConnectedInterval(scan, center_lateral);
-        if (connected_interval != nullptr) {
-            observation.left_m = connected_interval->left_m;
-            observation.right_m = connected_interval->right_m;
+        const vision::BEVBoundarySpan* connected_span =
+            SelectRoadConnectedSpan(scan, center_lateral);
+        if (connected_span != nullptr) {
+            observation.left_m = connected_span->left_m;
+            observation.right_m = connected_span->right_m;
             rows.push_back(observation);
             continue;
         }
 
-        bool found_interval = false;
-        for (const vision::BEVSimpleWhiteInterval& interval : scan.intervals) {
-            if (!std::isfinite(interval.left_m) || !std::isfinite(interval.right_m) ||
-                interval.right_m < interval.left_m) {
+        bool found_span = false;
+        for (const vision::BEVBoundarySpan& span : scan.spans) {
+            if (!std::isfinite(span.left_m) || !std::isfinite(span.right_m) ||
+                span.right_m < span.left_m) {
                 continue;
             }
             observation.left_m =
-                found_interval ? std::min(observation.left_m, interval.left_m)
-                               : interval.left_m;
+                found_span ? std::min(observation.left_m, span.left_m)
+                           : span.left_m;
             observation.right_m =
-                found_interval ? std::max(observation.right_m, interval.right_m)
-                               : interval.right_m;
-            found_interval = true;
+                found_span ? std::max(observation.right_m, span.right_m)
+                           : span.right_m;
+            found_span = true;
         }
-        if (!found_interval) {
+        if (!found_span) {
             continue;
         }
         rows.push_back(observation);

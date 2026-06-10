@@ -6,6 +6,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <poll.h>
 #include <sys/eventfd.h>
@@ -14,9 +15,17 @@
 #include <utility>
 #include <unistd.h>
 
+#include "port/thread_scheduling.hpp"
+
 namespace ls2k::platform::true_ls2k0300 {
 
 namespace {
+
+enum class TimerRunStep {
+    kContinue,
+    kStop,
+    kFailure,
+};
 
 // 毫秒转 timespec 结构
 timespec ToTimespec(uint32_t period_ms) {
@@ -78,7 +87,9 @@ public:
     // @param period_ms 周期（毫秒）
     // @param callback 到期回调
     // @param on_failure 故障回调
-    virtual bool Start(uint32_t period_ms, std::function<void()> callback, std::function<void()> on_failure) = 0;
+    virtual bool Start(uint32_t period_ms,
+                       std::function<void()> callback,
+                       std::function<void(std::string)> on_failure) = 0;
     // 停止定时器
     virtual void Stop() = 0;
     // 检查定时器是否正在运行
@@ -92,7 +103,9 @@ public:
     ~TimerfdBackend() override { Stop(); }
 
     // 启动定时器 —— 创建 timerfd/eventfd → 设置周期性 arm → 创建工作线程
-    bool Start(uint32_t period_ms, std::function<void()> callback, std::function<void()> on_failure) override {
+    bool Start(uint32_t period_ms,
+               std::function<void()> callback,
+               std::function<void(std::string)> on_failure) override {
         Stop();
         if (!callback || period_ms == 0U) {
             return false;
@@ -116,7 +129,14 @@ public:
             worker_ = std::thread([this, callback = std::move(callback), on_failure = std::move(on_failure)]() mutable {
                 Run(std::move(callback), std::move(on_failure));
             });
+        } catch (const std::exception& ex) {
+            last_failure_reason_ = std::string("timer worker thread start failed: ") + ex.what();
+            running_.store(false);
+            timer_fd_.Reset();
+            stop_fd_.Reset();
+            return false;
         } catch (...) {
+            last_failure_reason_ = "timer worker thread start failed with an unknown exception";
             running_.store(false);
             timer_fd_.Reset();
             stop_fd_.Reset();
@@ -188,68 +208,115 @@ private:
         }
     }
 
+    TimerRunStep PollTimerDescriptors(pollfd (&descriptors)[2], std::string& failure_reason) const {
+        int poll_rc = -1;
+        do {
+            poll_rc = poll(descriptors, 2, -1);
+        } while (poll_rc < 0 && errno == EINTR && running_.load());
+
+        if (poll_rc < 0) {
+            if (running_.load()) {
+                failure_reason = "timer poll failed";
+                return TimerRunStep::kFailure;
+            }
+            return TimerRunStep::kStop;
+        }
+        if (poll_rc == 0) {
+            return TimerRunStep::kContinue;
+        }
+        if ((descriptors[1].revents & POLLIN) != 0) {
+            DrainStopSignal(stop_fd_.Get());
+            return TimerRunStep::kStop;
+        }
+        if ((descriptors[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            if (running_.load()) {
+                failure_reason = "timer fd reported poll error";
+                return TimerRunStep::kFailure;
+            }
+            return TimerRunStep::kStop;
+        }
+        return TimerRunStep::kContinue;
+    }
+
+    TimerRunStep HandleTimerExpiration(std::function<void()>& callback, std::string& failure_reason) {
+        uint64_t expirations = 0;
+        ssize_t read_rc = -1;
+        do {
+            read_rc = read(timer_fd_.Get(), &expirations, sizeof(expirations));
+        } while (read_rc < 0 && errno == EINTR);
+
+        if (read_rc != static_cast<ssize_t>(sizeof(expirations))) {
+            if (running_.load()) {
+                failure_reason = "timerfd read failed or returned partial data";
+                return TimerRunStep::kFailure;
+            }
+            return TimerRunStep::kStop;
+        }
+        if (expirations == 0 || !running_.load()) {
+            return TimerRunStep::kContinue;
+        }
+
+        try {
+            callback();
+        } catch (const std::exception& ex) {
+            failure_reason = std::string("timer callback threw: ") + ex.what();
+            return TimerRunStep::kFailure;
+        } catch (...) {
+            failure_reason = "timer callback threw an unknown exception";
+            return TimerRunStep::kFailure;
+        }
+        return TimerRunStep::kContinue;
+    }
+
+    void NotifyFailure(const std::function<void(std::string)>& on_failure, const std::string& failure_reason) {
+        if (!on_failure) {
+            return;
+        }
+        try {
+            on_failure(failure_reason.empty() ? "timer backend exited unexpectedly" : failure_reason);
+        } catch (const std::exception& ex) {
+            last_failure_reason_ = std::string("timer failure callback threw: ") + ex.what();
+        } catch (...) {
+            last_failure_reason_ = "timer failure callback threw an unknown exception";
+        }
+    }
+
     // 工作线程主循环 —— poll timerfd/stop_fd，到期执行回调
-    void Run(std::function<void()> callback, std::function<void()> on_failure) {
+    void Run(std::function<void()> callback, std::function<void(std::string)> on_failure) {
+        port::ApplyThreadSchedulingProfile(port::ThreadSchedulingRole::kControlTimer);
         pollfd descriptors[2]{};
         descriptors[0].fd = timer_fd_.Get();
         descriptors[0].events = POLLIN;
         descriptors[1].fd = stop_fd_.Get();
         descriptors[1].events = POLLIN;
         bool unexpected_exit = false;
+        std::string failure_reason;
 
         while (running_.load()) {
-            int poll_rc = -1;
-            do {
-                poll_rc = poll(descriptors, 2, -1);
-            } while (poll_rc < 0 && errno == EINTR && running_.load());
-
-            if (poll_rc < 0) {
-                unexpected_exit = running_.load();
+            const TimerRunStep poll_step = PollTimerDescriptors(descriptors, failure_reason);
+            if (poll_step == TimerRunStep::kFailure) {
+                unexpected_exit = true;
                 break;
             }
-            if (poll_rc == 0) {
-                continue;
-            }
-
-            if ((descriptors[1].revents & POLLIN) != 0) {
-                DrainStopSignal(stop_fd_.Get());
-                break;
-            }
-
-            if ((descriptors[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                unexpected_exit = running_.load();
+            if (poll_step == TimerRunStep::kStop) {
                 break;
             }
 
             if ((descriptors[0].revents & POLLIN) != 0) {
-                uint64_t expirations = 0;
-                ssize_t read_rc = -1;
-                do {
-                    read_rc = read(timer_fd_.Get(), &expirations, sizeof(expirations));
-                } while (read_rc < 0 && errno == EINTR);
-
-                if (read_rc != static_cast<ssize_t>(sizeof(expirations))) {
-                    unexpected_exit = running_.load();
+                const TimerRunStep expiration_step = HandleTimerExpiration(callback, failure_reason);
+                if (expiration_step == TimerRunStep::kFailure) {
+                    unexpected_exit = true;
                     break;
                 }
-
-                if (expirations > 0 && running_.load()) {
-                    try {
-                        callback();
-                    } catch (...) {
-                        unexpected_exit = true;
-                        break;
-                    }
+                if (expiration_step == TimerRunStep::kStop) {
+                    break;
                 }
             }
         }
 
         running_.store(false);
-        if (unexpected_exit && on_failure) {
-            try {
-                on_failure();
-            } catch (...) {
-            }
+        if (unexpected_exit) {
+            NotifyFailure(on_failure, failure_reason);
         }
     }
 
@@ -257,6 +324,7 @@ private:
     ScopedFd timer_fd_{};                // 定时器文件描述符（timerfd）
     ScopedFd stop_fd_{};                 // 停止信号文件描述符（eventfd）
     std::thread worker_{};               // 工作线程，执行 poll 等待和回调调用
+    std::string last_failure_reason_{};  // failure callback 自身异常时保留原因，避免吞异常
 };
 
 }  // namespace
@@ -275,7 +343,9 @@ TimerBridge::~TimerBridge() {
 }
 
 // 启动周期定时器 —— 委托给后端实现
-bool TimerBridge::Start(uint32_t period_ms, std::function<void()> callback, std::function<void()> on_failure) {
+bool TimerBridge::Start(uint32_t period_ms,
+                        std::function<void()> callback,
+                        std::function<void(std::string)> on_failure) {
     return impl_->backend->Start(period_ms, std::move(callback), std::move(on_failure));
 }
 

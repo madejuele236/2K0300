@@ -138,6 +138,10 @@ using AssistantElementEvidenceView = port::VisualElementEvidenceFrame;
 /// 参考控制、安全门、降级、偏航控制、执行器以及速度/PWM 测量值。
 struct AssistantTelemetryView {
     std::string motion_phase = "DISARMED";       ///< 运动阶段描述
+    std::string perception_tag = "none";         ///< 感知事实标签
+    std::uint64_t boundary_row_count = 0;         ///< V9 sparse boundary row 数量
+    std::uint64_t boundary_jump_count = 0;        ///< V9 局部 Y 边界跳变数量
+    std::uint64_t boundary_span_count = 0;        ///< V9 同行边界 span 数量
     AssistantPerceptionHealthView perception_health{};  ///< 感知健康视图
     AssistantElementEvidenceView element_evidence{};    ///< 元素证据帧
     AssistantVisualReferenceView visual_reference{};    ///< 视觉参考视图

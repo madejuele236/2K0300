@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <chrono>
@@ -100,13 +102,19 @@ bool Contains(const std::string& haystack, const std::string& needle) {
     return haystack.find(needle) != std::string::npos;
 }
 
+std::uint64_t SteadyNowUs() {
+    using namespace std::chrono;
+    return static_cast<std::uint64_t>(
+        duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
 void Require(bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
     }
 }
 
-void FillMatchingCapture(ls2k::runtime::RuntimeState& state,
+void FillMatchingCapture(ls2k::runtime::CameraFrameStore& frame_store,
                          std::uint64_t frame_id,
                          std::uint64_t capture_time_ms,
                          ls2k::port::CameraRawFrameMetadata metadata = {}) {
@@ -114,13 +122,40 @@ void FillMatchingCapture(ls2k::runtime::RuntimeState& state,
     frame.width = 320;
     frame.height = 240;
     frame.gray.fill(0x33);
+    auto lease = frame_store.ReserveWritable(frame.width, frame.height, metadata);
+    Require(lease.has_value(), "test capture reserve should succeed");
+    ls2k::port::MutableLegacyCameraFrameView view = lease->MutableView();
+    Require(view.Valid(), "test capture writable view should be valid");
+    for (int row = 0; row < frame.height; ++row) {
+        std::copy(frame.gray.data() + static_cast<std::size_t>(row * frame.width),
+                  frame.gray.data() + static_cast<std::size_t>((row + 1) * frame.width),
+                  view.gray + static_cast<std::size_t>(row) * static_cast<std::size_t>(view.stride));
+    }
+    const std::uint64_t submit_begin_us =
+        metadata.store_submit_us == 0 ? 0 : SteadyNowUs() - metadata.store_submit_us;
     const ls2k::runtime::CameraFrameHandle handle =
-        ls2k::runtime::MaterializeOwnedCameraFrame(state.camera_frame_slots,
-                                                  state.next_camera_frame_slot,
-                                                  frame.View(frame_id, capture_time_ms),
-                                                  metadata);
-    state.latest_camera_frame = handle;
-    state.recent_camera_captures.Push(handle);
+        lease->Commit(frame_id, capture_time_ms, metadata, submit_begin_us);
+    Require(handle.valid, "test capture commit should succeed");
+}
+
+void FillMatchingYuyvCapture(ls2k::runtime::CameraFrameStore& frame_store,
+                             std::uint64_t frame_id,
+                             std::uint64_t capture_time_ms) {
+    ls2k::port::CameraRawFrameMetadata metadata{};
+    metadata.source = "unit_yuyv";
+    auto lease = frame_store.ReserveWritable(ls2k::port::CameraFrameFormat::kYuyv,
+                                             4,
+                                             1,
+                                             8,
+                                             metadata);
+    Require(lease.has_value(), "test yuyv capture reserve should succeed");
+    ls2k::port::MutableCameraPixelFrameView view = lease->MutablePixelView();
+    Require(view.Valid(), "test yuyv writable view should be valid");
+    const std::array<std::uint8_t, 8> bytes = {10, 1, 20, 2, 30, 3, 40, 4};
+    std::copy(bytes.begin(), bytes.end(), view.data);
+    const ls2k::runtime::CameraFrameHandle handle =
+        lease->Commit(frame_id, capture_time_ms, metadata);
+    Require(handle.valid, "test yuyv capture commit should succeed");
 }
 
 ls2k::port::VisualReferenceCandidate MakeCandidatePath(
@@ -181,8 +216,9 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.element_evidence.cross_exit.lateral_min_m = -0.35F;
     snapshot.steering.element_evidence.cross_exit.lateral_max_m = 0.36F;
     snapshot.steering.element_evidence.cross_exit.sampleable_count = 120;
-    snapshot.steering.element_evidence.cross_exit.supporting_white_count = 96;
-    snapshot.steering.element_evidence.cross_exit.unknown_count = 3;
+    snapshot.steering.element_evidence.cross_exit.boundary_jump_count = 0;
+    snapshot.steering.element_evidence.cross_exit.boundary_span_count = 0;
+    snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count = 3;
     snapshot.steering.element_evidence.cross_exit.reason = "present";
     snapshot.steering.element_evidence.cross_exit.candidate.built = true;
     snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
@@ -202,7 +238,7 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     record.present = true;
     record.confidence = 0.64F;
     record.reason = "synthetic_test_record";
-    record.support.supporting_black_count = 7;
+    record.support.boundary_span_count = 7;
     snapshot.steering.element_evidence.records.push_back(record);
     snapshot.steering.visual_reference.present = true;
     snapshot.steering.visual_reference.source = "simple_interval_center";
@@ -343,8 +379,8 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose CircleV2 left P lateral coordinate");
     Require(Contains(message, "element_evidence.records[0].id=synthetic_marker"),
             "steering snapshot must expose generic evidence record id");
-    Require(Contains(message, "element_evidence.records[0].support.supporting_black_count=7"),
-            "steering snapshot must expose generic evidence record support");
+    Require(Contains(message, "element_evidence.records[0].support.boundary_span_count=7"),
+            "steering snapshot must expose generic evidence record boundary support");
     Require(Contains(message, "visual_reference.reason=line_candidate_selected"),
             "steering snapshot must expose visual reference orchestration reason");
     Require(Contains(message, "visual_reference.candidate_count=1"),
@@ -517,6 +553,10 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include BEV classification group");
     Require(Contains(header_json, "\"WHITE_CONFIDENCE_MIN\":0.600000023842"),
             "config snapshot must include white classification confidence");
+    Require(Contains(header_json, "\"BEV_BOUNDARY\""),
+            "config snapshot must include BEV boundary group");
+    Require(Contains(header_json, "\"LOCAL_JUMP_MIN_Y\":32"),
+            "config snapshot must include local Y boundary jump threshold");
     Require(Contains(header_json, "\"BEV_CONTROL_MODEL\""),
             "config snapshot must include BEV control model group");
     Require(!Contains(header_json, "\"CURVATURE_COMMAND_LIMIT\""),
@@ -533,8 +573,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include BEV element group");
     Require(Contains(header_json, "\"CROSS_EXIT_TAKEOVER_ENABLED\":false"),
             "config snapshot must include default-off cross-exit takeover");
-    Require(Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\":0.930000007153"),
-            "config snapshot must include cross wide-row white-ratio threshold");
+    Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
+            "config snapshot must not include removed cross white-ratio threshold");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
             "config snapshot must include CircleV2 enablement");
     Require(Contains(header_json, "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":400"),
@@ -913,6 +953,15 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
+    ls2k::port::CameraRawFrameMetadata metadata{};
+    metadata.source = "service_v4l2";
+    metadata.v4l2_sequence = 88;
+    metadata.v4l2_timestamp_valid = true;
+    metadata.poll_wait_us = 11;
+    metadata.dequeue_us = 22;
+    metadata.yuyv_to_gray_us = 33;
+    metadata.store_submit_us = 44;
     {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.control_debug_snapshot.valid = true;
@@ -929,8 +978,9 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.element_evidence.cross_exit.lateral_min_m = -0.35F;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.lateral_max_m = 0.36F;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.sampleable_count = 120;
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.supporting_white_count = 96;
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.unknown_count = 3;
+        state.control_debug_snapshot.steering.element_evidence.cross_exit.boundary_jump_count = 0;
+        state.control_debug_snapshot.steering.element_evidence.cross_exit.boundary_span_count = 0;
+        state.control_debug_snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count = 3;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.reason = "present";
         state.control_debug_snapshot.steering.element_evidence.cross_exit.candidate.built = true;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
@@ -950,7 +1000,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         record.present = true;
         record.confidence = 0.64F;
         record.reason = "synthetic_test_record";
-        record.support.supporting_black_count = 7;
+        record.support.boundary_span_count = 7;
         state.control_debug_snapshot.steering.element_evidence.records.push_back(record);
         state.control_debug_snapshot.steering.visual_reference.present = true;
         state.control_debug_snapshot.steering.visual_reference.source = "simple_interval_center";
@@ -1011,15 +1061,10 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.actuator.right_brushless_pwm_command = 502;
         state.control_debug_snapshot.steering.actuator.apply_outcome =
             ls2k::safety::ControlApplyOutcome::kDriveCommandApplied;
-        ls2k::port::CameraRawFrameMetadata metadata{};
-        metadata.source = "service_v4l2";
-        metadata.v4l2_sequence = 88;
-        metadata.v4l2_timestamp_valid = true;
-        metadata.poll_wait_us = 11;
-        metadata.dequeue_us = 22;
-        metadata.yuyv_to_gray_us = 33;
-        metadata.store_submit_us = 44;
-        FillMatchingCapture(state, 41, 1234, metadata);
+    }
+    FillMatchingCapture(frame_store, 41, 1234, metadata);
+    {
+        std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.camera_frame_store_health.submitted_frame_count = 12;
         state.camera_frame_store_health.overwritten_frame_count = 2;
         state.camera_frame_store_health.dropped_frame_count = 1;
@@ -1027,7 +1072,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     }
 
     fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
-    service.Tick(state, diagnostics);
+    service.Tick(state, frame_store, diagnostics);
 
     Require(fake_transport->sent_frames.size() >= 2,
             "ready transition must emit config_snapshot before image publication");
@@ -1062,8 +1107,12 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     const std::string removed_forward_alias = std::string("\"delta_") + "s_m\"";
     Require(!Contains(header_json, removed_forward_alias),
             "service config snapshot must not expose removed forward compatibility field");
-    Require(Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\":0.930000007153"),
-            "service config snapshot must expose cross white-ratio settings");
+    Require(Contains(header_json, "\"BEV_BOUNDARY\""),
+            "service config snapshot must expose BEV boundary settings");
+    Require(Contains(header_json, "\"LOCAL_JUMP_MIN_Y\":32"),
+            "service config snapshot must expose local Y boundary jump threshold");
+    Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
+            "service config snapshot must not expose removed cross white-ratio settings");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
             "service config snapshot must expose CircleV2 enablement");
     Require(Contains(header_json, "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":400"),
@@ -1109,7 +1158,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service image frame must include camera metadata");
     Require(Contains(header_json, "\"v4l2_sequence\":88"),
             "service image frame must publish camera v4l2 sequence");
-    Require(Contains(header_json, "\"store_submit_us\":44"),
+    Require(Contains(header_json, "\"store_submit_us\":"),
             "service image frame must publish frame-store timing");
     Require(Contains(header_json, "\"submitted_frame_count\":12"),
             "service image frame must publish frame-store submitted count");
@@ -1255,6 +1304,7 @@ void TestServicePublishesFromRecentMatchingCapture() {
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
     {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.control_debug_snapshot.valid = true;
@@ -1262,13 +1312,12 @@ void TestServicePublishesFromRecentMatchingCapture() {
         state.control_debug_snapshot.steering.valid = true;
         state.control_debug_snapshot.steering.frame_id = 41;
         state.control_debug_snapshot.steering.capture_time_ms = 1234;
-        FillMatchingCapture(state, 41, 1234);
-
-        FillMatchingCapture(state, 42, 1249);
     }
+    FillMatchingCapture(frame_store, 41, 1234);
+    FillMatchingCapture(frame_store, 42, 1249);
 
     fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
-    service.Tick(state, diagnostics);
+    service.Tick(state, frame_store, diagnostics);
 
     Require(fake_transport->sent_frames.size() >= 2,
             "service should publish image using the most recent matching capture");
@@ -1290,6 +1339,60 @@ void TestServicePublishesFromRecentMatchingCapture() {
             "default media mode must expose exact snapshot/image alignment");
 }
 
+void TestServicePublishesLumaFromRawYuyvCapture() {
+    auto* fake_transport = new FakeSteeringMediaTransport();
+    ls2k::runtime::SteeringMediaService service{ls2k::transport::SteeringMediaLink{
+        std::unique_ptr<ls2k::transport::ISteeringMediaTransport>(fake_transport)}};
+    CollectingDiagnostics diagnostics;
+
+    ls2k::port::RuntimeParameters params{};
+    params.assistant_tcp.host = "127.0.0.1";
+    params.steering_media_enabled = true;
+    params.steering_media_port = 8890;
+    params.steering_media_publish_interval_ms = 0;
+    params.steering_media_publish_disarmed = true;
+    params.steering_media_gray_bits = 8;
+    service.Start(params, diagnostics);
+
+    ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
+    {
+        std::lock_guard<std::mutex> lock(state.shared_mutex);
+        state.control_debug_snapshot.valid = true;
+        state.control_debug_snapshot.motion_phase = ls2k::control::MotionPhase::kDisarmed;
+        state.control_debug_snapshot.steering.valid = true;
+        state.control_debug_snapshot.steering.frame_id = 55;
+        state.control_debug_snapshot.steering.capture_time_ms = 5500;
+    }
+    FillMatchingYuyvCapture(frame_store, 55, 5500);
+
+    fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
+    service.Tick(state, frame_store, diagnostics);
+
+    Require(fake_transport->sent_frames.size() >= 2,
+            "raw YUYV capture should publish config and image");
+    std::string header_json;
+    std::vector<std::uint8_t> payload;
+    std::string error;
+    Require(ls2k::transport::DecodeSteeringMediaEnvelope(fake_transport->sent_frames[1].data(),
+                                                        fake_transport->sent_frames[1].size(),
+                                                        header_json,
+                                                        payload,
+                                                        error),
+            "raw YUYV image frame should decode");
+    Require(Contains(header_json, "\"width\":4"),
+            "raw YUYV media frame should keep source width");
+    Require(Contains(header_json, "\"height\":1"),
+            "raw YUYV media frame should keep source height");
+    Require(Contains(header_json, "\"stride\":8"),
+            "raw YUYV media frame should publish bytesperline stride");
+    Require(payload.size() == 4U,
+            "raw YUYV gray8 payload should contain one luma byte per pixel");
+    Require(payload[0] == 10 && payload[1] == 20 &&
+                payload[2] == 30 && payload[3] == 40,
+            "raw YUYV media payload must be sourced from Y components");
+}
+
 void TestServiceCanPublishLatestCameraFrameForLiveView() {
     auto* fake_transport = new FakeSteeringMediaTransport();
     ls2k::runtime::SteeringMediaService service{ls2k::transport::SteeringMediaLink{
@@ -1308,6 +1411,7 @@ void TestServiceCanPublishLatestCameraFrameForLiveView() {
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
     {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.control_debug_snapshot.valid = true;
@@ -1315,12 +1419,12 @@ void TestServiceCanPublishLatestCameraFrameForLiveView() {
         state.control_debug_snapshot.steering.valid = true;
         state.control_debug_snapshot.steering.frame_id = 41;
         state.control_debug_snapshot.steering.capture_time_ms = 1234;
-        FillMatchingCapture(state, 41, 1234);
-        FillMatchingCapture(state, 99, 2222);
     }
+    FillMatchingCapture(frame_store, 41, 1234);
+    FillMatchingCapture(frame_store, 99, 2222);
 
     fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
-    service.Tick(state, diagnostics);
+    service.Tick(state, frame_store, diagnostics);
 
     Require(fake_transport->sent_frames.size() >= 2,
             "latest-frame mode should publish image even when latest capture is newer than steering snapshot");
@@ -1361,6 +1465,7 @@ void TestServiceSkipsDisarmedImagesAndPublishesRunningImage() {
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
     {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.control_debug_snapshot.valid = true;
@@ -1368,11 +1473,11 @@ void TestServiceSkipsDisarmedImagesAndPublishesRunningImage() {
         state.control_debug_snapshot.steering.valid = true;
         state.control_debug_snapshot.steering.frame_id = 1;
         state.control_debug_snapshot.steering.capture_time_ms = 10;
-        FillMatchingCapture(state, 1, 10);
     }
+    FillMatchingCapture(frame_store, 1, 10);
 
     fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
-    service.Tick(state, diagnostics);
+    service.Tick(state, frame_store, diagnostics);
     Require(fake_transport->sent_frames.size() == 1,
             "DISARMED tick should publish only config_snapshot and skip image_frame");
 
@@ -1381,9 +1486,9 @@ void TestServiceSkipsDisarmedImagesAndPublishesRunningImage() {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.control_debug_snapshot.steering.frame_id = 2;
         state.control_debug_snapshot.steering.capture_time_ms = 20;
-        FillMatchingCapture(state, 2, 20);
     }
-    service.Tick(state, diagnostics);
+    FillMatchingCapture(frame_store, 2, 20);
+    service.Tick(state, frame_store, diagnostics);
     Require(fake_transport->sent_frames.size() == 1,
             "second DISARMED tick should still skip image_frame");
 
@@ -1401,9 +1506,9 @@ void TestServiceSkipsDisarmedImagesAndPublishesRunningImage() {
         state.control_debug_snapshot.motion_phase = ls2k::control::MotionPhase::kRunning;
         state.control_debug_snapshot.steering.frame_id = 3;
         state.control_debug_snapshot.steering.capture_time_ms = 30;
-        FillMatchingCapture(state, 3, 30);
     }
-    service.Tick(state, diagnostics);
+    FillMatchingCapture(frame_store, 3, 30);
+    service.Tick(state, frame_store, diagnostics);
     Require(fake_transport->sent_frames.size() == 2,
             "RUNNING tick should publish an image_frame after DISARMED images were skipped");
 
@@ -1439,6 +1544,7 @@ void TestServiceCanPublishDisarmedImagesForCalibration() {
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
     {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         state.control_debug_snapshot.valid = true;
@@ -1446,11 +1552,11 @@ void TestServiceCanPublishDisarmedImagesForCalibration() {
         state.control_debug_snapshot.steering.valid = true;
         state.control_debug_snapshot.steering.frame_id = 8;
         state.control_debug_snapshot.steering.capture_time_ms = 80;
-        FillMatchingCapture(state, 8, 80);
     }
+    FillMatchingCapture(frame_store, 8, 80);
 
     fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
-    service.Tick(state, diagnostics);
+    service.Tick(state, frame_store, diagnostics);
     Require(fake_transport->sent_frames.size() >= 2,
             "enabled calibration mode should publish a DISARMED image_frame");
 
@@ -1494,6 +1600,7 @@ int main() {
         TestLinkDoesNotCacheFrameAcceptedInFlight();
         TestServicePublishesConfigSnapshotOnReadyTransition();
         TestServicePublishesFromRecentMatchingCapture();
+        TestServicePublishesLumaFromRawYuyvCapture();
         TestServiceCanPublishLatestCameraFrameForLiveView();
         TestServiceSkipsDisarmedImagesAndPublishesRunningImage();
         TestServiceCanPublishDisarmedImagesForCalibration();

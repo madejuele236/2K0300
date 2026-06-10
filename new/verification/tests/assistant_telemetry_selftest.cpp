@@ -32,8 +32,9 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.element_evidence.cross_exit.lateral_min_m = -0.35;
     snapshot.steering.element_evidence.cross_exit.lateral_max_m = 0.36;
     snapshot.steering.element_evidence.cross_exit.sampleable_count = 120;
-    snapshot.steering.element_evidence.cross_exit.supporting_white_count = 96;
-    snapshot.steering.element_evidence.cross_exit.unknown_count = 3;
+    snapshot.steering.element_evidence.cross_exit.boundary_jump_count = 0;
+    snapshot.steering.element_evidence.cross_exit.boundary_span_count = 0;
+    snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count = 3;
     snapshot.steering.element_evidence.cross_exit.reason = "present";
     snapshot.steering.element_evidence.cross_exit.candidate.built = true;
     snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
@@ -49,9 +50,8 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     record.bounds.lateral_min_m = -0.42F;
     record.bounds.lateral_max_m = -0.18F;
     record.support.sampleable_count = 48;
-    record.support.supporting_white_count = 22;
-    record.support.supporting_black_count = 9;
-    record.support.unknown_count = 2;
+    record.support.boundary_jump_count = 22;
+    record.support.boundary_span_count = 9;
     record.candidate.reason = "not_built";
     snapshot.steering.element_evidence.records.push_back(record);
     snapshot.steering.visual_reference.present = true;
@@ -174,8 +174,8 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must expose disabled arbitration inclusion");
     Expect(Contains(json, "\"records\":[{\"id\":\"synthetic_marker\""),
            "assistant telemetry must serialize generic element records");
-    Expect(Contains(json, "\"supporting_black_count\":9"),
-           "assistant telemetry must serialize generic record support fields");
+    Expect(Contains(json, "\"boundary_span_count\":9"),
+           "assistant telemetry must serialize generic record boundary support fields");
     Expect(Contains(json, "\"visual_reference\":{\"present\":true"),
            "assistant telemetry must include visual_reference object");
     Expect(Contains(json, "\"source\":\"roadblock_bypass\""),

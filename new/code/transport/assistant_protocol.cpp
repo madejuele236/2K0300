@@ -136,7 +136,7 @@ AssistantInboundMessage MakeAckRejected(std::uint64_t seq, std::string reason) {
 AssistantInboundMessage MakeCommand(AssistantCommand command) {
     AssistantInboundMessage message{};
     message.type = AssistantInboundMessageType::kCommand;
-    message.command = std::move(command);
+    message.command = command;
     return message;
 }
 
@@ -196,6 +196,7 @@ void AppendJsonBool(std::ostringstream& stream, bool value) {
 /// @param line 原始 JSON 行字符串
 /// @param max_target_speed 最大允许目标速度，用于校验速度指令
 /// @return 解码后的入站消息结构体
+// NOLINTNEXTLINE(readability-function-size): protocol parser keeps field validation in one JSON decoding pass.
 AssistantInboundMessage DecodeAssistantJsonLine(const std::string& line, double max_target_speed) {
     if (line.empty()) {
         return MakeInputRejected("empty command line");
@@ -344,10 +345,16 @@ std::string EncodeAssistantState(const std::string& event,
 /// @brief 编码完整助手遥测 JSON 消息
 /// @param telemetry 遥测数据视图
 /// @return 编码后的 JSON 字符串
+// NOLINTNEXTLINE(readability-function-size)
 std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     std::ostringstream stream;
     stream << "{\"type\":\"telemetry\",\"motion_phase\":";
     AppendJsonString(stream, telemetry.motion_phase);
+    stream << ",\"perception_tag\":";
+    AppendJsonString(stream, telemetry.perception_tag);
+    stream << ",\"boundary_row_count\":" << telemetry.boundary_row_count;
+    stream << ",\"boundary_jump_count\":" << telemetry.boundary_jump_count;
+    stream << ",\"boundary_span_count\":" << telemetry.boundary_span_count;
     stream << ",\"perception_health\":{\"projector_ok\":";
     AppendJsonBool(stream, telemetry.perception_health.projector_ok);
     stream << ",\"reason\":";

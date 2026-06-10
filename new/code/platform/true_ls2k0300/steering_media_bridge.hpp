@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ls2k::platform::true_ls2k0300 {
 
@@ -60,6 +61,13 @@ bool SteeringMediaBridgeReady();
 SteeringMediaBridgeSendResult SendSteeringMediaBytes(const std::uint8_t* data,
                                                      std::size_t length,
                                                      std::string& detail);
+
+// 发送转向媒体数据 —— 可接管调用方缓冲，避免编码后再次大块复制。
+// @param data 待发送数据缓冲。kSent/kAcceptedInFlight 时可被清空；kBusyRejected 时保持可重试。
+// @param[out] detail 发送结果描述
+// @return 发送结果枚举（kSent/kAcceptedInFlight/kBusyRejected/kDisconnected/kError）
+SteeringMediaBridgeSendResult SendSteeringMediaBuffer(std::vector<std::uint8_t>& data,
+                                                      std::string& detail);
 
 }  // namespace ls2k::platform::true_ls2k0300
 

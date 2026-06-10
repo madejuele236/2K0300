@@ -158,7 +158,7 @@ def main() -> int:
                 override_enabled = True
                 override_value = value
                 effective_speed_target = value
-                base_turn = -240 if not turn_suppressed else -240
+                base_turn = -240
                 applied_turn = 0 if turn_suppressed else base_turn
                 left_target = value + 7.5
                 right_target = value - 7.5

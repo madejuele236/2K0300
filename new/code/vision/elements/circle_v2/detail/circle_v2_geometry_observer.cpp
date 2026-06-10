@@ -4,24 +4,11 @@
 #include <cmath>
 #include <limits>
 
-#include "vision/bev/bev_interval_edges.hpp"
-
 namespace ls2k::vision::detail {
 namespace {
 
 constexpr std::size_t kMinCircleV2LeadingSamples = 3U;
 constexpr float kExitTraceMaxLateralSpanM = 0.12F;
-
-vision::BEVIntervalEdgeVisibilityOptions EdgeVisibilityOptions() {
-    vision::BEVIntervalEdgeVisibilityOptions options{};
-    options.treat_unknown_sampleable_edge_as_boundary = true;
-    return options;
-}
-
-struct EdgeCandidate {
-    float lateral_m = 0.0F;
-    bool visible = false;
-};
 
 bool FindOuterRowEdge(const vision::BEVSimpleRowScan& row,
                       float center_lateral_m,
@@ -29,27 +16,20 @@ bool FindOuterRowEdge(const vision::BEVSimpleRowScan& row,
                       float& edge_lateral_m) {
     float best_distance = std::numeric_limits<float>::infinity();
     bool found = false;
-    const vision::BEVIntervalEdgeVisibilityOptions edge_options =
-        EdgeVisibilityOptions();
-    for (const vision::BEVSimpleWhiteInterval& interval : row.intervals) {
-        const vision::BEVIntervalEdgeVisibility visibility =
-            vision::EvaluateIntervalEdgeVisibility(row, interval, edge_options);
+    for (const vision::BEVBoundarySpan& span : row.spans) {
         float near_edge = 0.0F;
         float outer_edge = 0.0F;
         bool on_requested_side = false;
-        bool outer_edge_visible = false;
         if (side == CircleDir::kLeft) {
-            near_edge = interval.right_m;
-            outer_edge = interval.left_m;
+            near_edge = span.right_m;
+            outer_edge = span.left_m;
             on_requested_side = near_edge <= center_lateral_m;
-            outer_edge_visible = visibility.low_visible;
         } else if (side == CircleDir::kRight) {
-            near_edge = interval.left_m;
-            outer_edge = interval.right_m;
+            near_edge = span.left_m;
+            outer_edge = span.right_m;
             on_requested_side = near_edge >= center_lateral_m;
-            outer_edge_visible = visibility.high_visible;
         }
-        if (!on_requested_side || !outer_edge_visible) {
+        if (!on_requested_side || !std::isfinite(outer_edge)) {
             continue;
         }
         const float distance = std::fabs(near_edge - center_lateral_m);
@@ -97,7 +77,7 @@ bool HasMinimumLeadingSegment(std::size_t leading_count) {
 }
 
 bool RowHasEdgeFacts(const vision::BEVSimpleRowScan& row) {
-    return row.valid && !row.intervals.empty();
+    return row.valid && !row.spans.empty();
 }
 
 bool IsLeadingSegmentStraightEnough(const port::BEVReferencePath& edge_path,
@@ -124,38 +104,31 @@ bool FindInnerRowEdge(const vision::BEVSimpleRowScan& row,
                       float& edge_lateral_m) {
     bool found = false;
     float best_distance = std::numeric_limits<float>::infinity();
-    const vision::BEVIntervalEdgeVisibilityOptions edge_options =
-        EdgeVisibilityOptions();
-    for (const vision::BEVSimpleWhiteInterval& interval : row.intervals) {
-        const vision::BEVIntervalEdgeVisibility visibility =
-            vision::EvaluateIntervalEdgeVisibility(row, interval, edge_options);
-        const EdgeCandidate candidates[2] = {
-            EdgeCandidate{interval.left_m, visibility.low_visible},
-            EdgeCandidate{interval.right_m, visibility.high_visible},
-        };
-        EdgeCandidate interval_edge{};
-        bool have_interval_edge = false;
+    for (const vision::BEVBoundarySpan& span : row.spans) {
+        const float candidates[2] = {span.left_m, span.right_m};
+        float interval_edge = 0.0F;
+        bool have_span_edge = false;
         float interval_edge_distance = 0.0F;
-        for (const EdgeCandidate& candidate : candidates) {
+        for (const float candidate : candidates) {
             const bool on_requested_side =
-                (side == CircleDir::kLeft && candidate.lateral_m <= center_lateral_m) ||
-                (side == CircleDir::kRight && candidate.lateral_m >= center_lateral_m);
-            if (!on_requested_side || !std::isfinite(candidate.lateral_m)) {
+                (side == CircleDir::kLeft && candidate <= center_lateral_m) ||
+                (side == CircleDir::kRight && candidate >= center_lateral_m);
+            if (!on_requested_side || !std::isfinite(candidate)) {
                 continue;
             }
-            const float distance = std::fabs(candidate.lateral_m - center_lateral_m);
-            if (!have_interval_edge || distance < interval_edge_distance) {
+            const float distance = std::fabs(candidate - center_lateral_m);
+            if (!have_span_edge || distance < interval_edge_distance) {
                 interval_edge = candidate;
                 interval_edge_distance = distance;
-                have_interval_edge = true;
+                have_span_edge = true;
             }
         }
-        if (!have_interval_edge || !interval_edge.visible) {
+        if (!have_span_edge) {
             continue;
         }
         if (!found || interval_edge_distance < best_distance) {
             best_distance = interval_edge_distance;
-            edge_lateral_m = interval_edge.lateral_m;
+            edge_lateral_m = interval_edge;
             found = true;
         }
     }

@@ -19,15 +19,12 @@
 namespace ls2k::runtime {
 
 using safety::ControlApplyOutcome;
-using safety::ControlCycleInputs;
 using safety::ControlCycleObservation;
 using safety::ControlGateDecision;
 using safety::ControlGateInputs;
 using safety::ControlVetoReason;
 using safety::EvaluateControlGate;
 using safety::ObserveControlCycle;
-using control::ClearExpiredRuntimeTuningOverride;
-using control::IsDrivePhase;
 using control::MotionDecision;
 using control::MotionIntent;
 using control::MotionPhase;
@@ -38,8 +35,6 @@ using control::RuntimeTuningOverrideActiveAt;
 using control::RuntimeTuningSnapshot;
 using control::SnapshotRuntimeTuningState;
 using observability::ControlDebugSnapshot;
-using observability::ReferenceDebugView;
-using observability::SteeringDebugSnapshot;
 
 namespace {
 
@@ -290,6 +285,7 @@ port::PerceptionResult BuildControlTimePerception(const port::PerceptionResult& 
 /// 构建控制调试快照：从各数据源组装完整的 ControlDebugSnapshot
 /// @param inputs  构建快照所需的全部输入
 /// @return        填充好的 ControlDebugSnapshot
+// NOLINTNEXTLINE(readability-function-size)
 ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs& inputs) {
     const port::PerceptionResult& perception = inputs.perception;
     ControlDebugSnapshot debug_snapshot{};
@@ -323,6 +319,10 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.frame_id = perception.frame_id;
     debug_snapshot.steering.capture_time_ms = perception.capture_time_ms;
     debug_snapshot.steering.threshold = perception.threshold;
+    debug_snapshot.steering.perception_tag = perception.perception_tag;
+    debug_snapshot.steering.boundary_row_count = perception.boundary_row_count;
+    debug_snapshot.steering.boundary_jump_count = perception.boundary_jump_count;
+    debug_snapshot.steering.boundary_span_count = perception.boundary_span_count;
     debug_snapshot.steering.perception_health.projector_ok = perception.perception_health.projector_ok;
     debug_snapshot.steering.perception_health.reason = perception.perception_health.reason;
     debug_snapshot.steering.element_evidence = perception.element_evidence;
@@ -900,6 +900,7 @@ void ControlLoop::LatchTimerFailureState(uint64_t now_ms) {
 // 控制定时器心跳 —— 主控制循环单次迭代：
 // 采样（低电压/IMU/编码器/感知）→ 门控评估 → 运动监督 →
 // 转向计算（PID + 陀螺仪）→ 执行器命令组合 → 诊断输出
+// NOLINTNEXTLINE(readability-function-size): control tick is the single ordered owner for gate, motion, actuator, and snapshot publication.
 void ControlLoop::Tick() {
     LS2K_PERF_SCOPE(port::PerfStage::kControlTick);
     if (!running_) {

@@ -54,6 +54,7 @@ struct CameraFrameHandle {
     uint64_t generation = 0;       ///< 帧槽代数（用于检测帧是否被覆盖）
     uint64_t frame_id = 0;         ///< 相机帧 ID
     uint64_t capture_time_ms = 0;  ///< 帧捕获时间戳（ms）
+    port::CameraFrameFormat format = port::CameraFrameFormat::kGray;  ///< 像素格式
     int width = 0;                 ///< 图像宽度
     int height = 0;                ///< 图像高度
     int stride = 0;                ///< 图像行跨度
@@ -66,12 +67,13 @@ struct OwnedCameraFrameSlot {
     uint64_t generation = 0;       ///< 代数计数器
     uint64_t frame_id = 0;         ///< 相机帧 ID
     uint64_t capture_time_ms = 0;  ///< 帧捕获时间戳（ms）
+    port::CameraFrameFormat format = port::CameraFrameFormat::kGray;  ///< 像素格式
     int width = 0;                 ///< 图像宽度
     int height = 0;                ///< 图像高度
     int stride = 0;                ///< 图像行跨度
     port::CameraRawFrameMetadata metadata{};  ///< 相机采集/提交元数据
     OwnedCameraFrameSlotState state = OwnedCameraFrameSlotState::kFree;  ///< 槽状态
-    std::array<std::uint8_t, port::kCompiledCameraFrameWidth * port::kCompiledCameraFrameHeight> gray{};  ///< 灰度图像数据
+    std::array<std::uint8_t, port::kCompiledCameraFrameMaxBytes> gray{};  ///< 像素数据；gray/YUYV 由 format/stride 解释
 };
 
 /// 相机捕获历史 —— 环形缓冲区，保存最近若干帧的句柄以便按帧 ID 和时间戳查找
@@ -163,6 +165,7 @@ inline CameraFrameHandle MaterializeOwnedCameraFrame(
     handle.generation = slot.generation;
     handle.frame_id = slot.frame_id;
     handle.capture_time_ms = slot.capture_time_ms;
+    handle.format = port::CameraFrameFormat::kGray;
     handle.width = slot.width;
     handle.height = slot.height;
     handle.stride = slot.stride;
@@ -182,7 +185,7 @@ inline bool CopyOwnedCameraFrameByHandle(const std::array<OwnedCameraFrameSlot, 
         return false;
     }
     const OwnedCameraFrameSlot& slot = slots[handle.slot_id];
-    if (slot.state == OwnedCameraFrameSlotState::kFree ||
+    if (slot.state != OwnedCameraFrameSlotState::kReady ||
         slot.generation != handle.generation ||
         slot.frame_id != handle.frame_id ||
         slot.capture_time_ms != handle.capture_time_ms ||
@@ -205,6 +208,34 @@ inline bool CopyOwnedCameraFrameByHandle(const std::array<OwnedCameraFrameSlot, 
     return true;
 }
 
+inline bool CameraFrameSlotReadyForHandle(const OwnedCameraFrameSlot& slot,
+                                          const CameraFrameHandle& handle) {
+    return handle.valid &&
+           slot.state == OwnedCameraFrameSlotState::kReady &&
+           slot.generation == handle.generation &&
+           slot.frame_id == handle.frame_id &&
+           slot.capture_time_ms == handle.capture_time_ms &&
+           slot.format == handle.format &&
+           slot.width > 0 &&
+           slot.height > 0 &&
+           slot.width <= port::kCompiledCameraFrameWidth &&
+           slot.height <= port::kCompiledCameraFrameHeight;
+}
+
+inline void CopyOwnedCameraFramePixels(const OwnedCameraFrameSlot& slot,
+                                       port::LegacyCameraFrame& out) {
+    out = {};
+    out.width = slot.width;
+    out.height = slot.height;
+    for (int row = 0; row < slot.height; ++row) {
+        const std::uint8_t* src =
+            slot.gray.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(slot.stride);
+        std::uint8_t* dst =
+            out.gray.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(out.width);
+        std::copy(src, src + slot.width, dst);
+    }
+}
+
 /// 运行时状态 —— 控制系统各模块之间共享的核心状态结构。
 /// 包含感知结果、传感器数据、控制命令、调试快照、生命周期标志等。
 struct RuntimeState {
@@ -216,6 +247,7 @@ struct RuntimeState {
     CameraFrameHandle latest_camera_frame{};             ///< 最新相机帧句柄
     CameraCaptureHistory recent_camera_captures{};       ///< 近期相机捕获历史
     std::array<OwnedCameraFrameSlot, 3> camera_frame_slots{};  ///< 相机帧槽数组
+    std::array<std::uint32_t, 3> camera_frame_slot_readers{};   ///< 各帧槽锁外读者计数
     std::size_t next_camera_frame_slot = 0;              ///< 下一帧槽轮转索引
     port::CameraFrameStoreHealth camera_frame_store_health{};  ///< 相机帧存储统计
     port::ActuatorCommand last_command{};                 ///< 上一周期执行器命令

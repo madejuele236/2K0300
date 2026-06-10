@@ -69,6 +69,7 @@ set(NEW_SRCS
     ../code/transport/steering_media_protocol.cpp
     ../code/platform/camera_frame_source.cpp
     ../code/port/perf_counter.cpp
+    ../code/port/thread_scheduling.cpp
     ../code/platform/true_ls2k0300/camera_bridge.cpp
     ../code/platform/true_ls2k0300/imu_bridge.cpp
     ../code/platform/true_ls2k0300/encoder_bridge.cpp
@@ -81,10 +82,9 @@ set(NEW_SRCS
     ../code/control/actuator_command_builder.cpp
     ../code/control/wheel_target_mixer.cpp
     ../code/control/wheel_pid.cpp
-    ../code/vision/image/otsu_threshold.cpp
+    ../code/vision/image/luma_sampler.cpp
     ../code/vision/bev/bev_projector.cpp
     ../code/vision/bev/single_boundary_offset.cpp
-    ../code/vision/bev/reference_connectivity.cpp
     ../code/vision/bev/bev_simple_perception.cpp
     ../code/vision/bev/bev_element_raster.cpp
     ../code/vision/elements/circle_element_evidence.cpp
@@ -278,7 +278,6 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../verification/tests/visual_element_evidence_test.cpp
         ../code/vision/bev/bev_projector.cpp
         ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/reference_connectivity.cpp
         ../code/vision/bev/bev_simple_perception.cpp
         ../code/vision/bev/bev_element_raster.cpp
         ../code/vision/elements/circle_element_evidence.cpp
@@ -361,6 +360,7 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../code/safety/control_gate.cpp
         ../code/safety/control_apply_observation.cpp
         ../code/control/motion_supervisor.cpp
+        ../code/runtime/capture/camera_frame_store.cpp
         ../code/runtime/services/steering_media_service.cpp
         ../code/port/perf_counter.cpp
     )
@@ -374,9 +374,9 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         scene_overlay_probe
         ../user/scene_overlay_probe.cpp
         ../code/vision/image/otsu_threshold.cpp
+        ../code/vision/image/luma_sampler.cpp
         ../code/vision/bev/bev_projector.cpp
         ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/reference_connectivity.cpp
         ../code/vision/bev/bev_simple_perception.cpp
         ../code/vision/bev/bev_element_raster.cpp
         ../code/vision/elements/circle_element_evidence.cpp

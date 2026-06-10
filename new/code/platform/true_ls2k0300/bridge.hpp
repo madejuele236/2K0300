@@ -136,9 +136,9 @@ public:
     // 启动周期定时器
     // @param period_ms 定时周期（毫秒）
     // @param callback 定时到期回调函数
-    // @param on_failure 故障回调函数（工作线程异常退出时调用）
+    // @param on_failure 故障回调函数（工作线程异常退出时调用，参数为故障原因）
     // @return true 启动成功，false 启动失败
-    bool Start(uint32_t period_ms, std::function<void()> callback, std::function<void()> on_failure);
+    bool Start(uint32_t period_ms, std::function<void()> callback, std::function<void(std::string)> on_failure);
     // 停止定时器 —— 通知工作线程退出并等待其结束
     void Stop();
     // 检查定时器是否正在运行

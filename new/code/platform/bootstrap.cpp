@@ -38,7 +38,7 @@ public:
         }
 
         port::DiagnosticSink* diagnostics_sink = &diagnostics;
-        auto timer_failure = [this, on_failure = std::move(on_failure), diagnostics_sink]() mutable {
+        auto timer_failure = [this, on_failure = std::move(on_failure), diagnostics_sink](std::string reason) mutable {
             const bool was_running = running_.exchange(false);
             if (!was_running) {
                 return;
@@ -46,7 +46,8 @@ public:
 
             diagnostics_sink->Emit({port::DiagnosticLevel::kFailSafe,
                                     "timer.runtime.failure",
-                                    "timer backend exited unexpectedly; escalating to control fail-safe handling",
+                                    "timer backend exited unexpectedly: " + reason +
+                                        "; escalating to control fail-safe handling",
                                     port::NowMs()});
             if (on_failure) {
                 on_failure();

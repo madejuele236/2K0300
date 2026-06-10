@@ -90,6 +90,8 @@ int main() {
                       "\"WHITE_CONFIDENCE_MIN\": 0.66,"
                       "\"UNKNOWN_CONFIDENCE_MIN\": 0.33,"
                       "\"HOLD_LAST_MAX_CYCLES\": 24},\n"
+                      "  \"BEV_BOUNDARY\": {"
+                      "\"LOCAL_JUMP_MIN_Y\": 41},\n"
                       "  \"BEV_CONTROL_MODEL\": {"
                       "\"LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN\": 321,"
                       "\"HEADING_ERROR_TO_WHEEL_DELTA_GAIN\": 45,"
@@ -97,7 +99,6 @@ int main() {
                       "\"TRACKING_FIT_MIN_SAMPLES\": 5},\n"
                       "  \"BEV_ELEMENT\": {"
                       "\"CROSS_EXIT_TAKEOVER_ENABLED\": 1,"
-                      "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\": 0.98,"
                       "\"CIRCLE_V2_ENABLED\": 1,"
                       "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\": 300,"
                       "\"CIRCLE_V2_EXIT_HOLD_FRAMES\": 4,"
@@ -146,6 +147,8 @@ int main() {
                "BEV_CLASSIFICATION.UNKNOWN_CONFIDENCE_MIN should parse");
         Expect(enabled.bev_classification.hold_last_max_cycles == 24,
                "BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES should parse");
+        Expect(enabled.bev_boundary.local_jump_min_y == 41,
+               "BEV_BOUNDARY.LOCAL_JUMP_MIN_Y should parse");
         Expect(std::abs(enabled.bev_control_model.lateral_offset_to_wheel_delta_gain -
                         321.0) < 1.0e-6,
                "BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN should parse");
@@ -159,8 +162,6 @@ int main() {
                "BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES should parse");
         Expect(enabled.bev_element.cross_exit_takeover_enabled,
                "CROSS_EXIT_TAKEOVER_ENABLED=1 should parse true");
-        Expect(std::abs(enabled.bev_element.cross_wide_row_white_ratio_min - 0.98F) < 1.0e-6F,
-               "CROSS_WIDE_ROW_WHITE_RATIO_MIN should parse");
         Expect(enabled.bev_element.circle_v2_enabled,
                "CIRCLE_V2_ENABLED=1 should parse true");
         Expect(std::abs(enabled.bev_element.circle_v2_exit_yaw_threshold_deg - 300.0F) <
@@ -200,7 +201,8 @@ int main() {
                "missing steering_media_publish_latest_frame should keep strict snapshot alignment");
         Expect(absent.steering_media_gray_bits == 2,
                "missing steering_media_gray_bits should keep gray2 default");
-        Expect(std::abs(absent.wheel_turn_accel_delta_scale - 1.0) < 1.0e-6,
+        Expect(std::abs(absent.wheel_turn_accel_delta_scale -
+                        builtin_defaults.wheel_turn_accel_delta_scale) < 1.0e-6,
                "missing wheel_turn_accel_delta_scale should keep default");
         Expect(std::abs(absent.wheel_turn_decel_delta_scale - 1.0) < 1.0e-6,
                "missing wheel_turn_decel_delta_scale should keep default");
@@ -213,9 +215,9 @@ int main() {
         Expect(absent.bev_element.cross_exit_takeover_enabled ==
                    builtin_defaults.bev_element.cross_exit_takeover_enabled,
                "missing BEV_ELEMENT should keep takeover enabled");
-        Expect(std::abs(absent.bev_element.cross_wide_row_white_ratio_min -
-                        builtin_defaults.bev_element.cross_wide_row_white_ratio_min) < 1.0e-6F,
-               "missing BEV_ELEMENT should keep cross white-ratio default");
+        Expect(absent.bev_boundary.local_jump_min_y ==
+                   builtin_defaults.bev_boundary.local_jump_min_y,
+               "missing BEV_BOUNDARY should keep local jump default");
         Expect(absent.bev_element.circle_v2_enabled ==
                    builtin_defaults.bev_element.circle_v2_enabled,
                "missing BEV_ELEMENT should keep CircleV2 enabled");
@@ -567,22 +569,22 @@ int main() {
         Expect(malformed_v2_entry_rows_diagnostics.SawCode("params.parse"),
                "CircleV2 entry bottom row count below one should emit params.parse");
 
-        const std::string malformed_cross_path = base + "_malformed_cross.json";
-        WriteText(malformed_cross_path,
+        const std::string malformed_boundary_path = base + "_malformed_boundary.json";
+        WriteText(malformed_boundary_path,
                   MinimalRuntimeParametersJson(
-                      "  \"BEV_ELEMENT\": {\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\": 1.5}"));
-        CaptureDiagnostics malformed_cross_diagnostics{};
-        const ls2k::port::RuntimeParameters malformed_cross =
-            LoadFixture(malformed_cross_path, malformed_cross_diagnostics);
-        Expect(malformed_cross.loaded_from_defaults,
-               "out-of-range cross white ratio should fall back to defaults");
-        Expect(malformed_cross.parse_failure,
-               "out-of-range cross white ratio should set parse_failure");
-        Expect(std::abs(malformed_cross.bev_element.cross_wide_row_white_ratio_min -
-                        builtin_defaults.bev_element.cross_wide_row_white_ratio_min) < 1.0e-6F,
-               "cross fallback should keep default white ratio");
-        Expect(malformed_cross_diagnostics.SawCode("params.parse"),
-               "out-of-range cross white ratio should emit params.parse");
+                      "  \"BEV_BOUNDARY\": {\"LOCAL_JUMP_MIN_Y\": 0}"));
+        CaptureDiagnostics malformed_boundary_diagnostics{};
+        const ls2k::port::RuntimeParameters malformed_boundary =
+            LoadFixture(malformed_boundary_path, malformed_boundary_diagnostics);
+        Expect(malformed_boundary.loaded_from_defaults,
+               "out-of-range local jump should fall back to defaults");
+        Expect(malformed_boundary.parse_failure,
+               "out-of-range local jump should set parse_failure");
+        Expect(malformed_boundary.bev_boundary.local_jump_min_y ==
+                   builtin_defaults.bev_boundary.local_jump_min_y,
+               "boundary fallback should keep default local jump");
+        Expect(malformed_boundary_diagnostics.SawCode("params.parse"),
+               "out-of-range local jump should emit params.parse");
 
         const std::string malformed_downsample_path = base + "_malformed_downsample.json";
         WriteText(malformed_downsample_path,
@@ -640,7 +642,8 @@ int main() {
                "negative wheel_turn_accel_delta_scale should fall back to defaults");
         Expect(malformed_accel_scale.parse_failure,
                "negative wheel_turn_accel_delta_scale should set parse_failure");
-        Expect(std::abs(malformed_accel_scale.wheel_turn_accel_delta_scale - 1.0) < 1.0e-6,
+        Expect(std::abs(malformed_accel_scale.wheel_turn_accel_delta_scale -
+                        builtin_defaults.wheel_turn_accel_delta_scale) < 1.0e-6,
                "accel scale fallback should keep default");
         Expect(malformed_accel_scale_diagnostics.SawCode("params.parse"),
                "negative wheel_turn_accel_delta_scale should emit params.parse");

@@ -63,6 +63,9 @@ struct PerceptionResult {
 
     int threshold = 0;                       ///< 二值化阈值
     std::string perception_tag = "none";      ///< 感知标记（用于调试）
+    std::size_t boundary_row_count = 0;       ///< V9 sparse boundary row 数量
+    std::size_t boundary_jump_count = 0;      ///< V9 局部 Y 边界跳变数量
+    std::size_t boundary_span_count = 0;      ///< V9 同行边界 span 数量
 
     std::string reference_source = "none";    ///< 参考路径来源描述
     std::string reference_mode = "none";      ///< 参考路径模式描述

@@ -7,6 +7,7 @@
 #include "transport/steering_media_link.hpp"
 #include "port/diagnostics.hpp"
 #include "port/runtime_parameter_types.hpp"
+#include "runtime/capture/camera_frame_store.hpp"
 #include "runtime/runtime_state.hpp"
 
 namespace ls2k::runtime {
@@ -22,7 +23,9 @@ public:
     /// 启动媒体服务：初始化参数、配置链路
     void Start(const port::RuntimeParameters& params, port::DiagnosticSink& diagnostics);
     /// 周期性 Tick：检查连接 → 发布配置 → 查找新帧 → 发布图像帧
-    void Tick(RuntimeState& state, port::DiagnosticSink& diagnostics);
+    void Tick(RuntimeState& state,
+              CameraFrameStore& frame_store,
+              port::DiagnosticSink& diagnostics);
 
 private:
     /// 窗口统计结构 —— 用于每秒汇总媒体服务运行情况
@@ -49,7 +52,7 @@ private:
     transport::SteeringMediaSnapshotView BuildSnapshotView(
         const observability::SteeringDebugSnapshot& snapshot) const;
     /// 填充图像帧数据（含降采样处理）
-    void FillImageFrame(const port::LegacyCameraFrame& capture_frame,
+    void FillImageFrame(const port::CameraPixelFrameView& capture_frame,
                         transport::SteeringMediaImageFrame& frame);
     /// 重置窗口统计
     void ResetWindowStats();

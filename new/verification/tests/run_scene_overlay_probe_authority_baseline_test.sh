@@ -16,9 +16,9 @@ compile_test_binary \
   "${OUT_BIN}" \
   "${REPO_ROOT}/new/user/scene_overlay_probe.cpp" \
   "${REPO_ROOT}/new/code/vision/image/otsu_threshold.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/single_boundary_offset.cpp" \
-  "${REPO_ROOT}/new/code/vision/bev/reference_connectivity.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_simple_perception.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_element_raster.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_element_evidence.cpp" \
@@ -139,11 +139,28 @@ run_probe_case \
   "circle_v2.dir=left" \
   "circle_v2.reference_role=none"
 
+confirm_entry_params_path="${ARTIFACT_DIR}/circle-v9-entry-roi.json"
+python3 - "${PARAMS_PATH}" "${confirm_entry_params_path}" <<'PY'
+import json
+import sys
+
+source_path, target_path = sys.argv[1:3]
+with open(source_path, "r", encoding="utf-8") as file:
+    params = json.load(file)
+bev_element = params.setdefault("BEV_ELEMENT", {})
+bev_element["CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT"] = 4
+bev_element["CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M"] = 0.75
+bev_element["CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M"] = 1.00
+with open(target_path, "w", encoding="utf-8") as file:
+    json.dump(params, file, indent=2)
+    file.write("\n")
+PY
+
 default_confirm_log_path="${ARTIFACT_DIR}/circle-2-confirmed-innertrace.log"
 "${OUT_BIN}" \
   "${FIXTURE_DIR}/circle-2.raw" \
   "${ARTIFACT_DIR}/circle-2-confirmed-innertrace.bmp" \
-  "${PARAMS_PATH}" \
+  "${confirm_entry_params_path}" \
   --bev-only \
   --confirm-cycles 2 > "${default_confirm_log_path}"
 require_token "${default_confirm_log_path}" \
@@ -169,14 +186,19 @@ require_token "${default_confirm_log_path}" \
   "yaw_control.turn_output_target="
 echo "scene_overlay_probe authority-baseline circle-2-confirmed-innertrace passed"
 
-for case_name in circle-1 circle-3; do
-  run_probe_case \
-    "${case_name}" \
-    "element_evidence.cross_exit.present=false" \
-    "circle_v2.frame_phase=approach" \
-    "circle_v2.dir=left" \
-    "circle_v2.reason=phase1_cue_left"
-done
+run_probe_case \
+  "circle-1" \
+  "element_evidence.cross_exit.present=false" \
+  "circle_v2.frame_phase=approach" \
+  "circle_v2.dir=left" \
+  "circle_v2.reason=phase1_cue_left"
+
+run_probe_case \
+  "circle-3" \
+  "element_evidence.cross_exit.present=false" \
+  "circle_v2.frame_phase=idle" \
+  "circle_v2.next_phase=idle" \
+  "circle_v2.dir=none"
 
 for case_name in cross-1 cross-2 cross-3; do
   run_probe_case \

@@ -151,6 +151,117 @@ void TestFrameStoreLatestHistoryAndOverwrite() {
     Expect(!store.CopyFrame(h1, copied), "overwritten generation must not copy");
 }
 
+void TestReadLeaseProtectsSlotUntilRelease() {
+    ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore store(state);
+
+    ls2k::port::LegacyCameraFrame first = MakeGrayFrame(20);
+    const ls2k::runtime::CameraFrameHandle h1 = store.Submit(first.View(21, 2100), {});
+    Expect(h1.valid, "read lease seed submit failed");
+
+    std::optional<ls2k::runtime::CameraFrameStore::ReadLease> lease = store.Acquire(h1);
+    Expect(lease.has_value(), "read lease acquire failed");
+    Expect(lease->View().gray[0] == 20, "read lease view data mismatch");
+
+    for (std::uint64_t id = 22; id <= 27; ++id) {
+        ls2k::port::LegacyCameraFrame frame = MakeGrayFrame(static_cast<std::uint8_t>(id));
+        const auto handle = store.Submit(frame.View(id, 2100 + id), {});
+        Expect(handle.valid, "submit with one protected slot should use remaining slots");
+    }
+
+    ls2k::port::LegacyCameraFrame copied{};
+    Expect(store.CopyFrame(h1, copied), "protected frame should remain copyable while leased");
+    Expect(copied.gray[0] == 20, "protected frame pixels changed while leased");
+
+    lease.reset();
+    for (std::uint64_t id = 28; id <= 31; ++id) {
+        ls2k::port::LegacyCameraFrame frame = MakeGrayFrame(static_cast<std::uint8_t>(id));
+        (void)store.Submit(frame.View(id, 2100 + id), {});
+    }
+    Expect(!store.CopyFrame(h1, copied), "released frame should eventually be overwritable");
+}
+
+void TestWriteLeaseCommitAbortAndNoSlotDrop() {
+    ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore store(state);
+
+    auto lease = store.ReserveWritable(2, 2, {});
+    Expect(lease.has_value(), "write lease reserve failed");
+    ls2k::port::MutableLegacyCameraFrameView view = lease->MutableView();
+    Expect(view.Valid(), "write lease mutable view invalid");
+    view.gray[0] = 90;
+    view.gray[1] = 91;
+    view.gray[2] = 92;
+    view.gray[3] = 93;
+    ls2k::port::CameraRawFrameMetadata metadata{};
+    metadata.source = "write_lease_test";
+    const ls2k::runtime::CameraFrameHandle committed =
+        lease->Commit(90, 9000, metadata);
+    Expect(committed.valid, "write lease commit failed");
+    Expect(store.LatestHandle().frame_id == 90, "write lease did not publish latest");
+    ls2k::port::LegacyCameraFrame copied{};
+    Expect(store.CopyFrame(committed, copied), "committed write lease frame should copy");
+    Expect(copied.gray[0] == 90 && copied.gray[3] == 93, "committed write pixels mismatch");
+    Expect(store.LatestHandle().metadata.source == "write_lease_test",
+           "write lease metadata source mismatch");
+
+    auto aborting = store.ReserveWritable(2, 2, {});
+    Expect(aborting.has_value(), "abort lease reserve failed");
+    aborting->Abort();
+    Expect(store.LatestHandle().frame_id == 90, "aborted write lease must not publish latest");
+
+    auto w1 = store.ReserveWritable(2, 2, {});
+    auto w2 = store.ReserveWritable(2, 2, {});
+    auto w3 = store.ReserveWritable(2, 2, {});
+    Expect(w1.has_value() && w2.has_value() && w3.has_value(),
+           "three write leases should reserve all slots");
+    const uint64_t dropped_before = store.Health().dropped_frame_count;
+    auto w4 = store.ReserveWritable(2, 2, {});
+    Expect(!w4.has_value(), "fourth write lease should fail when all slots are encoding");
+    Expect(store.Health().dropped_frame_count == dropped_before + 1,
+           "no-slot write reserve should advance dropped counter");
+}
+
+void TestRawYuyvPixelViewPreservesStrideAndFormat() {
+    ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore store(state);
+
+    auto lease = store.ReserveWritable(ls2k::port::CameraFrameFormat::kYuyv,
+                                       4,
+                                       2,
+                                       10,
+                                       {});
+    Expect(lease.has_value(), "raw yuyv write lease reserve failed");
+    ls2k::port::MutableCameraPixelFrameView view = lease->MutablePixelView();
+    Expect(view.Valid(), "raw yuyv mutable pixel view invalid");
+    Expect(view.format == ls2k::port::CameraFrameFormat::kYuyv,
+           "raw yuyv mutable view format mismatch");
+    Expect(view.stride == 10, "raw yuyv mutable view stride mismatch");
+    for (int row = 0; row < view.height; ++row) {
+        for (int offset = 0; offset < view.stride; ++offset) {
+            view.data[static_cast<std::size_t>(row) * static_cast<std::size_t>(view.stride) +
+                      static_cast<std::size_t>(offset)] =
+                static_cast<std::uint8_t>(10 + row * 20 + offset);
+        }
+    }
+    ls2k::port::CameraRawFrameMetadata metadata{};
+    metadata.source = "raw_yuyv_test";
+    const ls2k::runtime::CameraFrameHandle handle = lease->Commit(200, 3000, metadata);
+    Expect(handle.valid, "raw yuyv commit failed");
+    Expect(handle.format == ls2k::port::CameraFrameFormat::kYuyv,
+           "raw yuyv handle format mismatch");
+    std::optional<ls2k::runtime::CameraFrameStore::ReadLease> read = store.Acquire(handle);
+    Expect(read.has_value(), "raw yuyv read lease missing");
+    const ls2k::port::CameraPixelFrameView pixel = read->PixelView();
+    Expect(pixel.Valid(), "raw yuyv pixel view invalid");
+    Expect(pixel.format == ls2k::port::CameraFrameFormat::kYuyv,
+           "raw yuyv pixel view format mismatch");
+    Expect(pixel.stride == 10, "raw yuyv pixel view stride mismatch");
+    Expect(pixel.data[0] == 10 && pixel.data[10] == 30,
+           "raw yuyv pixel bytes were not preserved");
+    Expect(!read->View().Valid(), "legacy gray view must not expose raw yuyv as gray");
+}
+
 }  // namespace
 
 int main() {
@@ -158,6 +269,9 @@ int main() {
         TestYuyvToGrayRespectsBytesperline();
         TestV4l2TimestampSelectionTrustsOnlyMonotonicSameDomainTime();
         TestFrameStoreLatestHistoryAndOverwrite();
+        TestReadLeaseProtectsSlotUntilRelease();
+        TestWriteLeaseCommitAbortAndNoSlotDrop();
+        TestRawYuyvPixelViewPreservesStrideAndFormat();
     } catch (const std::exception& error) {
         std::cerr << "camera_frame_store_test failed: " << error.what() << "\n";
         return 1;

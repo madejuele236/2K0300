@@ -104,6 +104,16 @@ public:
     virtual SteeringMediaTransportSendResult SendBytes(const std::uint8_t* data,
                                                        std::size_t length,
                                                        std::string& detail) = 0;
+
+    /**
+     * 发送可移动二进制缓冲。
+     * 默认实现保持旧指针接口语义；具体传输层可接管缓冲以避免额外拷贝。
+     * 若返回 kSent 或 kAcceptedInFlight，允许清空 data；若返回 kBusyRejected，data 必须保持可重试。
+     */
+    virtual SteeringMediaTransportSendResult SendBuffer(std::vector<std::uint8_t>& data,
+                                                        std::string& detail) {
+        return SendBytes(data.data(), data.size(), detail);
+    }
 };
 
 /**
@@ -201,7 +211,7 @@ private:
      * @param diagnostics 诊断输出接收器
      * @return 传输发送结果
      */
-    SteeringMediaTransportSendResult PublishEncoded(const std::vector<std::uint8_t>& encoded,
+    SteeringMediaTransportSendResult PublishEncoded(std::vector<std::uint8_t>& encoded,
                                                     const char* diagnostic_code,
                                                     port::DiagnosticSink& diagnostics);
 

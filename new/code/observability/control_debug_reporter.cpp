@@ -42,6 +42,7 @@ void ControlDebugReporter::Reset() {
 /// 周期性发射调试快照 —— 检查间隔并格式化输出控制/转向/内部诊断消息
 /// @param snapshot    当前控制调试快照
 /// @param diagnostics 诊断输出接口
+// NOLINTNEXTLINE(readability-function-size)
 void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port::DiagnosticSink& diagnostics) {
     if (!snapshot.valid) {
         return;
@@ -51,44 +52,62 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
         now_ms - last_emit_ms_ < static_cast<uint64_t>(interval_ms_)) {
         return;
     }
+    const port::DiagnosticLevel level =
+        snapshot.veto_active ? port::DiagnosticLevel::kWarning : port::DiagnosticLevel::kInfo;
+    const bool emit_control_snapshot = diagnostics.ShouldEmit(level, "control.snapshot");
+    const bool emit_steering_snapshot =
+        snapshot.steering.valid && diagnostics.ShouldEmit(level, "control.steering_snapshot");
+    const bool emit_steering_internal =
+        snapshot.steering.valid && snapshot.steering_internal.valid &&
+        diagnostics.ShouldEmit(level, "control.steering_internal");
+    if (!emit_control_snapshot && !emit_steering_snapshot && !emit_steering_internal) {
+        return;
+    }
     last_emit_ms_ = now_ms;
 
-    std::ostringstream message;
-    message << "phase=" << ToString(snapshot.motion_phase)
-            << " veto=" << (snapshot.veto_active ? "true" : "false")
-            << " reason=" << ToString(snapshot.veto_reason)
-            << " tuning_mode=" << (snapshot.tuning_mode_enabled ? "true" : "false")
-            << " turn_suppressed=" << (snapshot.turn_suppressed ? "true" : "false")
-            << " override_enabled=" << (snapshot.target_speed_override_enabled ? "true" : "false")
-            << " override_value="
-            << (snapshot.target_speed_override_enabled ? std::to_string(snapshot.target_speed_override_value)
-                                                       : std::string("null"))
-            << " effective_speed_target=" << snapshot.effective_speed_target
-            << " left_target=" << snapshot.left_speed_target
-            << " right_target=" << snapshot.right_speed_target
-            << " left_measured=" << snapshot.left_measured_speed
-            << " right_measured=" << snapshot.right_measured_speed
-            << " raw_turn=" << snapshot.raw_turn_output
-            << " applied_turn=" << snapshot.applied_turn_output
-            << " left_drive_pwm=" << snapshot.left_drive_pwm_command
-            << " right_drive_pwm=" << snapshot.right_drive_pwm_command
-            << " left_brushless_pwm=" << snapshot.left_brushless_pwm_command
-            << " right_brushless_pwm=" << snapshot.right_brushless_pwm_command
-            << " actuator_apply_outcome=" << ToString(snapshot.apply_outcome)
-            << " emergency_stop=" << (snapshot.emergency_stop ? "true" : "false");
-    diagnostics.Emit({snapshot.veto_active ? port::DiagnosticLevel::kWarning : port::DiagnosticLevel::kInfo,
-                      "control.snapshot",
-                      message.str(),
-                      now_ms});
+    if (emit_control_snapshot) {
+        std::ostringstream message;
+        message << "phase=" << ToString(snapshot.motion_phase)
+                << " veto=" << (snapshot.veto_active ? "true" : "false")
+                << " reason=" << ToString(snapshot.veto_reason)
+                << " tuning_mode=" << (snapshot.tuning_mode_enabled ? "true" : "false")
+                << " turn_suppressed=" << (snapshot.turn_suppressed ? "true" : "false")
+                << " override_enabled=" << (snapshot.target_speed_override_enabled ? "true" : "false")
+                << " override_value="
+                << (snapshot.target_speed_override_enabled ? std::to_string(snapshot.target_speed_override_value)
+                                                           : std::string("null"))
+                << " effective_speed_target=" << snapshot.effective_speed_target
+                << " left_target=" << snapshot.left_speed_target
+                << " right_target=" << snapshot.right_speed_target
+                << " left_measured=" << snapshot.left_measured_speed
+                << " right_measured=" << snapshot.right_measured_speed
+                << " raw_turn=" << snapshot.raw_turn_output
+                << " applied_turn=" << snapshot.applied_turn_output
+                << " left_drive_pwm=" << snapshot.left_drive_pwm_command
+                << " right_drive_pwm=" << snapshot.right_drive_pwm_command
+                << " left_brushless_pwm=" << snapshot.left_brushless_pwm_command
+                << " right_brushless_pwm=" << snapshot.right_brushless_pwm_command
+                << " actuator_apply_outcome=" << ToString(snapshot.apply_outcome)
+                << " emergency_stop=" << (snapshot.emergency_stop ? "true" : "false");
+        diagnostics.Emit({level, "control.snapshot", message.str(), now_ms});
+    }
 
     if (!snapshot.steering.valid) {
         return;
     }
+    if (!emit_steering_snapshot && !emit_steering_internal) {
+        return;
+    }
 
-    std::ostringstream steering_message;
-    steering_message << "phase=" << ToString(snapshot.motion_phase)
+    if (emit_steering_snapshot) {
+        std::ostringstream steering_message;
+        steering_message << "phase=" << ToString(snapshot.motion_phase)
                      << " frame_id=" << snapshot.steering.frame_id
                      << " capture_time_ms=" << snapshot.steering.capture_time_ms
+                     << " perception_tag=" << snapshot.steering.perception_tag
+                     << " boundary_row_count=" << snapshot.steering.boundary_row_count
+                     << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
+                     << " boundary_span_count=" << snapshot.steering.boundary_span_count
                      << " perception_health.projector_ok="
                      << BoolToken(snapshot.steering.perception_health.projector_ok)
                      << " perception_health.reason=" << snapshot.steering.perception_health.reason
@@ -106,10 +125,12 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.element_evidence.cross_exit.lateral_max_m
                      << " element_evidence.cross_exit.sampleable_count="
                      << snapshot.steering.element_evidence.cross_exit.sampleable_count
-                     << " element_evidence.cross_exit.supporting_white_count="
-                     << snapshot.steering.element_evidence.cross_exit.supporting_white_count
-                     << " element_evidence.cross_exit.unknown_count="
-                     << snapshot.steering.element_evidence.cross_exit.unknown_count
+                     << " element_evidence.cross_exit.boundary_jump_count="
+                     << snapshot.steering.element_evidence.cross_exit.boundary_jump_count
+                     << " element_evidence.cross_exit.boundary_span_count="
+                     << snapshot.steering.element_evidence.cross_exit.boundary_span_count
+                     << " element_evidence.cross_exit.boundary_absent_row_count="
+                     << snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count
                      << " element_evidence.cross_exit.reason="
                      << snapshot.steering.element_evidence.cross_exit.reason
                      << " element_evidence.cross_exit.candidate.built="
@@ -164,12 +185,10 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                          << record.bounds.lateral_max_m
                          << " element_evidence.records[" << index << "].support.sampleable_count="
                          << record.support.sampleable_count
-                         << " element_evidence.records[" << index << "].support.supporting_white_count="
-                         << record.support.supporting_white_count
-                         << " element_evidence.records[" << index << "].support.supporting_black_count="
-                         << record.support.supporting_black_count
-                         << " element_evidence.records[" << index << "].support.unknown_count="
-                         << record.support.unknown_count
+                         << " element_evidence.records[" << index << "].support.boundary_jump_count="
+                         << record.support.boundary_jump_count
+                         << " element_evidence.records[" << index << "].support.boundary_span_count="
+                         << record.support.boundary_span_count
                          << " element_evidence.records[" << index << "].candidate.built="
                          << BoolToken(record.candidate.built)
                          << " element_evidence.records[" << index << "].candidate.takeover_enabled="
@@ -280,7 +299,10 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.yaw_control.heading_term
                      << " yaw_control.curvature_term="
                      << snapshot.steering.yaw_control.curvature_term
-                     << " threshold=" << snapshot.steering.threshold
+                     << " perception_tag=" << snapshot.steering.perception_tag
+                     << " boundary_row_count=" << snapshot.steering.boundary_row_count
+                     << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
+                     << " boundary_span_count=" << snapshot.steering.boundary_span_count
                      << " actuator.raw_turn_output=" << snapshot.steering.actuator.raw_turn_output
                      << " actuator.applied_turn_output=" << snapshot.steering.actuator.applied_turn_output
                      << " actuator.left_drive_pwm_command="
@@ -308,12 +330,10 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                          << " visual_reference.path_candidates[" << index << "].sample_count="
                          << CountPresentPathSamples(candidate.reference_path);
     }
-    diagnostics.Emit({snapshot.veto_active ? port::DiagnosticLevel::kWarning : port::DiagnosticLevel::kInfo,
-                      "control.steering_snapshot",
-                      steering_message.str(),
-                      now_ms});
+        diagnostics.Emit({level, "control.steering_snapshot", steering_message.str(), now_ms});
+    }
 
-    if (!snapshot.steering_internal.valid) {
+    if (!snapshot.steering_internal.valid || !emit_steering_internal) {
         return;
     }
 
@@ -331,10 +351,7 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " gyro_error=" << snapshot.steering_internal.gyro_error
                      << " gyro_p_term=" << snapshot.steering_internal.gyro_p_term
                      << " gyro_d_term=" << snapshot.steering_internal.gyro_d_term;
-    diagnostics.Emit({snapshot.veto_active ? port::DiagnosticLevel::kWarning : port::DiagnosticLevel::kInfo,
-                      "control.steering_internal",
-                      internal_message.str(),
-                      now_ms});
+    diagnostics.Emit({level, "control.steering_internal", internal_message.str(), now_ms});
 }
 
 }  // namespace ls2k::observability

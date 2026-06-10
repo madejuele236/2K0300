@@ -58,6 +58,8 @@ struct SteeringMediaParamSnapshotView {
     port::BEVGeometryParameters bev_geometry{};
     /** BEV 分类配置参数 */
     port::BEVClassificationParameters bev_classification{};
+    /** BEV 局部边界配置参数 */
+    port::BEVBoundaryParameters bev_boundary{};
     /** BEV 控制模型参数 */
     port::BEVControlModelParameters bev_control_model{};
     /** BEV 元素检测参数（含圆形/路口退出） */
@@ -258,6 +260,14 @@ using SteeringMediaElementEvidenceView = port::VisualElementEvidenceFrame;
 struct SteeringMediaSnapshotView {
     /** 当前阈值等级（用于调试和可视化） */
     int threshold = 0;
+    /** 感知事实标签 */
+    std::string perception_tag = "none";
+    /** V9 sparse boundary row 数量 */
+    std::size_t boundary_row_count = 0;
+    /** V9 局部 Y 边界跳变数量 */
+    std::size_t boundary_jump_count = 0;
+    /** V9 同行边界 span 数量 */
+    std::size_t boundary_span_count = 0;
     /** 感知健康状态 */
     SteeringMediaPerceptionHealthView perception_health{};
     /** 视觉元素证据（路口退出/圆形检测） */

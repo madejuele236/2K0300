@@ -11,7 +11,6 @@
 #include "vision/bev/bev_projector.hpp"
 #include "vision/bev/bev_boundary_trace_clip.hpp"
 #include "vision/bev/bev_element_raster.hpp"
-#include "vision/bev/bev_interval_edges.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
 #include "vision/bev/reference_connectivity.hpp"
 #include "reference/reference_continuity.hpp"
@@ -168,24 +167,59 @@ ls2k::vision::BEVSimpleRowScan SyntheticRow(float forward_m,
     row.valid = true;
     row.forward_m = forward_m;
     row.sampleable_count = 101;
-    row.black_count = 80;
-    row.white_count = 21;
     row.sampleable_left_m = sampleable_low_m;
     row.sampleable_right_m = sampleable_high_m;
     row.sampleable_width_m = sampleable_high_m - sampleable_low_m;
     return row;
 }
 
+int SyntheticLateralIndex(const ls2k::vision::BEVSimpleRowScan& row,
+                          float lateral_m) {
+    const float offset_m = lateral_m - row.sampleable_left_m;
+    return static_cast<int>(std::lround(offset_m * 1000.0F));
+}
+
 void AddSyntheticInterval(ls2k::vision::BEVSimpleRowScan& row,
                           float low_m,
                           float high_m) {
-    ls2k::vision::BEVSimpleWhiteInterval interval{};
-    interval.forward_m = row.forward_m;
-    interval.left_m = low_m;
-    interval.right_m = high_m;
-    interval.center_m = 0.5F * (low_m + high_m);
-    interval.width_m = high_m - low_m;
-    row.intervals.push_back(interval);
+    const bool have_sampleable_bounds = row.sampleable_width_m > 0.0F;
+    const bool low_edge_visible =
+        !have_sampleable_bounds || low_m > row.sampleable_left_m + 1.0e-4F;
+    const bool high_edge_visible =
+        !have_sampleable_bounds || high_m < row.sampleable_right_m - 1.0e-4F;
+    const int low_index = SyntheticLateralIndex(row, low_m);
+    const int high_index = SyntheticLateralIndex(row, high_m);
+    if (low_edge_visible && high_edge_visible) {
+        ls2k::vision::BEVBoundarySpan span{};
+        span.forward_m = row.forward_m;
+        span.left_m = low_m;
+        span.right_m = high_m;
+        span.center_m = 0.5F * (low_m + high_m);
+        span.width_m = high_m - low_m;
+        span.left_lateral_index = low_index;
+        span.right_lateral_index = high_index;
+        row.spans.push_back(span);
+    }
+
+    if (low_edge_visible) {
+        ls2k::vision::BEVBoundaryJump left_jump{};
+        left_jump.forward_m = row.forward_m;
+        left_jump.lateral_m = low_m;
+        left_jump.lateral_index = low_index;
+        left_jump.delta_y = 80;
+        left_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kRisingY;
+        row.jumps.push_back(left_jump);
+    }
+
+    if (high_edge_visible) {
+        ls2k::vision::BEVBoundaryJump right_jump{};
+        right_jump.forward_m = row.forward_m;
+        right_jump.lateral_m = high_m;
+        right_jump.lateral_index = high_index;
+        right_jump.delta_y = -80;
+        right_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kFallingY;
+        row.jumps.push_back(right_jump);
+    }
 }
 
 void TestSingleBoundaryOffsetHelperGeometry() {
@@ -282,7 +316,7 @@ void TestBoundaryTraceClipHelperRule() {
     }
 }
 
-void TestBevClassificationAndRowIntervals() {
+void TestBevLocalBoundaryFacts() {
     ls2k::port::RuntimeParameters params{};
     ls2k::vision::BEVProjector projector = MakeProjector(params);
     ls2k::port::LegacyCameraFrame frame = MakeFrame(0U);
@@ -290,7 +324,7 @@ void TestBevClassificationAndRowIntervals() {
 
     ls2k::vision::BEVSampleProjectionLut lut{};
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(frame.View(1, 1), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
     const ls2k::vision::BEVSimpleImage debug_bev =
         ls2k::vision::BuildDebugDenseBevImage(frame.View(1, 1), TestClassificationModel(), params, projector);
 
@@ -302,24 +336,25 @@ void TestBevClassificationAndRowIntervals() {
     Expect(result.rows.size() == ls2k::port::kBevReferenceSampleCount,
            "row scanner must scan the configured BEV forward samples");
 
-    bool saw_interval = false;
+    bool saw_span = false;
+    bool saw_jump_pair = false;
     bool saw_row_support_stats = false;
     for (const ls2k::vision::BEVSimpleRowScan& row : result.rows) {
-        saw_interval = saw_interval || !row.intervals.empty();
+        saw_span = saw_span || !row.spans.empty();
+        saw_jump_pair = saw_jump_pair || row.jumps.size() >= 2U;
         saw_row_support_stats = saw_row_support_stats ||
                                 (row.sampleable_count > 0U &&
-                                 row.sampleable_width_m > 0.0F &&
-                                 row.white_count + row.black_count + row.unknown_count ==
-                                     row.sampleable_count);
+                                 row.sampleable_width_m > 0.0F);
     }
-    Expect(saw_interval, "drawn BEV stripe must expose white interval facts");
+    Expect(saw_span, "drawn BEV stripe must expose boundary span facts");
+    Expect(saw_jump_pair, "drawn BEV stripe must expose local Y boundary jumps");
     Expect(saw_row_support_stats,
            "row scanner must expose sample support stats without changing reference facts");
     Expect(ls2k::reference::EvaluateReferenceUsability(result.reference_path, params).usable,
-           "continuous white intervals must produce usable current facts");
+           "continuous boundary spans must produce usable current facts");
     Expect(CountPresentPathPoints(result.reference_path,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) >= 3,
-           "reference white points must explicitly come from interval centers");
+           "reference points must explicitly come from boundary span centers");
 }
 
 void TestUnknownBandUsesCenterBrightnessOnly() {
@@ -329,7 +364,7 @@ void TestUnknownBandUsesCenterBrightnessOnly() {
 
     ls2k::vision::BEVSampleProjectionLut lut{};
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(frame.View(1, 1), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
     const ls2k::vision::BEVSimpleImage debug_bev =
         ls2k::vision::BuildDebugDenseBevImage(frame.View(1, 1), TestClassificationModel(), params, projector);
 
@@ -337,7 +372,7 @@ void TestUnknownBandUsesCenterBrightnessOnly() {
     Expect(CountClass(debug_bev, ls2k::vision::BEVSimplePixelClass::kUnknown) > 0,
            "near-threshold BEV pixels must classify as unknown");
     Expect(!ls2k::reference::EvaluateReferenceUsability(result.reference_path, params).usable,
-           "unknown pixels must not be promoted into white interval reference points");
+           "uniform luma must not be promoted into boundary reference points");
 }
 
 void TestAdaptiveBandComesFromOtsuClassDeciles() {
@@ -593,15 +628,15 @@ void TestBevGeometryControlsWideImageScan() {
 
     ls2k::vision::BEVSampleProjectionLut lut{};
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(frame.View(1, 1), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
 
-    bool saw_wide_right_interval = false;
+    bool saw_wide_right_span = false;
     for (const ls2k::vision::BEVSimpleRowScan& row : result.rows) {
-        for (const ls2k::vision::BEVSimpleWhiteInterval& interval : row.intervals) {
-            saw_wide_right_interval = saw_wide_right_interval || interval.center_m > 0.45F;
+        for (const ls2k::vision::BEVBoundarySpan& span : row.spans) {
+            saw_wide_right_span = saw_wide_right_span || span.center_m > 0.45F;
         }
     }
-    Expect(saw_wide_right_interval,
+    Expect(saw_wide_right_span,
            "BEV row scanning must use the configured BEV image extent");
 }
 
@@ -613,7 +648,7 @@ void TestHoldIsExplicitNonVisualSource() {
 
     ls2k::vision::BEVSampleProjectionLut lut{};
     const ls2k::vision::BEVSimplePerceptionResult first =
-        ls2k::vision::RunBEVSimplePerception(frame.View(1, 1), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
     const ls2k::port::ReferenceUsability first_usability =
         ls2k::reference::EvaluateReferenceUsability(first.reference_path, params);
     Expect(first_usability.usable, "first frame must produce usable visual facts");
@@ -622,7 +657,7 @@ void TestHoldIsExplicitNonVisualSource() {
 
     ls2k::port::LegacyCameraFrame blank = MakeFrame(0U);
     const ls2k::vision::BEVSimplePerceptionResult blank_facts =
-        ls2k::vision::RunBEVSimplePerception(blank.View(2, 2), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(blank.View(2, 2)), params, projector, &lut);
     const ls2k::port::ReferenceUsability blank_usability =
         ls2k::reference::EvaluateReferenceUsability(blank_facts.reference_path, params);
     Expect(!blank_usability.usable, "blank current frame must be selected only if hold is unavailable");
@@ -684,13 +719,7 @@ void TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap() {
     }
 
     auto add_interval = [&](std::size_t index, float center) {
-        ls2k::vision::BEVSimpleWhiteInterval interval{};
-        interval.forward_m = params.bev_geometry.forward_samples_m[index];
-        interval.left_m = center - 0.08F;
-        interval.right_m = center + 0.08F;
-        interval.center_m = center;
-        interval.width_m = 0.16F;
-        rows[index].intervals.push_back(interval);
+        AddSyntheticInterval(rows[index], center - 0.08F, center + 0.08F);
     };
 
     add_interval(3, 0.0F);
@@ -708,7 +737,8 @@ void TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap() {
                "compact output must preserve the real forward distance of the first segment point");
 
     for (ls2k::vision::BEVSimpleRowScan& row : rows) {
-        row.intervals.clear();
+        row.spans.clear();
+        row.jumps.clear();
     }
     add_interval(0, 0.0F);
     add_interval(1, 0.0F);
@@ -746,7 +776,8 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
                "both-edge midpoint must remain the ordinary center");
 
     for (ls2k::vision::BEVSimpleRowScan& row : rows) {
-        row.intervals.clear();
+        row.spans.clear();
+        row.jumps.clear();
     }
     for (std::size_t index = 0; index < 4U; ++index) {
         AddSyntheticInterval(rows[index], -0.21F, 1.0F);
@@ -760,7 +791,8 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
                "low-edge-only rows must offset by positive nominal half width");
 
     for (ls2k::vision::BEVSimpleRowScan& row : rows) {
-        row.intervals.clear();
+        row.spans.clear();
+        row.jumps.clear();
     }
     for (std::size_t index = 0; index < 4U; ++index) {
         AddSyntheticInterval(rows[index], -1.0F, 0.21F);
@@ -774,7 +806,8 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
                "high-edge-only rows must offset by negative nominal half width");
 
     for (ls2k::vision::BEVSimpleRowScan& row : rows) {
-        row.intervals.clear();
+        row.spans.clear();
+        row.jumps.clear();
     }
     AddSyntheticInterval(rows[0], -1.0F, 1.0F);
     AddSyntheticInterval(rows[1], -0.20F, 0.20F);
@@ -791,8 +824,6 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
 void TestSparseRowMidpointUsesSharedConnectivityHelper() {
     ls2k::port::RuntimeParameters params{};
     params.bev_geometry.boundary_trace_max_adjacent_distance_m = 2.0F;
-    const ls2k::vision::BEVProjector projector =
-        MakeIdentityConnectivityProjector();
     std::vector<ls2k::vision::BEVSimpleRowScan> rows;
     rows.reserve(3U);
     for (float forward : std::array<float, 3U>{1.0F, 2.0F, 3.0F}) {
@@ -800,35 +831,11 @@ void TestSparseRowMidpointUsesSharedConnectivityHelper() {
         AddSyntheticInterval(rows.back(), 1.0F, 8.0F);
     }
 
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        const ls2k::port::LegacyCameraFrameView frame_view = frame.View(10, 10);
-        const ls2k::vision::ReferenceConnectivityFrameView connectivity =
-            ConnectivityView(frame_view, projector, params);
-        const ls2k::port::BEVReferencePath reference =
-            ls2k::vision::BuildReferencePath(rows, params, &connectivity);
-        Expect(CountPresentPathPoints(reference,
-                                      ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
-               "connected same-row edge points must remain eligible midpoint candidates");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 1, 4, 0U);
-        SetPixel(frame, 2, 4, 0U);
-        SetPixel(frame, 3, 4, 0U);
-        const ls2k::port::LegacyCameraFrameView frame_view = frame.View(11, 11);
-        const ls2k::vision::ReferenceConnectivityFrameView connectivity =
-            ConnectivityView(frame_view, projector, params);
-        const ls2k::port::BEVReferencePath reference =
-            ls2k::vision::BuildReferencePath(rows, params, &connectivity);
-        Expect(CountPresentPathPoints(reference,
-                                      ls2k::port::BEVPathPointSource::kIntervalCenter) == 0,
-               "same-row edge points separated by black must not form one road interval");
-    }
+    const ls2k::port::BEVReferencePath reference =
+        ls2k::vision::BuildReferencePath(rows, params);
+    Expect(CountPresentPathPoints(reference,
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
+           "boundary span row facts must remain eligible midpoint candidates");
 }
 
 void TestBoundaryContinuityRejectsDiscontinuousSingleEdge() {
@@ -848,8 +855,8 @@ void TestBoundaryContinuityRejectsDiscontinuousSingleEdge() {
     const ls2k::port::BEVReferencePath reference =
         ls2k::vision::BuildReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
-                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 0,
-           "discontinuous single-edge trace must be rejected before offset");
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
+           "discontinuous first single-edge row must not bridge into the later trace");
 }
 
 void TestBoundaryContinuityUsesFartherSupportAfterOutlier() {
@@ -869,20 +876,8 @@ void TestBoundaryContinuityUsesFartherSupportAfterOutlier() {
     const ls2k::port::BEVReferencePath reference =
         ls2k::vision::BuildReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
-                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
-           "farther kept same-side edge may support the first row after deleting one outlier");
-    const float support_slope =
-        (-0.22F - -0.21F) /
-        (params.bev_geometry.forward_samples_m[2] -
-         params.bev_geometry.forward_samples_m[0]);
-    const float expected_lateral =
-        -0.21F +
-        params.bev_geometry.nominal_road_half_width_m *
-            std::sqrt(1.0F + support_slope * support_slope);
-    ExpectNear(reference.sampled_path[0].point.lateral_m,
-               expected_lateral,
-               1.0e-5F,
-               "single-edge offset must use the farther kept boundary support");
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 0,
+           "single-edge trace must not skip an outlier row to use farther support");
 }
 
 void TestBoundaryContinuityRequiresFutureSupportForSingleEdge() {
@@ -975,68 +970,6 @@ void TestSingleEdgeOffsetMayLeaveSampleableSpan() {
                "single-edge offset must be based on the visible edge, not the clipped edge");
 }
 
-void TestUnknownSampleableEdgeCountsAsBoundaryForVisibility() {
-    ls2k::vision::BEVSimpleRowScan row = SyntheticRow(1.0F, -1.30F, 1.24F);
-    row.sampleable_count = 128U;
-    row.sampleable_left_unknown_run = true;
-    row.sampleable_left_unknown_run_right_m = -1.24F;
-    ls2k::vision::BEVSimpleWhiteInterval interval{};
-    interval.forward_m = row.forward_m;
-    interval.left_m = -1.22F;
-    interval.right_m = -1.00F;
-    interval.center_m = -1.11F;
-    interval.width_m = 0.22F;
-
-    const ls2k::vision::BEVIntervalEdgeVisibility default_visibility =
-        ls2k::vision::EvaluateIntervalEdgeVisibility(row, interval);
-    Expect(default_visibility.low_visible && default_visibility.high_visible,
-           "default helper options must preserve legacy visible-edge semantics");
-
-    ls2k::vision::BEVIntervalEdgeVisibilityOptions options{};
-    options.treat_unknown_sampleable_edge_as_boundary = true;
-    const ls2k::vision::BEVIntervalEdgeVisibility visibility =
-        ls2k::vision::EvaluateIntervalEdgeVisibility(row, interval, options);
-    Expect(!visibility.low_visible && visibility.high_visible,
-           "unknown prefix touching the interval must hide the low edge");
-    Expect(!(visibility.low_visible && visibility.high_visible),
-           "unknown prefix must disqualify two-edge midpoint support");
-
-    row.sampleable_left_unknown_run = false;
-    row.sampleable_right_unknown_run = true;
-    row.sampleable_right_unknown_run_left_m = 1.24F;
-    interval.left_m = 1.00F;
-    interval.right_m = 1.22F;
-    const ls2k::vision::BEVIntervalEdgeVisibility right_visibility =
-        ls2k::vision::EvaluateIntervalEdgeVisibility(row, interval, options);
-    Expect(right_visibility.low_visible && !right_visibility.high_visible,
-           "unknown suffix touching the interval must hide the high edge");
-}
-
-void TestUnknownSampleablePrefixEntersSingleEdgeOffset() {
-    ls2k::port::RuntimeParameters params{};
-    params.bev_geometry.nominal_road_half_width_m = 0.21F;
-    params.bev_geometry.lateral_step_m = 0.02F;
-    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
-    rows.reserve(ls2k::port::kBevReferenceSampleCount);
-    for (float forward : params.bev_geometry.forward_samples_m) {
-        rows.push_back(SyntheticRow(forward, -1.30F, 1.24F));
-    }
-
-    for (std::size_t index = 0; index < 4U; ++index) {
-        rows[index].sampleable_left_unknown_run = true;
-        rows[index].sampleable_left_unknown_run_right_m = -1.24F;
-        AddSyntheticInterval(rows[index], -1.22F, -1.00F);
-    }
-
-    const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
-    Expect(CountPresentPathPoints(reference,
-                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
-           "unknown screen-edge interval must enter single-edge reference generation");
-    ExpectNear(reference.sampled_path[0].point.lateral_m, -1.21F, 1.0e-5F,
-               "single-edge offset must use the visible interval edge, not the unknown screen edge");
-}
-
 void TestOrdinaryReferenceSelectsAfterCandidateInterpretation() {
     ls2k::port::RuntimeParameters params{};
     params.bev_geometry.nominal_road_half_width_m = 0.21F;
@@ -1063,7 +996,8 @@ void TestOrdinaryReferenceSelectsAfterCandidateInterpretation() {
     const ls2k::port::ReferenceHoldState hold =
         ls2k::reference::MakeReferenceHoldState(reference, params);
     for (ls2k::vision::BEVSimpleRowScan& row : rows) {
-        row.intervals.clear();
+        row.spans.clear();
+        row.jumps.clear();
     }
     AddSyntheticInterval(rows[0], -1.0F, 1.0F);
     const ls2k::port::BEVReferencePath unavailable =
@@ -1107,9 +1041,9 @@ void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
 
     ls2k::vision::BEVSampleProjectionLut lut{};
     const ls2k::vision::BEVSimplePerceptionResult cached =
-        ls2k::vision::RunBEVSimplePerception(frame.View(7, 7), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(7, 7)), params, projector, &lut);
     const ls2k::vision::BEVSimplePerceptionResult uncached =
-        ls2k::vision::RunBEVSimplePerception(frame.View(7, 7), TestClassificationModel(), params, projector, nullptr);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(7, 7)), params, projector, nullptr);
 
     Expect(lut.valid, "sparse projection LUT must be built for a valid frame/projector identity");
     Expect(lut.entries.size() ==
@@ -1126,23 +1060,29 @@ void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
     Expect(saw_sampleable, "LUT must mark in-frame projected samples as sampleable");
     Expect(saw_non_sampleable, "LUT must preserve out-of-frame or failed projection state separately");
     for (std::size_t index = 0; index < cached.rows.size(); ++index) {
-        Expect(cached.rows[index].intervals.size() == uncached.rows[index].intervals.size(),
-               "cached and uncached sparse scans must expose the same interval count");
-        if (!cached.rows[index].intervals.empty()) {
-            const ls2k::vision::BEVSimpleWhiteInterval& lhs = cached.rows[index].intervals.front();
-            const ls2k::vision::BEVSimpleWhiteInterval& rhs = uncached.rows[index].intervals.front();
+        Expect(cached.rows[index].spans.size() == uncached.rows[index].spans.size(),
+               "cached and uncached sparse scans must expose the same boundary span count");
+        Expect(cached.rows[index].jumps.size() == uncached.rows[index].jumps.size(),
+               "cached and uncached sparse scans must expose the same boundary jump count");
+        if (!cached.rows[index].spans.empty()) {
+            const ls2k::vision::BEVBoundarySpan& lhs = cached.rows[index].spans.front();
+            const ls2k::vision::BEVBoundarySpan& rhs = uncached.rows[index].spans.front();
             const float center_tol = 0.5F * params.bev_geometry.lateral_step_m + 1.0e-4F;
             const float width_tol = 1.0F * params.bev_geometry.lateral_step_m + 1.0e-4F;
             Expect(std::abs(lhs.center_m - rhs.center_m) <= center_tol,
-                   "LUT and non-LUT interval centers must match within sparse half-step tolerance");
+                   "LUT and non-LUT boundary span centers must match within sparse half-step tolerance");
             Expect(std::abs(lhs.width_m - rhs.width_m) <= width_tol,
-                   "LUT and non-LUT interval widths must match within sparse one-step tolerance");
+                   "LUT and non-LUT boundary span widths must match within sparse one-step tolerance");
         }
     }
 
     const std::uint64_t previous_entry_count = static_cast<std::uint64_t>(lut.entries.size());
     params.bev_geometry.lateral_step_m *= 0.5F;
-    Expect(ls2k::vision::EnsureBEVSampleProjectionLut(lut, frame.View(7, 7), params, projector),
+    Expect(ls2k::vision::EnsureBEVSampleProjectionLut(
+               lut,
+               ls2k::port::MakeCameraPixelFrameView(frame.View(7, 7)),
+               params,
+               projector),
            "LUT must rebuild successfully after sampling identity changes");
     Expect(static_cast<std::uint64_t>(lut.entries.size()) != previous_entry_count,
            "lateral step identity change must rebuild LUT with a different entry count");
@@ -1157,7 +1097,7 @@ void TestSparseRowCountUsesOriginalForwardSamplePrefix() {
 
     ls2k::vision::BEVSampleProjectionLut lut{};
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(frame.View(9, 9), TestClassificationModel(), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(9, 9)), params, projector, &lut);
 
     Expect(result.rows.size() == 12U,
            "SPARSE_ROW_COUNT=12 must scan exactly the first 12 sparse rows");
@@ -1183,7 +1123,7 @@ int main() {
     try {
         TestSingleBoundaryOffsetHelperGeometry();
         TestBoundaryTraceClipHelperRule();
-        TestBevClassificationAndRowIntervals();
+        TestBevLocalBoundaryFacts();
         TestUnknownBandUsesCenterBrightnessOnly();
         TestAdaptiveBandComesFromOtsuClassDeciles();
         TestInvalidClassificationModelDoesNotClampThreshold();
@@ -1202,8 +1142,6 @@ int main() {
         TestBoundaryContinuityDegradesOneClippedSide();
         TestBoundaryContinuityRemovesRowWhenBothSidesClip();
         TestSingleEdgeOffsetMayLeaveSampleableSpan();
-        TestUnknownSampleableEdgeCountsAsBoundaryForVisibility();
-        TestUnknownSampleablePrefixEntersSingleEdgeOffset();
         TestOrdinaryReferenceSelectsAfterCandidateInterpretation();
         TestDefaultReferenceJumpGateDoesNotRejectLargeAdjacentChange();
         TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange();

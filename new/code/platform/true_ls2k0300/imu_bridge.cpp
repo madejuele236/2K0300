@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <vector>
 
+#include "port/numeric_parse.hpp"
 #include "zf_device_imu_core.h"
 
 namespace ls2k::platform::true_ls2k0300 {
@@ -170,11 +171,7 @@ std::optional<int> ReadIntFile(const std::string& path) {
         return std::nullopt;
     }
 
-    try {
-        return std::stoi(*token);
-    } catch (...) {
-        return std::nullopt;
-    }
+    return ls2k::port::ParseIntStrict(*token);
 }
 
 // 解析 IMU 型号名称到供应商类型枚举

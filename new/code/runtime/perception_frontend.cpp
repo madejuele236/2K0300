@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 
+#include "port/numeric_parse.hpp"
 #include "port/perf_counter.hpp"
 
 namespace ls2k::runtime {
@@ -22,12 +23,9 @@ int ReadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, 
     if (value == nullptr || value[0] == '\0') {
         return 0;
     }
-    try {
-        const int parsed = std::stoi(value);
-        if (parsed > 0) {
-            return parsed;
-        }
-    } catch (...) {
+    const std::optional<int> parsed = port::ParsePositiveIntStrict(value);
+    if (parsed.has_value()) {
+        return *parsed;
     }
     port::EmitRateLimited(diagnostics,
                           {port::DiagnosticLevel::kWarning,
@@ -87,33 +85,24 @@ void PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) 
     LS2K_PERF_SCOPE(port::PerfStage::kPerceptionFrame);
     ConsumeMemoryResetRequest();
 
-    const std::optional<CameraFrameHandle> latest =
-        frame_store_.TryGetLatestAfter(last_processed_frame_id_);
+    std::optional<CameraFrameStore::ReadLease> latest =
+        frame_store_.AcquireLatestAfter(last_processed_frame_id_);
     if (!latest.has_value()) {
         return;
     }
-    port::LegacyCameraFrame frame{};
-    if (!frame_store_.CopyFrame(*latest, frame)) {
-        port::EmitRateLimited(diagnostics_,
-                              {port::DiagnosticLevel::kWarning,
-                               "perception.frame_store.copy_miss",
-                               "latest camera frame was overwritten before perception could copy it",
-                               port::NowMs()},
-                              1000);
-        last_processed_frame_id_ = latest->frame_id;
-        return;
-    }
+    const CameraFrameHandle& handle = latest->Handle();
 
     ++processed_frames_;
-    last_processed_frame_id_ = latest->frame_id;
+    last_processed_frame_id_ = handle.frame_id;
     port::CameraCapture capture{};
     capture.has_frame = true;
     capture.marker = port::CameraGeometryMarker::kPhase1Adapted;
-    capture.frame_id = latest->frame_id;
-    capture.capture_time_ms = latest->capture_time_ms;
-    capture.source_width = latest->width;
-    capture.source_height = latest->height;
-    capture.view = frame.View(latest->frame_id, latest->capture_time_ms);
+    capture.frame_id = handle.frame_id;
+    capture.capture_time_ms = handle.capture_time_ms;
+    capture.source_width = handle.width;
+    capture.source_height = handle.height;
+    capture.view = latest->View();
+    capture.pixel_view = latest->PixelView();
     {
         LS2K_PERF_SCOPE(port::PerfStage::kCameraFrameAge);
         (void)capture.capture_time_ms;

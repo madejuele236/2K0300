@@ -27,7 +27,7 @@ struct WheelPidParameters {
     double p = 84.0;             ///< 比例增益
     double i = 2.4;             ///< 积分增益
     double d = 0.75;            ///< 微分增益
-    double integral_limit = 100.0;  ///< 积分项限幅
+    double integral_limit = 5000.0;  ///< 积分项限幅
     double measurement_filter_alpha = 0.4;  ///< 测量值低通滤波系数（0~1，越小越平滑）
 };
 
@@ -87,7 +87,7 @@ struct CameraSourceParameters {
  */
 struct RuntimeParameters {
     // 运动控制参数
-    double running_speed_target = 400.0;  ///< 目标行驶速度（PWM，0~5000）
+    double running_speed_target = 300.0;  ///< 目标行驶速度（PWM，0~5000）
     double yaw_rate_pid_p = 0.0;          ///< 偏航角速率PID比例增益
     double yaw_rate_pid_i = 0.0;          ///< 偏航角速率PID积分增益
     double yaw_rate_pid_d = 0.0;          ///< 偏航角速率PID微分增益
@@ -122,7 +122,7 @@ struct RuntimeParameters {
 
     // 左右轮独立PID
     WheelPidParameters left_wheel_pid{};    ///< 左轮PID参数
-    WheelPidParameters right_wheel_pid{96.0, 2.2, 0.2, 100.0, 0.4};  ///< 右轮PID参数
+    WheelPidParameters right_wheel_pid{96.0, 2.2, 0.2, 5000.0, 0.4};  ///< 右轮PID参数
 
     // 调试与通信
     int control_snapshot_emit_interval_ms = 100;  ///< 控制快照输出间隔（毫秒）
@@ -141,6 +141,7 @@ struct RuntimeParameters {
     BEVProjectorCalibration bev_projector{};             ///< BEV投影器标定参数
     BEVGeometryParameters bev_geometry{};                 ///< BEV几何参数
     BEVClassificationParameters bev_classification{};     ///< BEV分类参数
+    BEVBoundaryParameters bev_boundary{};                 ///< BEV局部边界参数
     BEVControlModelParameters bev_control_model{};        ///< BEV控制模型参数
     BEVElementParameters bev_element{};                   ///< BEV元素检测参数
     ReferenceTimeAlignmentParameters reference_time_alignment{};  ///< 参考时间对齐参数

@@ -35,7 +35,9 @@ STEERING_MEDIA_SOURCES=(
   "${REPO_ROOT}/new/code/safety/control_gate.cpp"
   "${REPO_ROOT}/new/code/safety/control_apply_observation.cpp"
   "${REPO_ROOT}/new/code/control/motion_supervisor.cpp"
+  "${REPO_ROOT}/new/code/runtime/capture/camera_frame_store.cpp"
   "${REPO_ROOT}/new/code/runtime/services/steering_media_service.cpp"
+  "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp"
 )
 
 compile_test_binary() {

@@ -10,6 +10,7 @@
 #define LS2K_PORT_DIAGNOSTICS_HPP
 
 #include <chrono>
+#include <cstdlib>
 #include <cstdint>
 #include <iostream>
 #include <mutex>
@@ -62,6 +63,12 @@ inline uint64_t NowMs() {
 class DiagnosticSink {
 public:
     virtual ~DiagnosticSink() = default;
+    /** @brief 查询某类诊断是否启用；调用方可用它避免构造高成本消息 */
+    virtual bool ShouldEmit(DiagnosticLevel level, const std::string& code) const {
+        (void)level;
+        (void)code;
+        return true;
+    }
     /** @brief 输出一个诊断事件 */
     virtual void Emit(const DiagnosticEvent& event) = 0;
 };
@@ -130,9 +137,39 @@ inline void EmitRateLimited(DiagnosticSink& diagnostics, DiagnosticEvent event, 
  */
 class StdoutDiagnostics final : public DiagnosticSink {
 public:
+    bool ShouldEmit(DiagnosticLevel level, const std::string& code) const override {
+        if (code == "control.snapshot" ||
+            code == "control.steering_snapshot" ||
+            code == "control.steering_internal") {
+            return EnvTruthy("LS2K_LOG_CONTROL_SNAPSHOT");
+        }
+        if (level != DiagnosticLevel::kInfo) {
+            return true;
+        }
+        if (EnvTruthy("LS2K_LOG_VERBOSE")) {
+            return true;
+        }
+        if (code == "perf.summary") {
+            return true;
+        }
+        if (EndsWith(code, ".summary") ||
+            code == "startup.low_voltage.raw" ||
+            code == "control.apply.hold_disarmed") {
+            return EnvTruthy("LS2K_LOG_SUMMARY");
+        }
+        return true;
+    }
+
     /** @brief 输出诊断事件到标准输出/错误 */
     void Emit(const DiagnosticEvent& event) override {
+        if (!ShouldEmit(event.level, event.code)) {
+            return;
+        }
         std::lock_guard<std::mutex> lock(mu_);
+        const bool urgent = event.code == "perf.summary" ||
+                            event.level == DiagnosticLevel::kWarning ||
+                            event.level == DiagnosticLevel::kError ||
+                            event.level == DiagnosticLevel::kFailSafe;
         std::ostream& stream =
             (event.level == DiagnosticLevel::kError || event.level == DiagnosticLevel::kFailSafe)
                 ? std::cerr
@@ -140,7 +177,14 @@ public:
         stream << "[" << LevelString(event.level) << "]"
                << "[" << event.code << "]"
                << "[" << event.timestamp_ms << "] " << event.message << "\n";
-        stream.flush();
+        if (urgent) {
+            std::cout.flush();
+            stream.flush();
+            buffered_info_lines_ = 0;
+        } else if (++buffered_info_lines_ >= kBufferedInfoFlushLines) {
+            stream.flush();
+            buffered_info_lines_ = 0;
+        }
     }
 
     /** @brief 输出 Info 等级诊断信息 */
@@ -164,6 +208,23 @@ public:
     }
 
 private:
+    static constexpr std::uint32_t kBufferedInfoFlushLines = 32U;
+
+    static bool EnvTruthy(const char* key) {
+        const char* value = std::getenv(key);
+        if (value == nullptr) {
+            return false;
+        }
+        return value[0] == '1' || value[0] == 'y' || value[0] == 'Y' ||
+               value[0] == 't' || value[0] == 'T' || value[0] == 'o' || value[0] == 'O';
+    }
+
+    static bool EndsWith(const std::string& text, const char* suffix) {
+        const std::string suffix_text(suffix);
+        return text.size() >= suffix_text.size() &&
+               text.compare(text.size() - suffix_text.size(), suffix_text.size(), suffix_text) == 0;
+    }
+
     /**
      * @brief 诊断等级转字符串
      * @param level 诊断等级
@@ -184,6 +245,7 @@ private:
     }
 
     std::mutex mu_{};  ///< 输出互斥锁
+    std::uint32_t buffered_info_lines_{0};  ///< 普通信息批量刷出计数
 };
 
 }  // namespace ls2k::port

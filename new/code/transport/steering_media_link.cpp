@@ -88,6 +88,23 @@ public:
         }
         return SteeringMediaTransportSendResult::kError;
     }
+
+    SteeringMediaTransportSendResult SendBuffer(std::vector<std::uint8_t>& data,
+                                                std::string& detail) override {
+        switch (::ls2k::platform::true_ls2k0300::SendSteeringMediaBuffer(data, detail)) {
+            case ::ls2k::platform::true_ls2k0300::SteeringMediaBridgeSendResult::kSent:
+                return SteeringMediaTransportSendResult::kSent;
+            case ::ls2k::platform::true_ls2k0300::SteeringMediaBridgeSendResult::kAcceptedInFlight:
+                return SteeringMediaTransportSendResult::kAcceptedInFlight;
+            case ::ls2k::platform::true_ls2k0300::SteeringMediaBridgeSendResult::kBusyRejected:
+                return SteeringMediaTransportSendResult::kBusyRejected;
+            case ::ls2k::platform::true_ls2k0300::SteeringMediaBridgeSendResult::kDisconnected:
+                return SteeringMediaTransportSendResult::kDisconnected;
+            case ::ls2k::platform::true_ls2k0300::SteeringMediaBridgeSendResult::kError:
+                return SteeringMediaTransportSendResult::kError;
+        }
+        return SteeringMediaTransportSendResult::kError;
+    }
 };
 
 /**
@@ -217,7 +234,7 @@ SteeringMediaLinkPollResult SteeringMediaLink::Poll(port::DiagnosticSink& diagno
  * @return 传输发送结果
  */
 SteeringMediaTransportSendResult SteeringMediaLink::PublishEncoded(
-    const std::vector<std::uint8_t>& encoded,
+    std::vector<std::uint8_t>& encoded,
     const char* diagnostic_code,
     port::DiagnosticSink& diagnostics) {
     if (!ready_ || transport_ == nullptr) {
@@ -227,7 +244,7 @@ SteeringMediaTransportSendResult SteeringMediaLink::PublishEncoded(
     SteeringMediaTransportSendResult send_result = SteeringMediaTransportSendResult::kError;
     {
         LS2K_PERF_SCOPE(port::PerfStage::kMediaSend);
-        send_result = transport_->SendBytes(encoded.data(), encoded.size(), detail);
+        send_result = transport_->SendBuffer(encoded, detail);
     }
     if (send_result != SteeringMediaTransportSendResult::kSent &&
         send_result != SteeringMediaTransportSendResult::kAcceptedInFlight &&

@@ -8,7 +8,7 @@ OUT_BIN="${OUT_DIR}/param_store_load_runtime_parameters_test"
 
 CXX_BIN="${CXX:-/opt/ls_2k0300_env/loongson-gnu-toolchain-8.3-x86_64-loongarch64-linux-gnu-rc1.6/bin/loongarch64-linux-gnu-g++}"
 OPENCV_ROOT="${OPENCV_ROOT:-/opt/ls_2k0300_env/opencv_4_10_build}"
-BOARD_IP="${BOARD_IP:-10.100.170.226}"
+BOARD_IP="${BOARD_IP:-192.168.137.110}"
 BOARD_USER="${BOARD_USER:-root}"
 REMOTE_BIN="${REMOTE_BIN:-/home/root/param_store_load_runtime_parameters_test}"
 REMOTE_OPENCV_LIB="${REMOTE_OPENCV_LIB:-/home/root/opencv_4_10_build/lib}"

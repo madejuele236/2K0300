@@ -219,6 +219,7 @@ void AppendCircleV2PointObservationJson(std::ostringstream& stream,
  * @param snapshot 转向快照视图数据
  * @return JSON 格式的快照字符串
  */
+// NOLINTNEXTLINE(readability-function-size)
 std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot) {
     std::ostringstream stream;
     stream << "{";
@@ -378,7 +379,11 @@ std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot)
     stream << ",\"apply_outcome\":";
     AppendJsonString(stream, snapshot.actuator.apply_outcome);
     stream << "}";
-    stream << ",\"threshold\":" << snapshot.threshold;
+    stream << ",\"perception_tag\":";
+    AppendJsonString(stream, snapshot.perception_tag);
+    stream << ",\"boundary_row_count\":" << snapshot.boundary_row_count;
+    stream << ",\"boundary_jump_count\":" << snapshot.boundary_jump_count;
+    stream << ",\"boundary_span_count\":" << snapshot.boundary_span_count;
     stream << "}";
     return stream.str();
 }
@@ -506,6 +511,7 @@ bool ValidateSteeringMediaImagePayload(int width,
  * @param error 输出参数，编码失败时的错误描述
  * @return true 表示编码成功
  */
+// NOLINTNEXTLINE(readability-function-size)
 bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapshot,
                                        std::vector<std::uint8_t>& encoded,
                                        std::string& error) {
@@ -585,6 +591,10 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"HOLD_LAST_MAX_CYCLES\":"
            << snapshot.param_snapshot.bev_classification.hold_last_max_cycles;
     header << "}";
+    header << ",\"BEV_BOUNDARY\":{";
+    header << "\"LOCAL_JUMP_MIN_Y\":"
+           << snapshot.param_snapshot.bev_boundary.local_jump_min_y;
+    header << "}";
     header << ",\"BEV_CONTROL_MODEL\":{";
     header << "\"LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN\":";
     AppendJsonNumber(header,
@@ -603,8 +613,6 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"BEV_ELEMENT\":{";
     header << "\"CROSS_EXIT_TAKEOVER_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.cross_exit_takeover_enabled);
-    header << ",\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\":";
-    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.cross_wide_row_white_ratio_min);
     header << ",\"CIRCLE_V2_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.circle_v2_enabled);
     header << ",\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":";

@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <string>
 
+#include "port/numeric_parse.hpp"
+
 namespace ls2k::platform {
 namespace {
 
@@ -23,12 +25,9 @@ int ReadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, 
     if (value == nullptr || value[0] == '\0') {
         return 0;
     }
-    try {
-        const int parsed = std::stoi(value);
-        if (parsed > 0) {
-            return parsed;
-        }
-    } catch (...) {
+    const std::optional<int> parsed = port::ParsePositiveIntStrict(value);
+    if (parsed.has_value()) {
+        return *parsed;
     }
     port::EmitRateLimited(diagnostics,
                           {port::DiagnosticLevel::kWarning,

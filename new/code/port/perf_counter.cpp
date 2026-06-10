@@ -14,6 +14,8 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <functional>
 #include <sstream>
 #include <thread>
 
@@ -32,6 +34,18 @@ struct PerfStageCounters {
     std::atomic<std::uint64_t> window_total_us{0};    ///< 窗口内总耗时（微秒）
     std::atomic<std::uint64_t> window_max_us{0};      ///< 窗口内最大单次耗时（微秒）
     std::atomic<std::uint64_t> last_us{0};            ///< 最近一次耗时（微秒）
+    std::atomic<std::uint64_t> window_max_event{0};   ///< 窗口最大耗时对应的事件序号
+    std::atomic<std::uint64_t> window_max_thread{0};  ///< 窗口最大耗时对应的线程指纹
+};
+
+struct PerfWindowSnapshot {
+    PerfStage stage{PerfStage::kCount};
+    std::uint64_t count{0};
+    std::uint64_t total_us{0};
+    std::uint64_t max_us{0};
+    std::uint64_t last_us{0};
+    std::uint64_t max_event{0};
+    std::uint64_t max_thread{0};
 };
 
 constexpr std::size_t kPerfStageCount = static_cast<std::size_t>(PerfStage::kCount);  ///< 性能阶段总数
@@ -41,6 +55,20 @@ std::atomic<bool> g_initialized{false};           ///< 是否已初始化
 std::atomic<bool> g_enabled{false};               ///< 是否已启用
 std::atomic<bool> g_uses_arch_counter{false};     ///< 是否使用硬件周期计数器
 std::atomic<std::uint64_t> g_ticks_per_us_x1000{1000000};  ///< 每微秒计数周期数（x1000）
+std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
+
+[[maybe_unused]] std::uint64_t CurrentThreadFingerprint() {
+    return static_cast<std::uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+}
+
+[[maybe_unused]] bool EnvTruthy(const char* key) {
+    const char* value = std::getenv(key);
+    if (value == nullptr) {
+        return false;
+    }
+    return value[0] == '1' || value[0] == 'y' || value[0] == 'Y' ||
+           value[0] == 't' || value[0] == 'T' || value[0] == 'o' || value[0] == 'O';
+}
 
 /**
  * @brief 性能阶段枚举转字符串
@@ -51,6 +79,10 @@ std::atomic<std::uint64_t> g_ticks_per_us_x1000{1000000};  ///< 每微秒计数�
     switch (stage) {
         case PerfStage::kMainLoop:
             return "main.loop";
+        case PerfStage::kMainSleep:
+            return "main.sleep";
+        case PerfStage::kLowVoltageSample:
+            return "low_voltage.sample";
         case PerfStage::kPerceptionFrame:
             return "perception.frame";
         case PerfStage::kCameraCapture:
@@ -145,6 +177,43 @@ std::atomic<std::uint64_t> g_ticks_per_us_x1000{1000000};  ///< 每微秒计数�
             break;
     }
     return "unknown";
+}
+
+[[maybe_unused]] bool CompactPerfStage(PerfStage stage) {
+    switch (stage) {
+        case PerfStage::kMainLoop:
+        case PerfStage::kPerceptionFrame:
+        case PerfStage::kControlTick:
+        case PerfStage::kSteeringMediaTick:
+            return true;
+        default:
+            return false;
+    }
+}
+
+[[maybe_unused]] bool SummaryWorstStage(PerfStage stage) {
+    switch (stage) {
+        case PerfStage::kCameraCapture:
+        case PerfStage::kCameraV4l2Poll:
+        case PerfStage::kMainSleep:
+            return false;
+        default:
+            return true;
+    }
+}
+
+[[maybe_unused]] std::string FormatPerfWindowMessage(const PerfWindowSnapshot& snapshot) {
+    std::ostringstream message;
+    message << "stage=" << StageName(snapshot.stage)
+            << " count=" << snapshot.count
+            << " avg_us=" << (snapshot.total_us / snapshot.count)
+            << " max_us=" << snapshot.max_us
+            << " last_us=" << snapshot.last_us
+            << " max_event=" << snapshot.max_event
+            << " max_thread=" << snapshot.max_thread
+            << " arch_counter=" << (PerfCounterUsesArchCounter() ? "true" : "false")
+            << " ticks_per_us_x1000=" << PerfTicksPerUsX1000();
+    return message.str();
 }
 
 /**
@@ -271,6 +340,8 @@ void RecordPerfStage(PerfStage stage, std::uint64_t elapsed_ticks) {
         return;
     }
     const std::uint64_t elapsed_us = PerfTicksToUs(elapsed_ticks);
+    const std::uint64_t event_sequence =
+        g_event_sequence.fetch_add(1U, std::memory_order_relaxed) + 1U;
     PerfStageCounters& counters = g_counters[index];
     counters.window_count.fetch_add(1U, std::memory_order_relaxed);
     counters.window_total_us.fetch_add(elapsed_us, std::memory_order_relaxed);
@@ -283,6 +354,10 @@ void RecordPerfStage(PerfStage stage, std::uint64_t elapsed_ticks) {
                                                          std::memory_order_relaxed,
                                                          std::memory_order_relaxed)) {
     }
+    if (elapsed_us >= current_max) {
+        counters.window_max_event.store(event_sequence, std::memory_order_relaxed);
+        counters.window_max_thread.store(CurrentThreadFingerprint(), std::memory_order_relaxed);
+    }
 #else
     (void)stage;
     (void)elapsed_ticks;
@@ -294,6 +369,15 @@ void EmitPerfWindowDiagnostics(DiagnosticSink& diagnostics, std::uint64_t now_ms
     if (!PerfCounterEnabled()) {
         return;
     }
+    const bool verbose = EnvTruthy("LS2K_PERF_VERBOSE");
+    std::array<PerfWindowSnapshot, kPerfStageCount> snapshots{};
+    std::size_t snapshot_count = 0;
+    const PerfWindowSnapshot* worst_snapshot = nullptr;
+    const PerfWindowSnapshot* main_snapshot = nullptr;
+    const PerfWindowSnapshot* control_snapshot = nullptr;
+    const PerfWindowSnapshot* perception_snapshot = nullptr;
+    const PerfWindowSnapshot* media_snapshot = nullptr;
+
     for (std::size_t index = 0; index < kPerfStageCount; ++index) {
         PerfStageCounters& counters = g_counters[index];
         // 原子读取并重置窗口计数器
@@ -301,18 +385,70 @@ void EmitPerfWindowDiagnostics(DiagnosticSink& diagnostics, std::uint64_t now_ms
         const std::uint64_t total_us = counters.window_total_us.exchange(0U, std::memory_order_relaxed);
         const std::uint64_t max_us = counters.window_max_us.exchange(0U, std::memory_order_relaxed);
         const std::uint64_t last_us = counters.last_us.load(std::memory_order_relaxed);
+        const std::uint64_t max_event =
+            counters.window_max_event.exchange(0U, std::memory_order_relaxed);
+        const std::uint64_t max_thread =
+            counters.window_max_thread.exchange(0U, std::memory_order_relaxed);
         if (count == 0U) {
             continue;
         }
+
+        PerfWindowSnapshot& snapshot = snapshots[snapshot_count++];
+        snapshot.stage = static_cast<PerfStage>(index);
+        snapshot.count = count;
+        snapshot.total_us = total_us;
+        snapshot.max_us = max_us;
+        snapshot.last_us = last_us;
+        snapshot.max_event = max_event;
+        snapshot.max_thread = max_thread;
+
+        if (SummaryWorstStage(snapshot.stage) &&
+            (worst_snapshot == nullptr || snapshot.max_us > worst_snapshot->max_us)) {
+            worst_snapshot = &snapshot;
+        }
+        if (snapshot.stage == PerfStage::kMainLoop) {
+            main_snapshot = &snapshot;
+        } else if (snapshot.stage == PerfStage::kControlTick) {
+            control_snapshot = &snapshot;
+        } else if (snapshot.stage == PerfStage::kPerceptionFrame) {
+            perception_snapshot = &snapshot;
+        } else if (snapshot.stage == PerfStage::kSteeringMediaTick) {
+            media_snapshot = &snapshot;
+        }
+    }
+
+    for (std::size_t index = 0; index < snapshot_count; ++index) {
+        const PerfWindowSnapshot& snapshot = snapshots[index];
+        if (!verbose) {
+            continue;
+        }
+        diagnostics.Emit({DiagnosticLevel::kInfo,
+                          "perf.window",
+                          FormatPerfWindowMessage(snapshot),
+                          now_ms});
+    }
+
+    if (!verbose && worst_snapshot != nullptr) {
         std::ostringstream message;
-        message << "stage=" << StageName(static_cast<PerfStage>(index))
-                << " count=" << count
-                << " avg_us=" << (total_us / count)
-                << " max_us=" << max_us
-                << " last_us=" << last_us
-                << " arch_counter=" << (PerfCounterUsesArchCounter() ? "true" : "false")
+        message << "worst_stage=" << StageName(worst_snapshot->stage)
+                << " worst_max_us=" << worst_snapshot->max_us
+                << " worst_event=" << worst_snapshot->max_event
+                << " worst_thread=" << worst_snapshot->max_thread;
+        if (main_snapshot != nullptr) {
+            message << " main_max_us=" << main_snapshot->max_us;
+        }
+        if (control_snapshot != nullptr) {
+            message << " control_max_us=" << control_snapshot->max_us;
+        }
+        if (perception_snapshot != nullptr) {
+            message << " perception_max_us=" << perception_snapshot->max_us;
+        }
+        if (media_snapshot != nullptr) {
+            message << " media_max_us=" << media_snapshot->max_us;
+        }
+        message << " arch_counter=" << (PerfCounterUsesArchCounter() ? "true" : "false")
                 << " ticks_per_us_x1000=" << PerfTicksPerUsX1000();
-        diagnostics.Emit({DiagnosticLevel::kInfo, "perf.window", message.str(), now_ms});
+        diagnostics.Emit({DiagnosticLevel::kInfo, "perf.summary", message.str(), now_ms});
     }
 #else
     (void)diagnostics;

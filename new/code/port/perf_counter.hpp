@@ -34,6 +34,8 @@ namespace ls2k::port {
  */
 enum class PerfStage : std::size_t {
     kMainLoop = 0,          ///< 主循环总体计时
+    kMainSleep,             ///< 主循环节流睡眠/唤醒
+    kLowVoltageSample,      ///< 低电压采样
     kPerceptionFrame,       ///< 感知帧处理
     kCameraCapture,         ///< 相机采集
     kCameraFrameMaterialize, ///< 相机帧物化到共享槽

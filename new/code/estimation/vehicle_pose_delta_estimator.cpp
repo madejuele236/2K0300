@@ -37,6 +37,7 @@ bool LatestUsableCommand(const port::ControlCommandHistory& history,
     return false;
 }
 
+// NOLINTNEXTLINE(readability-function-size): single-pass integration window; splitting would hide the temporal state machine.
 bool IntegrateMeasuredWindow(uint64_t start_ms,
                              uint64_t end_ms,
                              const port::MotionHistory& history,

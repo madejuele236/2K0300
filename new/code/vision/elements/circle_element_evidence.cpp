@@ -1,8 +1,6 @@
 #include "vision/elements/circle_element_evidence.hpp"
 
 #include "vision/bev/bev_element_raster.hpp"
-#include "vision/bev/bev_interval_edges.hpp"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -31,7 +29,7 @@ struct Phase1CircleCueParameters {
 
 constexpr Phase1CircleCueParameters kPhase1CircleCueParams{};
 
-/// 行观测数据，记录栅格中一行的白色连通区间和各类像素统计
+/// 行观测数据，记录 V9 boundary span 和边界事实统计
 struct RowObservation {
     int y = 0;                   ///< 栅格行索引
     int first_x = -1;            ///< 最佳白色区间的起始列
@@ -40,9 +38,8 @@ struct RowObservation {
     float left_m = 0.0F;         ///< 区间左边界横向坐标（米）
     float right_m = 0.0F;        ///< 区间右边界横向坐标（米）
     std::size_t sampleable_count = 0; ///< 可采样的栅格单元数
-    std::size_t white_count = 0;      ///< 白色单元计数
-    std::size_t black_count = 0;      ///< 黑色单元计数
-    std::size_t unknown_count = 0;    ///< 不确定单元计数
+    std::size_t boundary_jump_count = 0; ///< V9 边界跳变数量
+    std::size_t boundary_span_count = 0; ///< V9 边界 span 数量
 };
 
 /// 两侧开口/直线/收缩的综合评估结果
@@ -94,9 +91,8 @@ port::VisualElementEvidenceRecord MakeRecord(const char* id, const char* reason)
 /// 将一行的统计值累加到证据记录的support字段中
 void AddSupport(port::VisualElementEvidenceRecord& record, const RowObservation& row) {
     record.support.sampleable_count += row.sampleable_count;
-    record.support.supporting_white_count += row.white_count;
-    record.support.supporting_black_count += row.black_count;
-    record.support.unknown_count += row.unknown_count;
+    record.support.boundary_jump_count += row.boundary_jump_count;
+    record.support.boundary_span_count += row.boundary_span_count;
 }
 
 /// 将行观测的边界扩展到证据记录的bounds字段
@@ -117,34 +113,25 @@ void AddBounds(port::VisualElementEvidenceRecord& record,
     record.bounds.lateral_max_m = std::max(record.bounds.lateral_max_m, row.right_m);
 }
 
-bool IntervalSupportsTwoEdgeObservation(
-    const BEVSimpleRowScan& scan,
-    const BEVSimpleWhiteInterval& interval,
-    const BEVIntervalEdgeVisibilityOptions& edge_options) {
-    const BEVIntervalEdgeVisibility visibility =
-        EvaluateIntervalEdgeVisibility(scan, interval, edge_options);
-    return visibility.low_visible && visibility.high_visible;
-}
-
-/// 选择一行中最宽、且两侧边界都实际可见的白色区间。
-const BEVSimpleWhiteInterval* WidestTwoEdgeInterval(const BEVSimpleRowScan& scan) {
-    BEVIntervalEdgeVisibilityOptions edge_options{};
-    edge_options.treat_unknown_sampleable_edge_as_boundary = true;
-    const BEVSimpleWhiteInterval* best = nullptr;
-    for (const BEVSimpleWhiteInterval& interval : scan.intervals) {
-        if (!IntervalSupportsTwoEdgeObservation(scan, interval, edge_options)) {
+/// 选择一行中最宽的 V9 boundary span。
+const BEVBoundarySpan* WidestBoundarySpan(const BEVSimpleRowScan& scan) {
+    const BEVBoundarySpan* best = nullptr;
+    for (const BEVBoundarySpan& span : scan.spans) {
+        if (!std::isfinite(span.left_m) ||
+            !std::isfinite(span.right_m) ||
+            span.right_m < span.left_m) {
             continue;
         }
-        if (best == nullptr || interval.width_m > best->width_m) {
-            best = &interval;
+        if (best == nullptr || span.width_m > best->width_m) {
+            best = &span;
         }
     }
     return best;
 }
 
 /// 从 sparse row fact 构建行观测数据
-/// 找出该行中最宽白色区间，并记录其左右边界和各类统计
-/// @return 是否成功找到有效的白色区间
+/// 找出该行中最宽 boundary span，并记录其左右边界和边界统计
+/// @return 是否成功找到有效的 boundary span
 bool BuildRowObservation(const BEVSimpleRowScan& scan,
                          int min_sampleable_per_row,
                          RowObservation& row) {
@@ -152,20 +139,19 @@ bool BuildRowObservation(const BEVSimpleRowScan& scan,
         scan.sampleable_count < static_cast<std::size_t>(std::max(1, min_sampleable_per_row))) {
         return false;
     }
-    const BEVSimpleWhiteInterval* interval = WidestTwoEdgeInterval(scan);
-    if (interval == nullptr || interval->right_m < interval->left_m) {
+    const BEVBoundarySpan* span = WidestBoundarySpan(scan);
+    if (span == nullptr || span->right_m < span->left_m) {
         return false;
     }
     row.y = scan.row_px;
-    row.first_x = interval->left_px;
-    row.last_x = interval->right_px;
+    row.first_x = span->left_lateral_index;
+    row.last_x = span->right_lateral_index;
     row.forward_m = scan.forward_m;
-    row.left_m = interval->left_m;
-    row.right_m = interval->right_m;
+    row.left_m = span->left_m;
+    row.right_m = span->right_m;
     row.sampleable_count = scan.sampleable_count;
-    row.white_count = scan.white_count;
-    row.black_count = scan.black_count;
-    row.unknown_count = scan.unknown_count;
+    row.boundary_jump_count = scan.jumps.size();
+    row.boundary_span_count = scan.spans.size();
     return true;
 }
 
@@ -206,28 +192,23 @@ std::vector<BEVSimpleRowScan> BuildSparseRowsFromRasterForCompatibility(
         row.row_px = y;
         row.forward_m = raster.CellToMetric(raster.width / 2, y).forward_m;
         bool have_sampleable = false;
-        bool left_unknown_prefix_active = true;
-        bool left_unknown_prefix_seen = false;
-        float left_unknown_prefix_right_m = 0.0F;
-        bool right_unknown_suffix_active = false;
-        float right_unknown_suffix_left_m = 0.0F;
         int current_first = -1;
         int current_last = -1;
-        const auto finish_interval = [&]() {
+        const auto finish_span = [&]() {
             if (current_first < 0 || current_last < current_first) {
                 return;
             }
             const float left_m = raster.CellToMetric(current_first, y).lateral_m;
             const float right_m = raster.CellToMetric(current_last, y).lateral_m;
-            BEVSimpleWhiteInterval interval{};
-            interval.forward_m = row.forward_m;
-            interval.left_m = std::min(left_m, right_m);
-            interval.right_m = std::max(left_m, right_m);
-            interval.center_m = 0.5F * (interval.left_m + interval.right_m);
-            interval.width_m = interval.right_m - interval.left_m;
-            interval.left_px = current_first;
-            interval.right_px = current_last;
-            row.intervals.push_back(interval);
+            BEVBoundarySpan span{};
+            span.forward_m = row.forward_m;
+            span.left_m = std::min(left_m, right_m);
+            span.right_m = std::max(left_m, right_m);
+            span.center_m = 0.5F * (span.left_m + span.right_m);
+            span.width_m = span.right_m - span.left_m;
+            span.left_lateral_index = current_first;
+            span.right_lateral_index = current_last;
+            row.spans.push_back(span);
             current_first = -1;
             current_last = -1;
         };
@@ -239,7 +220,7 @@ std::vector<BEVSimpleRowScan> BuildSparseRowsFromRasterForCompatibility(
                 raster.projection_states[index] ==
                     port::BEVElementRasterProjectionState::kSampleable;
             if (!sampleable) {
-                finish_interval();
+                finish_span();
                 ++row.unavailable_count;
                 continue;
             }
@@ -254,55 +235,24 @@ std::vector<BEVSimpleRowScan> BuildSparseRowsFromRasterForCompatibility(
                 row.sampleable_right_m = std::max(row.sampleable_right_m, lateral);
             }
             ++row.sampleable_count;
-            if (left_unknown_prefix_active) {
-                if (cell_class == port::BEVElementRasterCellClass::kUnknown) {
-                    left_unknown_prefix_seen = true;
-                    left_unknown_prefix_right_m = lateral;
-                } else {
-                    left_unknown_prefix_active = false;
-                }
-            }
-            if (cell_class == port::BEVElementRasterCellClass::kUnknown) {
-                if (!right_unknown_suffix_active) {
-                    right_unknown_suffix_left_m = lateral;
-                }
-                right_unknown_suffix_active = true;
-            } else {
-                right_unknown_suffix_active = false;
-            }
             switch (cell_class) {
                 case port::BEVElementRasterCellClass::kWhite:
-                    ++row.white_count;
                     if (current_first < 0) {
                         current_first = x;
                     }
                     current_last = x;
                     break;
                 case port::BEVElementRasterCellClass::kBlack:
-                    finish_interval();
-                    ++row.black_count;
-                    break;
                 case port::BEVElementRasterCellClass::kUnknown:
-                    finish_interval();
-                    ++row.unknown_count;
-                    break;
                 case port::BEVElementRasterCellClass::kInvalid:
-                    finish_interval();
+                    finish_span();
                     break;
             }
         }
-        finish_interval();
+        finish_span();
         row.sampleable_width_m = have_sampleable
                                      ? row.sampleable_right_m - row.sampleable_left_m
                                      : 0.0F;
-        if (left_unknown_prefix_seen) {
-            row.sampleable_left_unknown_run = true;
-            row.sampleable_left_unknown_run_right_m = left_unknown_prefix_right_m;
-        }
-        if (right_unknown_suffix_active) {
-            row.sampleable_right_unknown_run = true;
-            row.sampleable_right_unknown_run_left_m = right_unknown_suffix_left_m;
-        }
         rows.push_back(row);
     }
     std::sort(rows.begin(), rows.end(), [](const BEVSimpleRowScan& lhs,

@@ -17,11 +17,11 @@
 #include "vision/image/otsu_threshold.hpp"
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_continuity.hpp"
-#include "vision/bev/reference_connectivity.hpp"
 #include "reference/reference_lateral_error.hpp"
 #include "reference/reference_tracking_geometry.hpp"
 #include "reference/reference_usability.hpp"
 #include "control/steering_yaw_controller.hpp"
+#include "port/numeric_parse.hpp"
 #include "vision/elements/visual_element_pipeline.hpp"
 #include "reference/visual_reference_orchestration.hpp"
 #include "port/perception_result.hpp"
@@ -90,8 +90,7 @@ bool ProbeFiniteInClosedRange(float value, float min_value, float max_value) {
 }
 
 bool ValidProbeBEVElementParameters(const ls2k::port::BEVElementParameters& params) {
-    return ProbeFiniteInClosedRange(params.cross_wide_row_white_ratio_min, 0.0F, 1.0F) &&
-           ProbeFiniteInClosedRange(params.circle_v2_exit_yaw_threshold_deg, 1.0F, 720.0F) &&
+    return ProbeFiniteInClosedRange(params.circle_v2_exit_yaw_threshold_deg, 1.0F, 720.0F) &&
            params.circle_v2_exit_hold_frames >= 2 &&
            params.circle_v2_inner_trace_stall_timeout_ms >= 1 &&
            ProbeFiniteInClosedRange(params.circle_v2_inner_trace_stall_yaw_min_deg, 0.0F, 720.0F) &&
@@ -579,10 +578,6 @@ void LoadRuntimeParamsJson(const std::string& path, RuntimeParameters& params) {
                             "CROSS_EXIT_TAKEOVER_ENABLED",
                             params.bev_element.cross_exit_takeover_enabled,
                             element_malformed);
-        ReadStrictFloatField(block,
-                             "CROSS_WIDE_ROW_WHITE_RATIO_MIN",
-                             params.bev_element.cross_wide_row_white_ratio_min,
-                             element_malformed);
         ReadStrictBoolField(block,
                             "CIRCLE_V2_ENABLED",
                             params.bev_element.circle_v2_enabled,
@@ -774,13 +769,13 @@ void DrawBevPanel(RgbImage& image,
     }
 
     for (const ls2k::vision::BEVSimpleRowScan& row : simple.rows) {
-        for (const ls2k::vision::BEVSimpleWhiteInterval& interval : row.intervals) {
+        for (const ls2k::vision::BEVBoundarySpan& span : row.spans) {
             int x0 = 0;
             int y0 = 0;
             int x1 = 0;
             int y1 = 0;
-            ProjectBevToPanel(bev, {interval.forward_m, interval.left_m}, panel_x, panel_y, x0, y0);
-            ProjectBevToPanel(bev, {interval.forward_m, interval.right_m}, panel_x, panel_y, x1, y1);
+            ProjectBevToPanel(bev, {span.forward_m, span.left_m}, panel_x, panel_y, x0, y0);
+            ProjectBevToPanel(bev, {span.forward_m, span.right_m}, panel_x, panel_y, x1, y1);
             DrawLine(image, x0, y0, x1, y1, Color{42, 190, 210});
         }
     }
@@ -831,10 +826,12 @@ void PrintSimpleDiagnostics(const BEVSimpleImage& bev,
               << pipeline.element_evidence.cross_exit.lateral_max_m
               << " element_evidence.cross_exit.sampleable_count="
               << pipeline.element_evidence.cross_exit.sampleable_count
-              << " element_evidence.cross_exit.supporting_white_count="
-              << pipeline.element_evidence.cross_exit.supporting_white_count
-              << " element_evidence.cross_exit.unknown_count="
-              << pipeline.element_evidence.cross_exit.unknown_count
+              << " element_evidence.cross_exit.boundary_jump_count="
+              << pipeline.element_evidence.cross_exit.boundary_jump_count
+              << " element_evidence.cross_exit.boundary_span_count="
+              << pipeline.element_evidence.cross_exit.boundary_span_count
+              << " element_evidence.cross_exit.boundary_absent_row_count="
+              << pipeline.element_evidence.cross_exit.boundary_absent_row_count
               << " element_evidence.cross_exit.reason="
               << pipeline.element_evidence.cross_exit.reason
               << " element_evidence.cross_exit.candidate.built="
@@ -914,12 +911,10 @@ void PrintSimpleDiagnostics(const BEVSimpleImage& bev,
                   << record.bounds.lateral_max_m
                   << " element_evidence.records[" << index << "].support.sampleable_count="
                   << record.support.sampleable_count
-                  << " element_evidence.records[" << index << "].support.supporting_white_count="
-                  << record.support.supporting_white_count
-                  << " element_evidence.records[" << index << "].support.supporting_black_count="
-                  << record.support.supporting_black_count
-                  << " element_evidence.records[" << index << "].support.unknown_count="
-                  << record.support.unknown_count
+                  << " element_evidence.records[" << index << "].support.boundary_jump_count="
+                  << record.support.boundary_jump_count
+                  << " element_evidence.records[" << index << "].support.boundary_span_count="
+                  << record.support.boundary_span_count
                   << " element_evidence.records[" << index << "].candidate.built="
                   << BoolToken(record.candidate.built)
                   << " element_evidence.records[" << index << "].candidate.takeover_enabled="
@@ -967,15 +962,15 @@ void PrintSimpleDiagnostics(const BEVSimpleImage& bev,
     }
     for (std::size_t row_index = 0; row_index < simple.rows.size(); ++row_index) {
         const auto& row = simple.rows[row_index];
-        for (std::size_t interval_index = 0; interval_index < row.intervals.size(); ++interval_index) {
-            const auto& interval = row.intervals[interval_index];
-            std::cout << "row_interval row=" << row_index
-                      << " interval=" << interval_index
-                      << " forward_m=" << interval.forward_m
-                      << " left_m=" << interval.left_m
-                      << " right_m=" << interval.right_m
-                      << " center_m=" << interval.center_m
-                      << " width_m=" << interval.width_m
+        for (std::size_t span_index = 0; span_index < row.spans.size(); ++span_index) {
+            const auto& span = row.spans[span_index];
+            std::cout << "row_span row=" << row_index
+                      << " span=" << span_index
+                      << " forward_m=" << span.forward_m
+                      << " left_m=" << span.left_m
+                      << " right_m=" << span.right_m
+                      << " center_m=" << span.center_m
+                      << " width_m=" << span.width_m
                       << "\n";
         }
     }
@@ -994,8 +989,8 @@ ProbePipelineResult RunProbePipeline(const LegacyCameraFrameView& frame_view,
         ls2k::vision::MakeBEVPixelClassificationModel(otsu_result,
                                                       params.bev_classification);
     result.threshold = result.classification_model.threshold;
-    result.simple = ls2k::vision::RunBEVSimplePerception(frame_view,
-                                                         result.classification_model,
+    result.simple = ls2k::vision::RunBEVSimplePerception(
+                                                         ls2k::port::MakeCameraPixelFrameView(frame_view),
                                                          params,
                                                          projector,
                                                          &lut);
@@ -1042,25 +1037,13 @@ ProbePipelineResult RunProbePipeline(const LegacyCameraFrameView& frame_view,
     std::vector<ls2k::port::VisualReferenceCandidate> candidates;
     candidates.reserve(1U + element_result.candidates.size() +
                        (circle_candidate.has_value() ? 1U : 0U));
-    const ls2k::vision::ReferenceConnectivityFrameView connectivity_frame{
-        frame_view,
-        projector,
-        result.classification_model,
-        params.bev_classification,
-    };
-    ls2k::vision::AppendConnectedVisualReferenceCandidate(connectivity_frame,
-                                                          line_candidate,
-                                                          candidates);
+    candidates.push_back(line_candidate);
     for (const ls2k::port::VisualReferenceCandidate& candidate :
          element_result.candidates) {
-        ls2k::vision::AppendConnectedVisualReferenceCandidate(connectivity_frame,
-                                                              candidate,
-                                                              candidates);
+        candidates.push_back(candidate);
     }
     if (circle_candidate.has_value()) {
-        ls2k::vision::AppendConnectedVisualReferenceCandidate(connectivity_frame,
-                                                              *circle_candidate,
-                                                              candidates);
+        candidates.push_back(*circle_candidate);
     }
     result.visual_selection = ls2k::reference::SelectVisualReference(candidates);
     const ls2k::port::ReferenceUsability current_usability =
@@ -1148,7 +1131,12 @@ int main(int argc, char** argv) {
                 if (arg_index + 1 >= argc) {
                     throw std::runtime_error("--confirm-cycles requires a count");
                 }
-                confirm_cycles = std::max(1, std::stoi(argv[++arg_index]));
+                const std::string count_text = argv[++arg_index];
+                const std::optional<int> parsed_count = ls2k::port::ParsePositiveIntStrict(count_text);
+                if (!parsed_count.has_value()) {
+                    throw std::runtime_error("--confirm-cycles requires a positive integer");
+                }
+                confirm_cycles = *parsed_count;
             } else {
                 params_path = arg;
             }

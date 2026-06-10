@@ -105,8 +105,9 @@ inline void AppendCrossExitJson(std::ostream& stream,
     stream << ",\"lateral_max_m\":";
     AppendJsonNumber(stream, cross_exit.lateral_max_m);
     stream << ",\"sampleable_count\":" << cross_exit.sampleable_count;
-    stream << ",\"supporting_white_count\":" << cross_exit.supporting_white_count;
-    stream << ",\"unknown_count\":" << cross_exit.unknown_count;
+    stream << ",\"boundary_jump_count\":" << cross_exit.boundary_jump_count;
+    stream << ",\"boundary_span_count\":" << cross_exit.boundary_span_count;
+    stream << ",\"boundary_absent_row_count\":" << cross_exit.boundary_absent_row_count;
     stream << ",\"reason\":";
     AppendJsonString(stream, cross_exit.reason);
     stream << ",\"candidate\":";
@@ -138,9 +139,8 @@ inline void AppendRecordJson(std::ostream& stream,
     stream << ",\"lateral_max_m\":";
     AppendJsonNumber(stream, record.bounds.lateral_max_m);
     stream << "},\"support\":{\"sampleable_count\":" << record.support.sampleable_count;
-    stream << ",\"supporting_white_count\":" << record.support.supporting_white_count;
-    stream << ",\"supporting_black_count\":" << record.support.supporting_black_count;
-    stream << ",\"unknown_count\":" << record.support.unknown_count;
+    stream << ",\"boundary_jump_count\":" << record.support.boundary_jump_count;
+    stream << ",\"boundary_span_count\":" << record.support.boundary_span_count;
     stream << "},\"candidate\":";
     AppendCandidateJson(stream, record.candidate);
     stream << "}";

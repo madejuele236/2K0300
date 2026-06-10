@@ -1,6 +1,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -10,7 +11,9 @@
 #include "platform/bootstrap.hpp"
 #include "control/motion_types.hpp"
 #include "port/diagnostics.hpp"
+#include "port/numeric_parse.hpp"
 #include "port/perf_counter.hpp"
+#include "port/thread_scheduling.hpp"
 #include "runtime/services/assistant_service.hpp"
 #include "runtime/capture/camera_capture_worker.hpp"
 #include "runtime/capture/camera_frame_store.hpp"
@@ -27,17 +30,14 @@ volatile std::sig_atomic_t g_exit_signal = 0;
 volatile std::sig_atomic_t g_force_exit_signal = 0;
 volatile std::sig_atomic_t g_start_signal = 0;
 volatile std::sig_atomic_t g_reset_signal = 0;
+volatile std::sig_atomic_t g_perf_dump_signal = 0;
 
 int ReadIntEnv(const char* key, int fallback) {
     const char* value = std::getenv(key);
     if (value == nullptr) {
         return fallback;
     }
-    try {
-        return std::stoi(value);
-    } catch (...) {
-        return fallback;
-    }
+    return ls2k::port::ParseIntStrict(value).value_or(fallback);
 }
 
 std::string ReadStringEnv(const char* key, const char* fallback) {
@@ -93,6 +93,10 @@ void HandleResetSignal(int) {
     g_reset_signal = 1;
 }
 
+void HandlePerfDumpSignal(int) {
+    g_perf_dump_signal = 1;
+}
+
 AutomationConfig LoadAutomationConfig() {
     AutomationConfig config{};
     config.auto_start = ReadBoolEnv("LS2K_AUTO_START").value_or(false);
@@ -113,7 +117,7 @@ MotionSnapshot ReadMotionSnapshot(ls2k::runtime::RuntimeState& state) {
 }
 
 void RequestStart(ls2k::runtime::RuntimeState& state,
-                  ls2k::port::DiagnosticSink& diagnostics,
+                  ls2k::port::StdoutDiagnostics& diagnostics,
                   const std::string& source) {
     bool changed = false;
     {
@@ -133,7 +137,7 @@ void RequestStart(ls2k::runtime::RuntimeState& state,
 }
 
 void RequestControlledStop(ls2k::runtime::RuntimeState& state,
-                           ls2k::port::DiagnosticSink& diagnostics,
+                           ls2k::port::StdoutDiagnostics& diagnostics,
                            const std::string& source) {
     bool changed = false;
     {
@@ -154,7 +158,7 @@ void RequestControlledStop(ls2k::runtime::RuntimeState& state,
 }
 
 void RequestFaultReset(ls2k::runtime::RuntimeState& state,
-                       ls2k::port::DiagnosticSink& diagnostics,
+                       ls2k::port::StdoutDiagnostics& diagnostics,
                        const std::string& source) {
     bool accepted = false;
     bool already_pending = false;
@@ -182,7 +186,7 @@ void RequestFaultReset(ls2k::runtime::RuntimeState& state,
                       ls2k::port::NowMs()});
 }
 
-void EmitHarnessContext(ls2k::port::DiagnosticSink& diagnostics, const AutomationConfig& config) {
+void EmitHarnessContext(ls2k::port::StdoutDiagnostics& diagnostics, const AutomationConfig& config) {
     std::ostringstream summary;
     summary << "automation_context auto_start=" << (config.auto_start ? "true" : "false")
             << " auto_start_delay_ms=" << config.auto_start_delay_ms
@@ -197,7 +201,7 @@ void EmitHarnessContext(ls2k::port::DiagnosticSink& diagnostics, const Automatio
 
 bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
                       ls2k::runtime::RuntimeState& runtime_state,
-                      ls2k::port::DiagnosticSink& diagnostics) {
+                      ls2k::port::StdoutDiagnostics& diagnostics) {
     const int pulse_ms = ReadIntEnv("LS2K_BENCH_PWM_MS", 0);
     if (pulse_ms <= 0) {
         return false;
@@ -289,23 +293,29 @@ bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
     return true;
 }
 
-}  // namespace
-
-int main() {
+void InstallSignalHandlers() {
     std::signal(SIGPIPE, SIG_IGN);
     std::signal(SIGINT, HandleExitSignal);
     std::signal(SIGTERM, HandleForceExitSignal);
     std::signal(SIGUSR1, HandleResetSignal);
     std::signal(SIGUSR2, HandleStartSignal);
+    std::signal(SIGHUP, HandlePerfDumpSignal);
+}
 
-    ls2k::port::StdoutDiagnostics diagnostics;
-    diagnostics.Info("main.start", "starting ls2k migration runtime");
-    (void)ls2k::port::InitializePerfCounter();
+void LogProfile(const ls2k::port::HardwareProfile& profile, ls2k::port::StdoutDiagnostics& diagnostics) {
+    diagnostics.Info("profile.camera", std::string(ls2k::port::ToString(profile.camera.mode)) + ":" + profile.camera.hook);
+    diagnostics.Info("profile.imu", std::string(ls2k::port::ToString(profile.imu.mode)) + ":" + profile.imu.hook);
+    diagnostics.Info("profile.encoder",
+                     std::string(ls2k::port::ToString(profile.encoder.mode)) + ":" + profile.encoder.hook);
+    diagnostics.Info("profile.actuator",
+                     std::string(ls2k::port::ToString(profile.actuator.mode)) + ":" + profile.actuator.hook);
+    diagnostics.Info("profile.timer", std::string(ls2k::port::ToString(profile.timer.mode)) + ":" + profile.timer.hook);
+}
 
-    ls2k::port::HardwareProfile profile{};
-    ls2k::port::RuntimeParameters params{};
-    ls2k::runtime::RuntimeState runtime_state{};
-
+bool LoadProfileAndParams(ls2k::port::HardwareProfile& profile,
+                          ls2k::port::RuntimeParameters& params,
+                          ls2k::port::PlatformBundle& platform,
+                          ls2k::port::StdoutDiagnostics& diagnostics) {
     auto param_store = ls2k::platform::MakeParamStore();
     const std::string profile_path =
         ReadStringEnv("LS2K_PROFILE_PATH", "new/config/hardware_profile.json");
@@ -314,29 +324,240 @@ int main() {
 
     if (!param_store->LoadHardwareProfile(profile_path, profile, diagnostics)) {
         diagnostics.Error("main.profile", "failed to load hardware profile");
-        return 1;
+        return false;
     }
     if (profile.persistence.mode != ls2k::port::SubsystemMode::kDirectMatch) {
         diagnostics.FailSafe("main.profile.persistence",
                              "phase-1 persistence requires direct-match json-file-store; refusing to load parameters for unsupported mode " +
                                  std::string(ls2k::port::ToString(profile.persistence.mode)) + ":" +
                                  profile.persistence.hook);
-        return 1;
+        return false;
     }
     if (!param_store->LoadRuntimeParameters(params_path, params, diagnostics)) {
         diagnostics.Error("main.params", "failed to load runtime parameters");
-        return 1;
+        return false;
     }
 
-    ls2k::port::PlatformBundle platform = ls2k::platform::CreatePlatformBundle(profile, diagnostics);
+    platform = ls2k::platform::CreatePlatformBundle(profile, diagnostics);
     platform.params = std::move(param_store);
+    LogProfile(profile, diagnostics);
+    return true;
+}
 
-    diagnostics.Info("profile.camera", std::string(ls2k::port::ToString(profile.camera.mode)) + ":" + profile.camera.hook);
-    diagnostics.Info("profile.imu", std::string(ls2k::port::ToString(profile.imu.mode)) + ":" + profile.imu.hook);
-    diagnostics.Info("profile.encoder",
-                     std::string(ls2k::port::ToString(profile.encoder.mode)) + ":" + profile.encoder.hook);
-    diagnostics.Info("profile.actuator", std::string(ls2k::port::ToString(profile.actuator.mode)) + ":" + profile.actuator.hook);
-    diagnostics.Info("profile.timer", std::string(ls2k::port::ToString(profile.timer.mode)) + ":" + profile.timer.hook);
+struct BackgroundWorkers {
+    std::atomic<bool> steering_media_stop{false};
+    std::thread steering_media_thread{};
+    std::atomic<bool> perf_report_stop{false};
+    std::thread perf_report_thread{};
+};
+
+void StartSteeringMediaWorker(BackgroundWorkers& workers,
+                              ls2k::runtime::RuntimeState& runtime_state,
+                              ls2k::runtime::CameraFrameStore& camera_frame_store,
+                              ls2k::runtime::SteeringMediaService& steering_media_service,
+                              ls2k::port::StdoutDiagnostics& diagnostics) {
+    workers.steering_media_thread = std::thread([&]() {
+        ls2k::port::ApplyThreadSchedulingProfile(ls2k::port::ThreadSchedulingRole::kSteeringMedia,
+                                                 &diagnostics);
+        diagnostics.Info("steering_media_worker.start", "steering media worker started");
+        while (!workers.steering_media_stop.load() && !runtime_state.stop_requested.load()) {
+            steering_media_service.Tick(runtime_state, camera_frame_store, diagnostics);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        diagnostics.Info("steering_media_worker.stop", "steering media worker stopped");
+    });
+}
+
+void StartPerfReportWorker(BackgroundWorkers& workers,
+                           int perf_report_interval_ms,
+                           const ls2k::runtime::RuntimeState& runtime_state,
+                           ls2k::port::StdoutDiagnostics& diagnostics) {
+    if (perf_report_interval_ms <= 0) {
+        return;
+    }
+    workers.perf_report_thread = std::thread([&]() {
+        diagnostics.Info("perf_report_worker.start", "perf report worker started");
+        uint64_t last_perf_report_ms = ls2k::port::NowMs();
+        while (!workers.perf_report_stop.load() && !runtime_state.stop_requested.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            const uint64_t now_ms = ls2k::port::NowMs();
+            if (now_ms >= last_perf_report_ms &&
+                now_ms - last_perf_report_ms >= static_cast<uint64_t>(perf_report_interval_ms)) {
+                ls2k::port::EmitPerfWindowDiagnostics(diagnostics, now_ms);
+                last_perf_report_ms = now_ms;
+            }
+        }
+        diagnostics.Info("perf_report_worker.stop", "perf report worker stopped");
+    });
+}
+
+void StopBackgroundWorkers(BackgroundWorkers& workers) {
+    workers.steering_media_stop.store(true);
+    if (workers.steering_media_thread.joinable()) {
+        workers.steering_media_thread.join();
+    }
+    workers.perf_report_stop.store(true);
+    if (workers.perf_report_thread.joinable()) {
+        workers.perf_report_thread.join();
+    }
+}
+
+bool HandlePendingSignals(ls2k::runtime::RuntimeState& runtime_state,
+                          ls2k::port::StdoutDiagnostics& diagnostics) {
+    if (g_perf_dump_signal != 0) {
+        g_perf_dump_signal = 0;
+        ls2k::port::EmitPerfWindowDiagnostics(diagnostics, ls2k::port::NowMs());
+    }
+    if (g_start_signal != 0) {
+        g_start_signal = 0;
+        RequestStart(runtime_state, diagnostics, "SIGUSR2");
+    }
+    if (g_reset_signal != 0) {
+        g_reset_signal = 0;
+        RequestFaultReset(runtime_state, diagnostics, "SIGUSR1");
+    }
+    if (g_exit_signal != 0) {
+        g_exit_signal = 0;
+        RequestControlledStop(runtime_state, diagnostics, "signal");
+    }
+    if (g_force_exit_signal == 0) {
+        return false;
+    }
+    g_force_exit_signal = 0;
+    RequestControlledStop(runtime_state, diagnostics, "SIGTERM");
+    runtime_state.stop_requested.store(true);
+    diagnostics.Warn("main.exit.forced",
+                     "forced shutdown requested by SIGTERM; exiting without waiting for DISARMED");
+    return true;
+}
+
+void TickLowVoltage(ls2k::port::PlatformBundle& platform,
+                    ls2k::runtime::RuntimeState& runtime_state,
+                    ls2k::safety::LowVoltageSampler& low_voltage_sampler,
+                    ls2k::port::StdoutDiagnostics& diagnostics,
+                    uint64_t now_ms) {
+    ls2k::safety::LowVoltageSamplerSnapshot low_voltage_snapshot{};
+    {
+        std::lock_guard<std::mutex> lock(runtime_state.shared_mutex);
+        low_voltage_snapshot.last_sample = runtime_state.low_voltage_last_sample;
+    }
+    low_voltage_snapshot.low_voltage_emergency = runtime_state.low_voltage_emergency.load();
+    ls2k::safety::LowVoltageSamplerUpdate low_voltage_update{};
+    {
+        LS2K_PERF_SCOPE(ls2k::port::PerfStage::kLowVoltageSample);
+        low_voltage_update = low_voltage_sampler.Tick(*platform.power, low_voltage_snapshot, diagnostics, now_ms);
+    }
+    if (!low_voltage_update.sampled) {
+        return;
+    }
+    runtime_state.low_voltage_emergency.store(low_voltage_update.low_voltage_emergency);
+    {
+        std::lock_guard<std::mutex> lock(runtime_state.shared_mutex);
+        runtime_state.low_voltage_last_sample = low_voltage_update.sample;
+    }
+}
+
+void TickAutomationStart(const AutomationConfig& automation,
+                         ls2k::runtime::RuntimeState& runtime_state,
+                         ls2k::port::StdoutDiagnostics& diagnostics,
+                         uint64_t elapsed_ms) {
+    if (automation.auto_start && !runtime_state.automation_start_fired &&
+        elapsed_ms >= static_cast<uint64_t>(automation.auto_start_delay_ms)) {
+        runtime_state.automation_start_fired = true;
+        RequestStart(runtime_state, diagnostics, "LS2K_AUTO_START");
+    }
+}
+
+bool TickAutomationStopAndFaultReset(const AutomationConfig& automation,
+                                     ls2k::runtime::RuntimeState& runtime_state,
+                                     ls2k::port::StdoutDiagnostics& diagnostics,
+                                     uint64_t elapsed_ms,
+                                     bool& auto_reset_sent) {
+    if (automation.auto_stop_after_ms > 0 &&
+        elapsed_ms >= static_cast<uint64_t>(automation.auto_stop_after_ms)) {
+        RequestControlledStop(runtime_state, diagnostics, "LS2K_AUTO_STOP_AFTER_MS");
+    }
+
+    const MotionSnapshot motion = ReadMotionSnapshot(runtime_state);
+    if (automation.auto_reset_fault && motion.phase == ls2k::control::MotionPhase::kFailSafeLatched &&
+        motion.reset_ready && !auto_reset_sent) {
+        RequestFaultReset(runtime_state, diagnostics, "LS2K_AUTO_RESET_FAULT");
+        auto_reset_sent = true;
+    }
+    if (motion.phase != ls2k::control::MotionPhase::kFailSafeLatched) {
+        auto_reset_sent = false;
+    }
+    if (motion.exit_requested && motion.phase == ls2k::control::MotionPhase::kDisarmed) {
+        runtime_state.stop_requested.store(true);
+        diagnostics.Info("main.exit.ready", "controlled stop reached DISARMED; process may now exit");
+        return true;
+    }
+    return false;
+}
+
+void RunMainLoop(ls2k::port::PlatformBundle& platform,
+                 const ls2k::port::RuntimeParameters& params,
+                 ls2k::runtime::RuntimeState& runtime_state,
+                 ls2k::runtime::PerceptionFrontend& perception,
+                 ls2k::runtime::AssistantService& assistant_service,
+                 ls2k::safety::LowVoltageSampler& low_voltage_sampler,
+                 ls2k::port::StdoutDiagnostics& diagnostics) {
+    const AutomationConfig automation = LoadAutomationConfig();
+    EmitHarnessContext(diagnostics, automation);
+    const uint64_t loop_start_ms = ls2k::port::NowMs();
+    int processed_frames = 0;
+    bool auto_reset_sent = false;
+
+    while (!runtime_state.stop_requested.load()) {
+        if (HandlePendingSignals(runtime_state, diagnostics)) {
+            break;
+        }
+        {
+            LS2K_PERF_SCOPE(ls2k::port::PerfStage::kMainLoop);
+            const uint64_t now_ms = ls2k::port::NowMs();
+            const uint64_t elapsed_ms = now_ms >= loop_start_ms ? now_ms - loop_start_ms : 0;
+            TickAutomationStart(automation, runtime_state, diagnostics, elapsed_ms);
+            TickLowVoltage(platform, runtime_state, low_voltage_sampler, diagnostics, now_ms);
+            perception.ProcessOneFrame(params);
+            assistant_service.Tick(runtime_state, diagnostics);
+            ++processed_frames;
+            if (automation.emit_frame_progress) {
+                diagnostics.Emit({ls2k::port::DiagnosticLevel::kInfo,
+                                  "main.frame.processed",
+                                  "processed_frames=" + std::to_string(processed_frames),
+                                  now_ms});
+            }
+            if (TickAutomationStopAndFaultReset(
+                    automation, runtime_state, diagnostics, elapsed_ms, auto_reset_sent)) {
+                break;
+            }
+        }
+        {
+            LS2K_PERF_SCOPE(ls2k::port::PerfStage::kMainSleep);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+}
+
+}  // namespace
+
+int main() {
+    InstallSignalHandlers();
+
+    ls2k::port::StdoutDiagnostics diagnostics;
+    ls2k::port::ApplyThreadSchedulingProfile(ls2k::port::ThreadSchedulingRole::kMainLoop,
+                                             &diagnostics);
+    diagnostics.Info("main.start", "starting ls2k migration runtime");
+    (void)ls2k::port::InitializePerfCounter();
+
+    ls2k::port::HardwareProfile profile{};
+    ls2k::port::RuntimeParameters params{};
+    ls2k::runtime::RuntimeState runtime_state{};
+    ls2k::port::PlatformBundle platform{};
+
+    if (!LoadProfileAndParams(profile, params, platform, diagnostics)) {
+        return 1;
+    }
 
     if (!ls2k::runtime::RunStartup(profile, params, platform, runtime_state, diagnostics)) {
         diagnostics.FailSafe("main.startup", "startup failed, refusing to arm actuators");
@@ -375,101 +596,16 @@ int main() {
     ls2k::runtime::SteeringMediaService steering_media_service;
     assistant_service.Start(params, diagnostics);
     steering_media_service.Start(params, diagnostics);
-    const AutomationConfig automation = LoadAutomationConfig();
-    EmitHarnessContext(diagnostics, automation);
+    BackgroundWorkers workers;
+    StartSteeringMediaWorker(workers, runtime_state, camera_frame_store, steering_media_service, diagnostics);
+    const int perf_report_interval_ms = ReadIntEnv("LS2K_PERF_REPORT_INTERVAL_MS", 0);
+    StartPerfReportWorker(workers, perf_report_interval_ms, runtime_state, diagnostics);
+    RunMainLoop(platform, params, runtime_state, perception, assistant_service, low_voltage_sampler, diagnostics);
 
-    const uint64_t loop_start_ms = ls2k::port::NowMs();
-    uint64_t last_perf_report_ms = loop_start_ms;
-    int processed_frames = 0;
-    bool auto_reset_sent = false;
-
-    while (!runtime_state.stop_requested.load()) {
-        LS2K_PERF_SCOPE(ls2k::port::PerfStage::kMainLoop);
-        if (g_start_signal != 0) {
-            g_start_signal = 0;
-            RequestStart(runtime_state, diagnostics, "SIGUSR2");
-        }
-        if (g_reset_signal != 0) {
-            g_reset_signal = 0;
-            RequestFaultReset(runtime_state, diagnostics, "SIGUSR1");
-        }
-        if (g_exit_signal != 0) {
-            g_exit_signal = 0;
-            RequestControlledStop(runtime_state, diagnostics, "signal");
-        }
-        if (g_force_exit_signal != 0) {
-            g_force_exit_signal = 0;
-            RequestControlledStop(runtime_state, diagnostics, "SIGTERM");
-            runtime_state.stop_requested.store(true);
-            diagnostics.Warn("main.exit.forced",
-                             "forced shutdown requested by SIGTERM; exiting without waiting for DISARMED");
-            break;
-        }
-
-        const uint64_t now_ms = ls2k::port::NowMs();
-        if (now_ms >= last_perf_report_ms && now_ms - last_perf_report_ms >= 1000U) {
-            ls2k::port::EmitPerfWindowDiagnostics(diagnostics, now_ms);
-            last_perf_report_ms = now_ms;
-        }
-        const uint64_t elapsed_ms = now_ms >= loop_start_ms ? now_ms - loop_start_ms : 0;
-        if (automation.auto_start && !runtime_state.automation_start_fired &&
-            elapsed_ms >= static_cast<uint64_t>(automation.auto_start_delay_ms)) {
-            runtime_state.automation_start_fired = true;
-            RequestStart(runtime_state, diagnostics, "LS2K_AUTO_START");
-        }
-
-        ls2k::safety::LowVoltageSamplerSnapshot low_voltage_snapshot{};
-        {
-            std::lock_guard<std::mutex> lock(runtime_state.shared_mutex);
-            low_voltage_snapshot.last_sample = runtime_state.low_voltage_last_sample;
-        }
-        low_voltage_snapshot.low_voltage_emergency = runtime_state.low_voltage_emergency.load();
-        const ls2k::safety::LowVoltageSamplerUpdate low_voltage_update =
-            low_voltage_sampler.Tick(*platform.power, low_voltage_snapshot, diagnostics, now_ms);
-        if (low_voltage_update.sampled) {
-            runtime_state.low_voltage_emergency.store(low_voltage_update.low_voltage_emergency);
-            {
-                std::lock_guard<std::mutex> lock(runtime_state.shared_mutex);
-                runtime_state.low_voltage_last_sample = low_voltage_update.sample;
-            }
-        }
-        perception.ProcessOneFrame(params);
-        assistant_service.Tick(runtime_state, diagnostics);
-        steering_media_service.Tick(runtime_state, diagnostics);
-        ++processed_frames;
-        if (automation.emit_frame_progress) {
-            diagnostics.Emit({ls2k::port::DiagnosticLevel::kInfo,
-                              "main.frame.processed",
-                              "processed_frames=" + std::to_string(processed_frames),
-                              now_ms});
-        }
-
-        if (automation.auto_stop_after_ms > 0 &&
-            elapsed_ms >= static_cast<uint64_t>(automation.auto_stop_after_ms)) {
-            RequestControlledStop(runtime_state, diagnostics, "LS2K_AUTO_STOP_AFTER_MS");
-        }
-
-        const MotionSnapshot motion = ReadMotionSnapshot(runtime_state);
-        if (automation.auto_reset_fault && motion.phase == ls2k::control::MotionPhase::kFailSafeLatched &&
-            motion.reset_ready && !auto_reset_sent) {
-            RequestFaultReset(runtime_state, diagnostics, "LS2K_AUTO_RESET_FAULT");
-            auto_reset_sent = true;
-        }
-        if (motion.phase != ls2k::control::MotionPhase::kFailSafeLatched) {
-            auto_reset_sent = false;
-        }
-
-        if (motion.exit_requested && motion.phase == ls2k::control::MotionPhase::kDisarmed) {
-            runtime_state.stop_requested.store(true);
-            diagnostics.Info("main.exit.ready", "controlled stop reached DISARMED; process may now exit");
-            break;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-
+    StopBackgroundWorkers(workers);
     camera_capture_worker.Stop();
     control_loop.Stop();
+    ls2k::port::EmitPerfWindowDiagnostics(diagnostics, ls2k::port::NowMs());
     ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
     diagnostics.Info("main.exit", "runtime exit complete");
     return 0;

@@ -135,6 +135,10 @@ struct SteeringDebugSnapshot {
     std::uint64_t frame_id = 0;              ///< 关联的相机帧 ID
     std::uint64_t capture_time_ms = 0;       ///< 帧捕获时间戳（ms）
     int threshold = 0;                        ///< Otsu 二值化阈值
+    std::string perception_tag = "none";      ///< 感知事实标签
+    std::size_t boundary_row_count = 0;        ///< V9 sparse boundary row 数量
+    std::size_t boundary_jump_count = 0;       ///< V9 局部 Y 边界跳变数量
+    std::size_t boundary_span_count = 0;       ///< V9 同行边界 span 数量
     PerceptionHealthDebugView perception_health{};           ///< 感知健康状态
     port::VisualElementEvidenceFrame element_evidence{};     ///< 视觉元素证据帧
     port::CircleV2TelemetrySnapshot circle_v2{};              ///< CircleV2 场景状态

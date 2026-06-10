@@ -786,7 +786,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
       <h2>Control</h2>
       <dl>
         <dt>Actuator</dt><dd id="actuator">-</dd>
-        <dt>Threshold</dt><dd id="threshold">-</dd>
+        <dt>Boundary</dt><dd id="boundaryFacts">-</dd>
       </dl>
     </section>
     <section class="panel">
@@ -796,7 +796,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
         <dt>V4L2 seq</dt><dd id="v4l2">-</dd>
         <dt>Timing</dt><dd id="cameraTiming">-</dd>
         <dt>Buffers</dt><dd id="buffers">-</dd>
-        <dt>Pixel stats</dt><dd id="pixelStats">-</dd>
+        <dt>Display stats</dt><dd id="pixelStats">-</dd>
       </dl>
     </section>
   </aside>
@@ -864,7 +864,7 @@ const fields = {
   lateralError: document.getElementById("lateralError"),
   turn: document.getElementById("turn"),
   actuator: document.getElementById("actuator"),
-  threshold: document.getElementById("threshold"),
+  boundaryFacts: document.getElementById("boundaryFacts"),
   cameraSource: document.getElementById("cameraSource"),
   v4l2: document.getElementById("v4l2"),
   cameraTiming: document.getElementById("cameraTiming"),
@@ -1452,14 +1452,18 @@ function handleEnvelope(buffer, transport) {
       `raw=${nested(steering, ["actuator", "raw_turn_output"])} / ` +
       `applied=${nested(steering, ["actuator", "applied_turn_output"])} / ` +
       `${nested(steering, ["actuator", "apply_outcome"])}`;
-    fields.threshold.textContent = String(steering.threshold ?? "-");
+    fields.boundaryFacts.textContent =
+      `${nested(steering, ["perception_tag"])} / ` +
+      `rows=${nested(steering, ["boundary_row_count"])} / ` +
+      `jumps=${nested(steering, ["boundary_jump_count"])} / ` +
+      `spans=${nested(steering, ["boundary_span_count"])}`;
     fields.cameraSource.textContent =
       `${camera.source ?? "-"} / ${camera.width ?? "-"}x${camera.height ?? "-"} / stride=${camera.stride ?? "-"}`;
     fields.v4l2.textContent =
       `seq=${camera.v4l2_sequence ?? "-"} / ts=${formatBool(camera.v4l2_timestamp_valid)}`;
     fields.cameraTiming.textContent =
       `poll=${formatUs(camera.poll_wait_us)} / dq=${formatUs(camera.dequeue_us)} / ` +
-      `gray=${formatUs(camera.yuyv_to_gray_us)} / store=${formatUs(camera.store_submit_us)}`;
+      `legacy_gray=${formatUs(camera.yuyv_to_gray_us)} / store=${formatUs(camera.store_submit_us)}`;
     fields.buffers.textContent =
       `drain=${camera.drained_buffer_count ?? "-"} / submitted=${camera.submitted_frame_count ?? "-"} / ` +
       `overwritten=${camera.overwritten_frame_count ?? "-"} / dropped=${camera.dropped_frame_count ?? "-"}`;

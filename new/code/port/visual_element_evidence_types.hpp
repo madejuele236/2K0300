@@ -34,7 +34,7 @@ struct VisualElementCandidateSummary {
  * @brief 十字路口出口元素证据
  *
  * 描述十字路口出口处检测到的视觉元素（如斑马线、路口标记）的
- * 位置范围、置信度、白点/未知点统计和候选状态。
+ * 位置范围、置信度、V9 边界事实统计和候选状态。
  */
 struct CrossExitElementEvidence {
     bool present = false;              ///< 元素是否存在
@@ -44,8 +44,9 @@ struct CrossExitElementEvidence {
     float lateral_min_m = 0.0F;        ///< 元素横向最小位置（米）
     float lateral_max_m = 0.0F;        ///< 元素横向最大位置（米）
     std::size_t sampleable_count = 0;      ///< 可采样的栅格单元数
-    std::size_t supporting_white_count = 0;  ///< 支持判定的白色单元数
-    std::size_t unknown_count = 0;          ///< 无法分类的单元数
+    std::size_t boundary_jump_count = 0;    ///< V9 边界跳变事实数量
+    std::size_t boundary_span_count = 0;    ///< V9 同行边界 span 事实数量
+    std::size_t boundary_absent_row_count = 0; ///< V9 连续无边界事实行数
     std::string reason = "not_evaluated";  ///< 未评估的原因
     VisualElementCandidateSummary candidate{};  ///< 元素候选摘要
 };
@@ -67,13 +68,12 @@ struct VisualElementEvidenceBounds {
  * @struct VisualElementEvidenceSupport
  * @brief 视觉元素证据统计支持
  *
- * 统计可采样单元数、支持白色/黑色判定的单元数和未知单元数。
+ * 统计可采样单元数和 V9 边界事实数量。
  */
 struct VisualElementEvidenceSupport {
     std::size_t sampleable_count = 0;       ///< 可采样单元总数
-    std::size_t supporting_white_count = 0;  ///< 支持白色判定的单元数
-    std::size_t supporting_black_count = 0;  ///< 支持黑色判定的单元数
-    std::size_t unknown_count = 0;           ///< 无法分类的单元数
+    std::size_t boundary_jump_count = 0;     ///< V9 边界跳变事实数量
+    std::size_t boundary_span_count = 0;     ///< V9 边界 span 事实数量
 };
 
 /**
@@ -112,7 +112,6 @@ struct VisualElementEvidenceFrame {
 struct BEVElementParameters {
     // 十字路口出口检测参数
     bool cross_exit_takeover_enabled = true;   ///< 是否启用十字路口出口接管
-    float cross_wide_row_white_ratio_min = 0.93F;  ///< 十字路口宽行白色比例最小值
 
     // Circle V2 场景状态机参数
     bool circle_v2_enabled = true;                  ///< 是否注册 CircleV2Scene

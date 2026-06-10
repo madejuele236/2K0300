@@ -256,6 +256,14 @@ int main(int argc, char** argv) {
                   NumberField(classification, "HOLD_LAST_MAX_CYCLES"),
                   "BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES");
 
+        const std::string boundary = ObjectBody(json, "BEV_BOUNDARY");
+        ExpectInt(params.bev_boundary.local_jump_min_y,
+                  NumberField(boundary, "LOCAL_JUMP_MIN_Y"),
+                  "BEV_BOUNDARY.LOCAL_JUMP_MIN_Y");
+        Expect(params.bev_boundary.local_jump_min_y >= 1 &&
+                   params.bev_boundary.local_jump_min_y <= 255,
+               "BEV_BOUNDARY.LOCAL_JUMP_MIN_Y must be in 1..255");
+
         const std::string control_model = ObjectBody(json, "BEV_CONTROL_MODEL");
         Expect(control_model.find("\"LATERAL_ERROR_FAR_WEIGHT\"") == std::string::npos,
                "BEV_CONTROL_MODEL must not retain legacy lateral-error debug weight");
@@ -307,13 +315,8 @@ int main(int argc, char** argv) {
         ExpectBool(params.bev_element.cross_exit_takeover_enabled,
                    NumberField(element, "CROSS_EXIT_TAKEOVER_ENABLED"),
                    "BEV_ELEMENT.CROSS_EXIT_TAKEOVER_ENABLED");
-        ExpectNear(params.bev_element.cross_wide_row_white_ratio_min,
-                   NumberField(element, "CROSS_WIDE_ROW_WHITE_RATIO_MIN"),
-                   "BEV_ELEMENT.CROSS_WIDE_ROW_WHITE_RATIO_MIN");
-        ExpectInRange(params.bev_element.cross_wide_row_white_ratio_min,
-                      0.0,
-                      1.0,
-                      "BEV_ELEMENT.CROSS_WIDE_ROW_WHITE_RATIO_MIN");
+        Expect(element.find("\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\"") == std::string::npos,
+               "BEV_ELEMENT must not retain CROSS_WIDE_ROW_WHITE_RATIO_MIN");
         ExpectBool(params.bev_element.circle_v2_enabled,
                    NumberField(element, "CIRCLE_V2_ENABLED"),
                    "BEV_ELEMENT.CIRCLE_V2_ENABLED");

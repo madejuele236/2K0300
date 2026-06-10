@@ -12,5 +12,5 @@ compile_test_binary \
   "${REPO_ROOT}/new/verification/tests/perf_counter_test.cpp" \
   "${REPO_ROOT}/new/code/port/perf_counter.cpp"
 
-"${OUT_BIN}"
+LS2K_PERF_VERBOSE=1 "${OUT_BIN}"
 echo "perf_counter_test passed"

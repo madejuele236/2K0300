@@ -4,10 +4,12 @@
 /// 通过 SteeringMediaLink 发送到外部媒体接收端（如远程监控）。
 
 #include <algorithm>
+#include <optional>
 #include <sstream>
 #include <utility>
 
 #include "port/perf_counter.hpp"
+#include "vision/image/luma_sampler.hpp"
 
 namespace ls2k::runtime {
 
@@ -16,28 +18,6 @@ using observability::ControlDebugSnapshot;
 using observability::SteeringDebugSnapshot;
 
 namespace {
-
-/// 从运行时状态的相机缓存中查找匹配快照帧 ID 和捕获时间戳的相机帧
-/// @param state    运行时状态（含相机捕获历史）
-/// @param snapshot 控制调试快照（含帧 ID 和捕获时间戳）
-/// @param frame    输出：查找到的相机帧数据
-/// @param handle   输出：查找到的帧句柄
-/// @return         是否找到并成功复制
-bool ResolveSteeringCapture(const RuntimeState& state,
-                            const ControlDebugSnapshot& snapshot,
-                            port::LegacyCameraFrame& frame,
-                            CameraFrameHandle& handle) {
-    if (!snapshot.valid || !snapshot.steering.valid) {
-        return false;
-    }
-    const CameraFrameHandle* matched =
-        state.recent_camera_captures.FindExact(snapshot.steering.frame_id, snapshot.steering.capture_time_ms);
-    if (matched == nullptr) {
-        return false;
-    }
-    handle = *matched;
-    return CopyOwnedCameraFrameByHandle(state.camera_frame_slots, handle, frame);
-}
 
 }  // namespace
 
@@ -142,6 +122,7 @@ transport::SteeringMediaConfigSnapshot SteeringMediaService::BuildConfigSnapshot
     snapshot.param_snapshot.bev_projector = params_.bev_projector;
     snapshot.param_snapshot.bev_geometry = params_.bev_geometry;
     snapshot.param_snapshot.bev_classification = params_.bev_classification;
+    snapshot.param_snapshot.bev_boundary = params_.bev_boundary;
     snapshot.param_snapshot.bev_control_model = params_.bev_control_model;
     snapshot.param_snapshot.bev_element = params_.bev_element;
     snapshot.param_snapshot.reference_time_alignment = params_.reference_time_alignment;
@@ -156,6 +137,10 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     const SteeringDebugSnapshot& snapshot) const {
     transport::SteeringMediaSnapshotView view{};
     view.threshold = snapshot.threshold;
+    view.perception_tag = snapshot.perception_tag;
+    view.boundary_row_count = snapshot.boundary_row_count;
+    view.boundary_jump_count = snapshot.boundary_jump_count;
+    view.boundary_span_count = snapshot.boundary_span_count;
     view.perception_health.projector_ok = snapshot.perception_health.projector_ok;
     view.perception_health.reason = snapshot.perception_health.reason;
     view.element_evidence = snapshot.element_evidence;
@@ -241,10 +226,10 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     return view;
 }
 
-/// 填充图像帧数据：将原始相机帧降采样后填入媒体帧结构
-/// @param capture_frame  原始相机帧
+/// 填充图像帧数据：从相机像素帧读取 luma，降采样后填入媒体帧结构
+/// @param capture_frame  原始相机像素帧
 /// @param frame          输出：媒体图像帧（含降采样后的像素数据）
-void SteeringMediaService::FillImageFrame(const port::LegacyCameraFrame& capture_frame,
+void SteeringMediaService::FillImageFrame(const port::CameraPixelFrameView& capture_frame,
                                           transport::SteeringMediaImageFrame& frame) {
     frame.source_width = capture_frame.width;
     frame.source_height = capture_frame.height;
@@ -278,7 +263,24 @@ void SteeringMediaService::FillImageFrame(const port::LegacyCameraFrame& capture
     if (downsample_ <= 1) {
         frame.width = capture_frame.width;
         frame.height = capture_frame.height;
-        set_payload(capture_frame.gray.data(), capture_frame.PixelCount());
+        const std::size_t pixel_count =
+            static_cast<std::size_t>(capture_frame.width) *
+            static_cast<std::size_t>(capture_frame.height);
+        downsample_buffer_.assign(pixel_count, 0);
+        for (int row = 0; row < capture_frame.height; ++row) {
+            for (int col = 0; col < capture_frame.width; ++col) {
+                std::uint8_t y = 0;
+                if (vision::SampleLumaAt(capture_frame,
+                                         static_cast<float>(row),
+                                         static_cast<float>(col),
+                                         y)) {
+                    downsample_buffer_[static_cast<std::size_t>(row) *
+                                           static_cast<std::size_t>(capture_frame.width) +
+                                       static_cast<std::size_t>(col)] = y;
+                }
+            }
+        }
+        set_payload(downsample_buffer_.data(), downsample_buffer_.size());
         return;
     }
 
@@ -289,8 +291,13 @@ void SteeringMediaService::FillImageFrame(const port::LegacyCameraFrame& capture
         const int src_row = std::min(capture_frame.height - 1, out_row * downsample_);
         for (int out_col = 0; out_col < output_width; ++out_col) {
             const int src_col = std::min(capture_frame.width - 1, out_col * downsample_);
-            downsample_buffer_[static_cast<std::size_t>(out_row * output_width + out_col)] =
-                capture_frame.gray[static_cast<std::size_t>(src_row * capture_frame.width + src_col)];
+            std::uint8_t y = 0;
+            if (vision::SampleLumaAt(capture_frame,
+                                     static_cast<float>(src_row),
+                                     static_cast<float>(src_col),
+                                     y)) {
+                downsample_buffer_[static_cast<std::size_t>(out_row * output_width + out_col)] = y;
+            }
         }
     }
 
@@ -303,7 +310,10 @@ void SteeringMediaService::FillImageFrame(const port::LegacyCameraFrame& capture
 /// 统计每秒窗口摘要并输出诊断。
 /// @param state       运行时状态
 /// @param diagnostics 诊断输出接口
-void SteeringMediaService::Tick(RuntimeState& state, port::DiagnosticSink& diagnostics) {
+// NOLINTNEXTLINE(readability-function-size): media tick is a linear publish/connection orchestration surface.
+void SteeringMediaService::Tick(RuntimeState& state,
+                                CameraFrameStore& frame_store,
+                                port::DiagnosticSink& diagnostics) {
     LS2K_PERF_SCOPE(port::PerfStage::kSteeringMediaTick);
     if (!configured_ || !enabled_) {
         return;
@@ -340,21 +350,18 @@ void SteeringMediaService::Tick(RuntimeState& state, port::DiagnosticSink& diagn
     }
 
     ControlDebugSnapshot snapshot{};
-    port::LegacyCameraFrame capture_frame{};
-    CameraFrameHandle capture_handle{};
     port::CameraFrameStoreHealth camera_store_health{};
-    bool have_capture = false;
     {
         std::lock_guard<std::mutex> lock(state.shared_mutex);
         snapshot = state.control_debug_snapshot;
-        if (publish_latest_frame_) {
-            capture_handle = state.latest_camera_frame;
-            have_capture = CopyOwnedCameraFrameByHandle(state.camera_frame_slots, capture_handle, capture_frame);
-        } else {
-            have_capture = ResolveSteeringCapture(state, snapshot, capture_frame, capture_handle);
-        }
-        camera_store_health = state.camera_frame_store_health;
     }
+    std::optional<CameraFrameStore::ReadLease> capture =
+        publish_latest_frame_
+            ? frame_store.AcquireLatest()
+            : frame_store.AcquireExact(snapshot.steering.frame_id,
+                                       snapshot.steering.capture_time_ms);
+    const bool have_capture = capture.has_value();
+    camera_store_health = frame_store.Health();
 
     if (!have_capture || snapshot.steering.frame_id == 0) {
         if (!have_capture) {
@@ -371,6 +378,7 @@ void SteeringMediaService::Tick(RuntimeState& state, port::DiagnosticSink& diagn
         MaybeEmitWindowSummary(now_ms, diagnostics);
         return;
     }
+    const CameraFrameHandle& capture_handle = capture->Handle();
     if (capture_handle.frame_id == last_image_frame_id_) {
         window_stats_.skip_duplicate += 1U;
         MaybeEmitWindowSummary(now_ms, diagnostics);
@@ -400,7 +408,7 @@ void SteeringMediaService::Tick(RuntimeState& state, port::DiagnosticSink& diagn
         snapshot.valid && snapshot.steering.valid &&
         snapshot.steering.frame_id == capture_handle.frame_id &&
         snapshot.steering.capture_time_ms == capture_handle.capture_time_ms;
-    FillImageFrame(capture_frame, frame);
+    FillImageFrame(capture->PixelView(), frame);
 
     const transport::SteeringMediaPublishResult result = link_.PublishImageFrame(frame, diagnostics);
     if (result == transport::SteeringMediaPublishResult::kSent ||

@@ -19,7 +19,7 @@ compile_test_binary \
   "${REPO_ROOT}/new/code/vision/elements/circle_element_evidence.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_element_raster.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
-  "${REPO_ROOT}/new/code/vision/bev/reference_connectivity.cpp" \
-  "${REPO_ROOT}/new/code/vision/bev/bev_simple_perception.cpp"
+  "${REPO_ROOT}/new/code/vision/bev/bev_simple_perception.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp"
 
 "${OUT_BIN}"

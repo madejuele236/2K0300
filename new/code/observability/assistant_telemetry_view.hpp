@@ -13,6 +13,10 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     const ControlDebugSnapshot& snapshot) {
     transport::AssistantTelemetryView telemetry{};
     telemetry.motion_phase = ToString(snapshot.motion_phase);
+    telemetry.perception_tag = snapshot.steering.perception_tag;
+    telemetry.boundary_row_count = snapshot.steering.boundary_row_count;
+    telemetry.boundary_jump_count = snapshot.steering.boundary_jump_count;
+    telemetry.boundary_span_count = snapshot.steering.boundary_span_count;
     telemetry.element_evidence = snapshot.steering.element_evidence;
     telemetry.visual_reference.present = snapshot.steering.visual_reference.present;
     telemetry.visual_reference.source = snapshot.steering.visual_reference.source;

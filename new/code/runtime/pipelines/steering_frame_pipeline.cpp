@@ -5,13 +5,10 @@
 #include <cmath>
 #include <vector>
 
-#include "vision/image/bev_pixel_classifier.hpp"
-#include "vision/image/otsu_threshold.hpp"
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_continuity.hpp"
 #include "reference/reference_lateral_error.hpp"
 #include "reference/reference_tracking_geometry.hpp"
-#include "vision/bev/reference_connectivity.hpp"
 #include "reference/reference_usability.hpp"
 #include "vision/elements/visual_element_pipeline.hpp"
 #include "reference/visual_reference_orchestration.hpp"
@@ -53,7 +50,7 @@ constexpr float kPi = 3.14159265358979323846F;
 /// @return                      组装好的 PerceptionResult
 port::PerceptionResult BuildPerceptionResult(
     const port::CameraCapture& capture,
-    int threshold,
+    const vision::BEVSimplePerceptionResult& boundary_facts,
     const port::PerceptionHealth& health,
     const port::VisualElementEvidenceFrame& element_evidence,
     const port::CircleV2TelemetrySnapshot& circle_v2,
@@ -72,8 +69,10 @@ port::PerceptionResult BuildPerceptionResult(
     perception.frame_id = capture.frame_id;
     perception.capture_time_ms = capture.capture_time_ms;
     perception.publish_time_ms = publish_time_ms;
-    perception.threshold = threshold;
-    perception.perception_tag = "bev_simple";
+    perception.perception_tag = "bev_local_y_boundary_v9";
+    perception.boundary_row_count = boundary_facts.rows.size();
+    perception.boundary_jump_count = boundary_facts.boundary_jump_count;
+    perception.boundary_span_count = boundary_facts.boundary_span_count;
     perception.reference_mode = vision::ToString(continuity.mode);
     perception.reference_source = continuity.source;
     perception.reference_capture_time_ms = continuity.reference_capture_time_ms;
@@ -255,24 +254,15 @@ void SteeringFramePipeline::ResetReferenceMemory() {
     ResetSteeringReferenceHoldMemory(perception_memory_);
 }
 
-/// 处理一帧图像：Otsu 阈值 → BEV 感知 → 元素检测 → 视觉参考选择 → 横向误差计算 → 参考控制就绪评估
+/// 处理一帧图像：V9 BEV 边界事实 → 元素检测 → 视觉参考选择 → 横向误差计算 → 参考控制就绪评估
 /// @param capture   相机捕获数据
 /// @param params    运行时参数
 /// @return          处理后的感知结果
+// NOLINTNEXTLINE(readability-function-size): perception pipeline stays as one ordered stage owner to avoid cross-layer authority leakage.
 port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     const port::CameraCapture& capture,
     const port::RuntimeParameters& params,
     const port::MotionHistory& motion_history) {
-    vision::OtsuThresholdResult otsu_result{};
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kPerceptionOtsu);
-        otsu_result = vision::ComputeOtsuThresholdResult(capture.view);
-    }
-    const vision::BEVPixelClassificationModel classification_model =
-        vision::MakeBEVPixelClassificationModel(otsu_result,
-                                                params.bev_classification);
-    const int threshold = classification_model.threshold;
-
     port::ReferenceContinuityResult continuity{};
     port::ReferenceUsability selected_usability{};
     port::ReferenceLateralErrorEstimate lateral_error{};
@@ -283,17 +273,16 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     port::CircleV2TelemetrySnapshot circle_v2_snapshot{};
     port::VisualReferenceCandidatePathSet candidate_paths{};
     port::VisualReferenceSelection visual_selection{};
+    vision::BEVSimplePerceptionResult current_facts{};
     {
         LS2K_PERF_SCOPE(port::PerfStage::kPerceptionBev);
         health.projector_ok = projector_.Valid();
         health.reason = health.projector_ok ? "ok" : "projector_invalid";
         const port::SteeringPerceptionMemory prior_memory = perception_memory_;
-        vision::BEVSimplePerceptionResult current_facts{};
         {
             LS2K_PERF_SCOPE(port::PerfStage::kBevSimple);
             current_facts =
-                vision::RunBEVSimplePerception(capture.view,
-                                               classification_model,
+                vision::RunBEVSimplePerception(capture.pixel_view,
                                                params,
                                                projector_,
                                                &sample_lut_);
@@ -310,7 +299,6 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         element_input.sparse_rows = &current_facts.rows;
         element_input.frame = &capture.view;
         element_input.projector = &projector_;
-        element_input.classification_model = classification_model;
         element_input.line_candidate = line_candidate;
         vision::VisualElementPipelineResult element_result{};
         {
@@ -361,30 +349,18 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         port::ReferenceUsability current_usability{};
         {
             LS2K_PERF_SCOPE(port::PerfStage::kVisualReferenceSelect);
-            const vision::ReferenceConnectivityFrameView connectivity_frame{
-                capture.view,
-                projector_,
-                classification_model,
-                params.bev_classification,
-            };
             std::vector<port::VisualReferenceCandidate> candidates;
             candidates.reserve(1U + element_result.candidates.size() +
                                (circle_candidate.has_value() ? 1U : 0U));
             {
                 LS2K_PERF_SCOPE(port::PerfStage::kVisualReferenceConnectivity);
-                vision::AppendConnectedVisualReferenceCandidate(connectivity_frame,
-                                                                line_candidate,
-                                                                candidates);
+                candidates.push_back(line_candidate);
                 for (const port::VisualReferenceCandidate& candidate :
                      element_result.candidates) {
-                    vision::AppendConnectedVisualReferenceCandidate(connectivity_frame,
-                                                                    candidate,
-                                                                    candidates);
+                    candidates.push_back(candidate);
                 }
                 if (circle_candidate.has_value()) {
-                    vision::AppendConnectedVisualReferenceCandidate(connectivity_frame,
-                                                                    *circle_candidate,
-                                                                    candidates);
+                    candidates.push_back(*circle_candidate);
                 }
             }
             for (const port::VisualReferenceCandidate& candidate : candidates) {
@@ -455,7 +431,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     }
 
     return BuildPerceptionResult(capture,
-                                 threshold,
+                                 current_facts,
                                  health,
                                  element_evidence,
                                  circle_v2_snapshot,

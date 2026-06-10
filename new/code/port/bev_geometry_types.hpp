@@ -130,6 +130,15 @@ inline bool IsValidBEVClassificationParameters(
            params.hold_last_max_cycles >= 0;
 }
 
+/// BEV 局部边界提取参数
+struct BEVBoundaryParameters {
+    int local_jump_min_y = 32;  ///< 相邻采样点构成边界跳变所需的最小 Y 差
+};
+
+inline bool IsValidBEVBoundaryParameters(const BEVBoundaryParameters& params) {
+    return params.local_jump_min_y > 0 && params.local_jump_min_y <= 255;
+}
+
 /**
  * @struct BEVControlModelParameters
  * @brief BEV控制模型参数
@@ -137,9 +146,9 @@ inline bool IsValidBEVClassificationParameters(
  * 将从感知到控制的映射参数化，包括横向误差的加权和PID增益等。
  */
 struct BEVControlModelParameters {
-    double lateral_offset_to_wheel_delta_gain = 350.0;  ///< 横向位置项到轮速差值的增益系数
-    double heading_error_to_wheel_delta_gain = 80.0;  ///< 航向误差项到轮速差值的增益系数
-    double curvature_to_wheel_delta_gain = 30.0;  ///< nominal speed下曲率前馈项到轮速差值的增益系数
+    double lateral_offset_to_wheel_delta_gain = 200.0;  ///< 横向位置项到轮速差值的增益系数
+    double heading_error_to_wheel_delta_gain = 60.0;  ///< 航向误差项到轮速差值的增益系数
+    double curvature_to_wheel_delta_gain = 20.0;  ///< nominal speed下曲率前馈项到轮速差值的增益系数
     int min_leading_reference_samples = 3;  ///< 最小前导参考采样点数量
     int tracking_fit_min_samples = 3;       ///< 跟踪几何拟合最小采样点数量
 };

@@ -125,8 +125,6 @@ bool ProbePersistentMotorFds() {
     const uint8_t gpio_high = static_cast<uint8_t>('1');
     const bool ok =
         WriteFd(g_left_pwm.fd, zero) &&
-        WriteFd(g_left_pwm.fd, zero) &&
-        WriteFd(g_right_pwm.fd, zero) &&
         WriteFd(g_right_pwm.fd, zero) &&
         WriteFd(g_left_gpio.fd, gpio_low) &&
         WriteFd(g_left_gpio.fd, gpio_high) &&

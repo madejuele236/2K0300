@@ -18,23 +18,23 @@ inline bool YuyvToGray(const std::uint8_t* yuyv,
                        int width,
                        int height,
                        int bytesperline,
-                       port::LegacyCameraFrame& out) {
+                       port::MutableLegacyCameraFrameView out) {
     if (yuyv == nullptr ||
+        !out.Valid() ||
         width <= 0 ||
         height <= 0 ||
         width > port::kCompiledCameraFrameWidth ||
         height > port::kCompiledCameraFrameHeight ||
+        out.width < width ||
+        out.height < height ||
         bytesperline < width * 2) {
         return false;
     }
-    out = {};
-    out.width = width;
-    out.height = height;
     for (int row = 0; row < height; ++row) {
         const std::uint8_t* src =
             yuyv + static_cast<std::size_t>(row) * static_cast<std::size_t>(bytesperline);
         std::uint8_t* dst =
-            out.gray.data() + static_cast<std::size_t>(row) * static_cast<std::size_t>(width);
+            out.gray + static_cast<std::size_t>(row) * static_cast<std::size_t>(out.stride);
         for (int col = 0; col < width; col += 2) {
             const int src_col = col * 2;
             dst[col] = src[src_col];
@@ -44,6 +44,23 @@ inline bool YuyvToGray(const std::uint8_t* yuyv,
         }
     }
     return true;
+}
+
+inline bool YuyvToGray(const std::uint8_t* yuyv,
+                       int width,
+                       int height,
+                       int bytesperline,
+                       port::LegacyCameraFrame& out) {
+    if (width <= 0 ||
+        height <= 0 ||
+        width > port::kCompiledCameraFrameWidth ||
+        height > port::kCompiledCameraFrameHeight) {
+        return false;
+    }
+    out = {};
+    out.width = width;
+    out.height = height;
+    return YuyvToGray(yuyv, width, height, bytesperline, out.MutableView());
 }
 
 /// Blocking camera producer. It only submits frame facts to CameraFrameStore.
@@ -62,6 +79,7 @@ private:
     bool ConvertRawFrame(const port::CameraRawFrame& raw,
                          port::LegacyCameraFrame& out,
                          port::CameraRawFrameMetadata& metadata);
+    bool ConvertRawFrameViewToStore(const port::CameraRawFrameView& raw);
 
     CameraFrameStore& frame_store_;
     port::DiagnosticSink& diagnostics_;

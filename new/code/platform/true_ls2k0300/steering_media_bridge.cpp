@@ -546,11 +546,21 @@ bool SteeringMediaBridgeReady() {
 SteeringMediaBridgeSendResult SendSteeringMediaBytes(const std::uint8_t* data,
                                                      std::size_t length,
                                                      std::string& detail) {
+    if (data == nullptr || length == 0) {
+        detail = "steering media payload is empty";
+        return SteeringMediaBridgeSendResult::kError;
+    }
+    std::vector<std::uint8_t> buffer(data, data + length);
+    return SendSteeringMediaBuffer(buffer, detail);
+}
+
+SteeringMediaBridgeSendResult SendSteeringMediaBuffer(std::vector<std::uint8_t>& data,
+                                                      std::string& detail) {
     if (!SteeringMediaBridgeReady()) {
         detail = "steering media bridge not connected";
         return SteeringMediaBridgeSendResult::kDisconnected;
     }
-    if (data == nullptr || length == 0) {
+    if (data.empty()) {
         detail = "steering media payload is empty";
         return SteeringMediaBridgeSendResult::kError;
     }
@@ -573,13 +583,15 @@ SteeringMediaBridgeSendResult SendSteeringMediaBytes(const std::uint8_t* data,
         return SteeringMediaBridgeSendResult::kBusyRejected;
     }
 
-    g_bridge.pending_send.assign(data, data + length);
+    g_bridge.pending_send.swap(data);
     g_bridge.pending_send_offset = 0;
     const SteeringMediaBridgeSendResult flush_result = FlushPendingSend(false, detail);
     if (flush_result == SteeringMediaBridgeSendResult::kSent) {
+        data.clear();
         return SteeringMediaBridgeSendResult::kSent;
     }
     if (SteeringMediaBridgeReady() && !g_bridge.pending_send.empty()) {
+        data.clear();
         detail.clear();
         return SteeringMediaBridgeSendResult::kAcceptedInFlight;
     }

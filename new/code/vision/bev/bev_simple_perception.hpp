@@ -14,8 +14,6 @@
 
 namespace ls2k::vision {
 
-struct ReferenceConnectivityFrameView;
-
 /// 稠密BEV图像（用于调试，包含每个像素的灰度和分类）
 struct BEVSimpleImage {
     bool valid = false;               ///< 图像数据是否有效
@@ -27,35 +25,49 @@ struct BEVSimpleImage {
     std::vector<BEVSimplePixelClass> classes{}; ///< 像素分类数组
 };
 
-/// BEV行扫描中的白色连通区间（一条白色标记段的左右边界）
-struct BEVSimpleWhiteInterval {
-    float forward_m = 0.0F;   ///< 该区间所处的前向距离（米）
-    float left_m = 0.0F;      ///< 区间横向低坐标边界（米），不是物理左侧语义
-    float right_m = 0.0F;     ///< 区间横向高坐标边界（米），不是物理右侧语义
-    float center_m = 0.0F;    ///< 区间中心横向坐标（米）
-    float width_m = 0.0F;     ///< 区间宽度（米）
-    int left_px = 0;          ///< 区间左边界像素索引
-    int right_px = 0;         ///< 区间右边界像素索引
+enum class BEVBoundaryJumpPolarity {
+    kRisingY,
+    kFallingY,
 };
 
-/// BEV稀疏行扫描结果，包含一行中各类像素的统计和白色区间
+struct BEVRowLumaSample {
+    bool sampleable = false;
+    float forward_m = 0.0F;
+    float lateral_m = 0.0F;
+    int lateral_index = 0;
+    std::uint8_t y = 0U;
+};
+
+struct BEVBoundaryJump {
+    float forward_m = 0.0F;
+    float lateral_m = 0.0F;
+    int lateral_index = 0;
+    int delta_y = 0;
+    BEVBoundaryJumpPolarity polarity = BEVBoundaryJumpPolarity::kRisingY;
+};
+
+struct BEVBoundarySpan {
+    float forward_m = 0.0F;
+    float left_m = 0.0F;
+    float right_m = 0.0F;
+    float center_m = 0.0F;
+    float width_m = 0.0F;
+    int left_lateral_index = 0;
+    int right_lateral_index = 0;
+};
+
+/// BEV稀疏行扫描结果，包含 V9 局部 Y 边界事实
 struct BEVSimpleRowScan {
     bool valid = false;               ///< 扫描行是否有效
     float forward_m = 0.0F;           ///< 此行对应的前向距离（米）
     int row_px = 0;                   ///< 在采样行数组中的索引
     std::size_t sampleable_count = 0; ///< 可采样的横向样本总数
-    std::size_t white_count = 0;      ///< 白色像素计数
-    std::size_t black_count = 0;      ///< 黑色像素计数
-    std::size_t unknown_count = 0;    ///< 不确定像素计数
     std::size_t unavailable_count = 0;///< 不可用像素计数
     float sampleable_left_m = 0.0F;   ///< 可采样区域横向低坐标边界（米）
     float sampleable_right_m = 0.0F;  ///< 可采样区域横向高坐标边界（米）
     float sampleable_width_m = 0.0F;  ///< 可采样区域宽度（米）
-    bool sampleable_left_unknown_run = false;  ///< 可采样左边界是否以 unknown 连续段开始
-    float sampleable_left_unknown_run_right_m = 0.0F; ///< 左边界 unknown 段的最右横向坐标
-    bool sampleable_right_unknown_run = false; ///< 可采样右边界是否以 unknown 连续段结束
-    float sampleable_right_unknown_run_left_m = 0.0F; ///< 右边界 unknown 段的最左横向坐标
-    std::vector<BEVSimpleWhiteInterval> intervals{}; ///< 该行的白色连通区间列表
+    std::vector<BEVBoundaryJump> jumps{};      ///< V9 局部 Y 边界跳变事实
+    std::vector<BEVBoundarySpan> spans{};      ///< V9 同行配对边界 span 事实
 };
 
 /// 采样投影状态（用于查找表条目）
@@ -93,6 +105,8 @@ struct BEVSampleProjectionLut {
 struct BEVSimplePerceptionResult {
     int threshold = 0;                           ///< 使用的二值化阈值
     std::vector<BEVSimpleRowScan> rows{};        ///< 各行的扫描结果
+    std::size_t boundary_jump_count = 0;         ///< V9 局部 Y 边界跳变数量
+    std::size_t boundary_span_count = 0;         ///< V9 同行边界 span 数量
     port::BEVReferencePath reference_path{};      ///< 构建的参考路径
     std::string reference_mode = "none";          ///< 参考路径模式字符串
     std::string reference_source = "none";        ///< 参考路径来源字符串
@@ -118,6 +132,11 @@ bool SampleFrameBilinear(const port::LegacyCameraFrameView& frame,
                          float col_px,
                          std::uint8_t& out_gray);
 
+void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
+                                   const port::BEVBoundaryParameters& params,
+                                   float min_span_width_m,
+                                   BEVSimpleRowScan& row);
+
 /// 确保采样投影查找表有效且匹配当前帧/参数/投影器，否则重建
 /// @param lut 查找表
 /// @param frame 当前相机帧
@@ -125,7 +144,7 @@ bool SampleFrameBilinear(const port::LegacyCameraFrameView& frame,
 /// @param projector BEV投影器
 /// @return 查找表是否有效
 bool EnsureBEVSampleProjectionLut(BEVSampleProjectionLut& lut,
-                                  const port::LegacyCameraFrameView& frame,
+                                  const port::CameraPixelFrameView& frame,
                                   const port::RuntimeParameters& params,
                                   const BEVProjector& projector);
 
@@ -135,13 +154,11 @@ bool EnsureBEVSampleProjectionLut(BEVSampleProjectionLut& lut,
 /// @return 提取的参考路径
 port::BEVReferencePath ExtractStrictLeadingReferenceSegment(
     const std::vector<BEVSimpleRowScan>& rows,
-    const port::RuntimeParameters& params,
-    const ReferenceConnectivityFrameView* connectivity_frame = nullptr);
+    const port::RuntimeParameters& params);
 
 /// 从行扫描结果构建完整的参考路径（目前委托给ExtractStrictLeadingReferenceSegment）
 port::BEVReferencePath BuildReferencePath(const std::vector<BEVSimpleRowScan>& rows,
-                                          const port::RuntimeParameters& params,
-                                          const ReferenceConnectivityFrameView* connectivity_frame = nullptr);
+                                          const port::RuntimeParameters& params);
 
 /// 构建稠密BEV调试图像（全分辨率投影，仅用于调试/可视化）
 /// @param frame 原始相机帧
@@ -156,13 +173,11 @@ BEVSimpleImage BuildDebugDenseBevImage(const port::LegacyCameraFrameView& frame,
 
 /// 运行完整的BEV简单感知管线
 /// @param frame 原始相机帧
-/// @param classification_model 当前帧灰度分类模型
 /// @param params 运行时参数
 /// @param projector BEV投影器
 /// @param lut 可选的外部查找表指针（为nullptr时自动创建临时表）
 /// @return 感知结果（行扫描、参考路径等）
-BEVSimplePerceptionResult RunBEVSimplePerception(const port::LegacyCameraFrameView& frame,
-                                                 const BEVPixelClassificationModel& classification_model,
+BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameView& frame,
                                                  const port::RuntimeParameters& params,
                                                  const BEVProjector& projector,
                                                  BEVSampleProjectionLut* lut);

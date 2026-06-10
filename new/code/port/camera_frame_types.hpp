@@ -19,6 +19,8 @@ namespace ls2k::port {
 
 constexpr int kCompiledCameraFrameWidth = 320;   ///< 编译时确定的相机帧宽度
 constexpr int kCompiledCameraFrameHeight = 240;  ///< 编译时确定的相机帧高度
+constexpr int kCompiledCameraFrameMaxBytes =
+    kCompiledCameraFrameWidth * kCompiledCameraFrameHeight * 2;  ///< 最大 YUYV 帧字节数
 
 /**
  * @struct LegacyCameraFrameView
@@ -50,6 +52,44 @@ struct LegacyCameraFrameView {
 };
 
 /**
+ * @struct MutableLegacyCameraFrameView
+ * @brief 灰度图像帧的可写非拥有视图
+ *
+ * 指向外部图像数据的可写轻量级视图，不持有数据所有权。
+ * 仅用于 frame-store 写租约等明确拥有写入生命周期的边界。
+ */
+struct MutableLegacyCameraFrameView {
+    uint8_t* gray = nullptr;        ///< 灰度图像数据指针
+    int width = 0;                  ///< 图像宽度（像素）
+    int height = 0;                 ///< 图像高度（像素）
+    int stride = 0;                 ///< 行跨度（字节），通常等于width
+    uint64_t frame_id = 0;          ///< 帧序号
+    uint64_t capture_time_ms = 0;   ///< 捕获时间戳（毫秒）
+
+    bool Valid() const {
+        return gray != nullptr && width > 0 && height > 0 && stride >= width;
+    }
+
+    std::size_t PixelCount() const {
+        if (width <= 0 || height <= 0) {
+            return 0;
+        }
+        return static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    }
+
+    LegacyCameraFrameView AsConst() const {
+        LegacyCameraFrameView view{};
+        view.gray = gray;
+        view.width = width;
+        view.height = height;
+        view.stride = stride;
+        view.frame_id = frame_id;
+        view.capture_time_ms = capture_time_ms;
+        return view;
+    }
+};
+
+/**
  * @enum CameraGeometryMarker
  * @brief 相机几何状态标记
  *
@@ -68,6 +108,84 @@ enum class CameraFrameFormat {
     kGray,  ///< 已是灰度帧
     kYuyv   ///< YUYV 4:2:2 原始帧
 };
+
+inline int MinimumStrideBytes(CameraFrameFormat format, int width) {
+    if (width <= 0) {
+        return 0;
+    }
+    switch (format) {
+    case CameraFrameFormat::kGray:
+        return width;
+    case CameraFrameFormat::kYuyv:
+        return width * 2;
+    }
+    return 0;
+}
+
+/**
+ * @struct CameraPixelFrameView
+ * @brief 通用相机像素帧的非拥有视图
+ *
+ * 只表达像素数据、格式、尺寸和时间戳；不表达 frame-store 或 V4L2
+ * 生命周期。具体像素布局只允许 image sampler 层解释。
+ */
+struct CameraPixelFrameView {
+    bool valid = false;
+    CameraFrameFormat format = CameraFrameFormat::kGray;
+    const uint8_t* data = nullptr;
+    int width = 0;
+    int height = 0;
+    int stride = 0;
+    uint64_t frame_id = 0;
+    uint64_t capture_time_ms = 0;
+
+    bool Valid() const {
+        return valid && data != nullptr && width > 0 && height > 0 &&
+               stride >= MinimumStrideBytes(format, width);
+    }
+};
+
+struct MutableCameraPixelFrameView {
+    bool valid = false;
+    CameraFrameFormat format = CameraFrameFormat::kGray;
+    uint8_t* data = nullptr;
+    int width = 0;
+    int height = 0;
+    int stride = 0;
+    uint64_t frame_id = 0;
+    uint64_t capture_time_ms = 0;
+
+    bool Valid() const {
+        return valid && data != nullptr && width > 0 && height > 0 &&
+               stride >= MinimumStrideBytes(format, width);
+    }
+
+    CameraPixelFrameView AsConst() const {
+        CameraPixelFrameView view{};
+        view.valid = Valid();
+        view.format = format;
+        view.data = data;
+        view.width = width;
+        view.height = height;
+        view.stride = stride;
+        view.frame_id = frame_id;
+        view.capture_time_ms = capture_time_ms;
+        return view;
+    }
+};
+
+inline CameraPixelFrameView MakeCameraPixelFrameView(const LegacyCameraFrameView& frame) {
+    CameraPixelFrameView view{};
+    view.valid = frame.Valid();
+    view.format = CameraFrameFormat::kGray;
+    view.data = frame.gray;
+    view.width = frame.width;
+    view.height = frame.height;
+    view.stride = frame.stride;
+    view.frame_id = frame.frame_id;
+    view.capture_time_ms = frame.capture_time_ms;
+    return view;
+}
 
 /// 相机原始帧元数据
 struct CameraRawFrameMetadata {
@@ -139,6 +257,17 @@ struct LegacyCameraFrame {
         view.capture_time_ms = capture_time_ms;
         return view;
     }
+
+    MutableLegacyCameraFrameView MutableView(uint64_t frame_id = 0, uint64_t capture_time_ms = 0) {
+        MutableLegacyCameraFrameView view{};
+        view.gray = gray.data();
+        view.width = width;
+        view.height = height;
+        view.stride = width;
+        view.frame_id = frame_id;
+        view.capture_time_ms = capture_time_ms;
+        return view;
+    }
 };
 
 /**
@@ -151,6 +280,7 @@ struct LegacyCameraFrame {
 struct CameraCapture {
     bool has_frame = false;                     ///< 是否有新帧可用
     LegacyCameraFrameView view{};               ///< 帧数据视图
+    CameraPixelFrameView pixel_view{};          ///< 通用像素帧视图
     CameraGeometryMarker marker = CameraGeometryMarker::kAdapterNotReady;  ///< 几何状态标记
     int source_width = 0;                       ///< 源图像宽度
     int source_height = 0;                      ///< 源图像高度

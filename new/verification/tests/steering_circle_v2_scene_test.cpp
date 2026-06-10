@@ -19,6 +19,38 @@ void Expect(bool condition, const char* message) {
     }
 }
 
+void AddBoundarySpan(ls2k::vision::BEVSimpleRowScan& row,
+                     float left_m,
+                     float right_m,
+                     int left_index,
+                     int right_index) {
+    ls2k::vision::BEVBoundarySpan span{};
+    span.forward_m = row.forward_m;
+    span.left_m = left_m;
+    span.right_m = right_m;
+    span.center_m = 0.5F * (left_m + right_m);
+    span.width_m = right_m - left_m;
+    span.left_lateral_index = left_index;
+    span.right_lateral_index = right_index;
+    row.spans.push_back(span);
+
+    ls2k::vision::BEVBoundaryJump left_jump{};
+    left_jump.forward_m = row.forward_m;
+    left_jump.lateral_m = left_m;
+    left_jump.lateral_index = left_index;
+    left_jump.delta_y = 80;
+    left_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kRisingY;
+    row.jumps.push_back(left_jump);
+
+    ls2k::vision::BEVBoundaryJump right_jump{};
+    right_jump.forward_m = row.forward_m;
+    right_jump.lateral_m = right_m;
+    right_jump.lateral_index = right_index;
+    right_jump.delta_y = -80;
+    right_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kFallingY;
+    row.jumps.push_back(right_jump);
+}
+
 ls2k::vision::BEVSimpleRowScan Row(float forward,
                                    float left_a,
                                    float left_b,
@@ -28,22 +60,8 @@ ls2k::vision::BEVSimpleRowScan Row(float forward,
     row.valid = true;
     row.forward_m = forward;
     row.sampleable_count = 32;
-    row.white_count = 8;
-    row.black_count = 24;
-    ls2k::vision::BEVSimpleWhiteInterval left{};
-    left.forward_m = forward;
-    left.left_m = left_a;
-    left.right_m = left_b;
-    left.center_m = 0.5F * (left_a + left_b);
-    left.width_m = left_b - left_a;
-    ls2k::vision::BEVSimpleWhiteInterval right{};
-    right.forward_m = forward;
-    right.left_m = right_a;
-    right.right_m = right_b;
-    right.center_m = 0.5F * (right_a + right_b);
-    right.width_m = right_b - right_a;
-    row.intervals.push_back(left);
-    row.intervals.push_back(right);
+    AddBoundarySpan(row, left_a, left_b, 0, 1);
+    AddBoundarySpan(row, right_a, right_b, 2, 3);
     return row;
 }
 
@@ -52,15 +70,7 @@ ls2k::vision::BEVSimpleRowScan SingleIntervalRow(float forward, float left_m, fl
     row.valid = true;
     row.forward_m = forward;
     row.sampleable_count = 65;
-    row.white_count = 32;
-    row.black_count = 33;
-    ls2k::vision::BEVSimpleWhiteInterval interval{};
-    interval.forward_m = forward;
-    interval.left_m = left_m;
-    interval.right_m = right_m;
-    interval.center_m = 0.5F * (left_m + right_m);
-    interval.width_m = right_m - left_m;
-    row.intervals.push_back(interval);
+    AddBoundarySpan(row, left_m, right_m, 0, 1);
     return row;
 }
 
@@ -85,15 +95,11 @@ std::vector<ls2k::vision::BEVSimpleRowScan> RowsFromReach(
         row.valid = true;
         row.forward_m = 0.06F + static_cast<float>(index) * 0.06F;
         row.sampleable_count = 65;
-        row.white_count = 32;
-        row.black_count = 33;
-        ls2k::vision::BEVSimpleWhiteInterval interval{};
-        interval.forward_m = row.forward_m;
-        interval.left_m = -left_reach_near_to_far[index];
-        interval.right_m = right_reach_near_to_far[index];
-        interval.center_m = 0.5F * (interval.left_m + interval.right_m);
-        interval.width_m = interval.right_m - interval.left_m;
-        row.intervals.push_back(interval);
+        AddBoundarySpan(row,
+                        -left_reach_near_to_far[index],
+                        right_reach_near_to_far[index],
+                        0,
+                        1);
         rows.push_back(row);
     }
     return rows;
@@ -268,15 +274,15 @@ ls2k::port::BEVReferencePath FirstIntervalCenterPath(
     const std::size_t count =
         std::min(rows.size(), path.sampled_path.size());
     for (std::size_t index = 0; index < count; ++index) {
-        if (rows[index].intervals.empty()) {
+        if (rows[index].spans.empty()) {
             continue;
         }
-        const ls2k::vision::BEVSimpleWhiteInterval& interval =
-            rows[index].intervals.front();
+        const ls2k::vision::BEVBoundarySpan& span =
+            rows[index].spans.front();
         ls2k::port::BEVPathSample& sample = path.sampled_path[index];
         sample.present = true;
         sample.point.forward_m = rows[index].forward_m;
-        sample.point.lateral_m = interval.center_m;
+        sample.point.lateral_m = span.center_m;
         sample.confidence = 0.9F;
         sample.source = ls2k::port::BEVPathPointSource::kIntervalCenter;
     }
@@ -818,7 +824,7 @@ void TestExitTraceAcceptsNonSelectedBoundaryClippedInterval() {
            "ExitTrace must offset from the selected visible outer edge");
 }
 
-void TestExitTraceRejectsSelectedBoundaryClippedEdgePath() {
+void TestExitTraceAcceptsSelectedBoundarySpanEdgePath() {
     {
         std::vector<ls2k::vision::BEVSimpleRowScan> rows{
             SingleIntervalRow(0.3F, 0.20F, 0.50F),
@@ -839,8 +845,12 @@ void TestExitTraceRejectsSelectedBoundaryClippedEdgePath() {
                 FrameWithCenterPath(rows, 0.0F, CenterPath(), 0.12F),
                 prior,
                 params);
-        Expect(!result.reference_plan.has_value(),
-               "left ExitTrace must reject a clipped selected right outer edge");
+        Expect(result.reference_plan.has_value(),
+               "left ExitTrace must accept board boundary span edge facts");
+        const float lateral =
+            result.reference_plan->reference_path.sampled_path[0].point.lateral_m;
+        Expect(std::fabs(lateral - 0.38F) < 1.0e-5F,
+               "left ExitTrace must offset from the selected right outer edge");
     }
     {
         std::vector<ls2k::vision::BEVSimpleRowScan> rows{
@@ -862,8 +872,12 @@ void TestExitTraceRejectsSelectedBoundaryClippedEdgePath() {
                 FrameWithCenterPath(rows, 0.0F, CenterPath(), 0.12F),
                 prior,
                 params);
-        Expect(!result.reference_plan.has_value(),
-               "right ExitTrace must reject a clipped selected left outer edge");
+        Expect(result.reference_plan.has_value(),
+               "right ExitTrace must accept board boundary span edge facts");
+        const float lateral =
+            result.reference_plan->reference_path.sampled_path[0].point.lateral_m;
+        Expect(std::fabs(lateral - (-0.38F)) < 1.0e-5F,
+               "right ExitTrace must offset from the selected left outer edge");
     }
 }
 
@@ -1001,7 +1015,7 @@ void TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval() {
            "InnerTrace must use the selected visible inner edge");
 }
 
-void TestInnerTraceRejectsSelectedBoundaryClippedEdgePath() {
+void TestInnerTraceAcceptsSelectedBoundarySpanEdgePath() {
     {
         std::vector<ls2k::vision::BEVSimpleRowScan> rows{
             SingleIntervalRow(0.06F, -0.50F, -0.20F),
@@ -1023,8 +1037,11 @@ void TestInnerTraceRejectsSelectedBoundaryClippedEdgePath() {
                 FrameWithCenterPath(rows, 0.0F, EntryCenterPath()),
                 prior,
                 params);
-        Expect(!result.reference_plan.has_value(),
-               "left InnerTrace must reject a clipped selected inner edge");
+        Expect(result.reference_plan.has_value(),
+               "left InnerTrace must accept board boundary span edge facts");
+        Expect(std::fabs(result.reference_plan->reference_path.sampled_path[0]
+                             .point.lateral_m - (-0.20F)) < 1.0e-5F,
+               "left InnerTrace must use the selected inner edge");
     }
     {
         std::vector<ls2k::vision::BEVSimpleRowScan> rows{
@@ -1047,8 +1064,11 @@ void TestInnerTraceRejectsSelectedBoundaryClippedEdgePath() {
                 FrameWithCenterPath(rows, 0.0F, EntryCenterPath()),
                 prior,
                 params);
-        Expect(!result.reference_plan.has_value(),
-               "right InnerTrace must reject a clipped selected inner edge");
+        Expect(result.reference_plan.has_value(),
+               "right InnerTrace must accept board boundary span edge facts");
+        Expect(std::fabs(result.reference_plan->reference_path.sampled_path[0]
+                             .point.lateral_m - 0.20F) < 1.0e-5F,
+               "right InnerTrace must use the selected inner edge");
     }
 }
 
@@ -1232,12 +1252,12 @@ int main() {
     TestExitTraceRejectsNonStraightOuterEdge();
     TestExitTraceUsesOrdinaryRoadHalfWidthFact();
     TestExitTraceAcceptsNonSelectedBoundaryClippedInterval();
-    TestExitTraceRejectsSelectedBoundaryClippedEdgePath();
+    TestExitTraceAcceptsSelectedBoundarySpanEdgePath();
     TestExitTraceIgnoresEntryBottomForwardRoi();
     TestInnerTraceUsesLockedSideInnerEdgePath();
     TestInnerTraceRejectsInsufficientRowGeometry();
     TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval();
-    TestInnerTraceRejectsSelectedBoundaryClippedEdgePath();
+    TestInnerTraceAcceptsSelectedBoundarySpanEdgePath();
     TestInnerTraceRejectsGappedRowGeometry();
     TestInnerTraceIgnoresEntryBottomForwardRoi();
     TestInnerTraceDoesNotBridgeInvalidRows();

@@ -22,39 +22,67 @@ void Expect(bool condition, const std::string& message) {
 
 ls2k::vision::BEVSimpleRowScan MakeRow(float forward_m,
                                        std::size_t sampleable_count,
-                                       std::size_t white_count,
-                                       std::size_t unknown_count,
+                                       std::size_t legacy_light_count,
+                                       std::size_t legacy_unclassified_count,
                                        float sampleable_width_m,
                                        float interval_left_m,
                                        float interval_right_m) {
+    (void)legacy_light_count;
+    (void)legacy_unclassified_count;
     ls2k::vision::BEVSimpleRowScan row{};
     row.valid = true;
     row.forward_m = forward_m;
     row.sampleable_count = sampleable_count;
-    row.white_count = white_count;
-    row.unknown_count = unknown_count;
-    row.black_count = sampleable_count > white_count + unknown_count
-                          ? sampleable_count - white_count - unknown_count
-                          : 0U;
     row.sampleable_left_m = -0.5F * sampleable_width_m;
     row.sampleable_right_m = 0.5F * sampleable_width_m;
     row.sampleable_width_m = sampleable_width_m;
     if (interval_right_m > interval_left_m) {
-        ls2k::vision::BEVSimpleWhiteInterval interval{};
-        interval.forward_m = forward_m;
-        interval.left_m = interval_left_m;
-        interval.right_m = interval_right_m;
-        interval.center_m = 0.5F * (interval_left_m + interval_right_m);
-        interval.width_m = interval_right_m - interval_left_m;
-        row.intervals.push_back(interval);
+        ls2k::vision::BEVBoundarySpan span{};
+        span.forward_m = forward_m;
+        span.left_m = interval_left_m;
+        span.right_m = interval_right_m;
+        span.center_m = 0.5F * (interval_left_m + interval_right_m);
+        span.width_m = interval_right_m - interval_left_m;
+        span.left_lateral_index = 0;
+        span.right_lateral_index = 1;
+        row.spans.push_back(span);
+
+        ls2k::vision::BEVBoundaryJump left_jump{};
+        left_jump.forward_m = forward_m;
+        left_jump.lateral_m = interval_left_m;
+        left_jump.lateral_index = span.left_lateral_index;
+        left_jump.delta_y = 80;
+        left_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kRisingY;
+        row.jumps.push_back(left_jump);
+
+        ls2k::vision::BEVBoundaryJump right_jump{};
+        right_jump.forward_m = forward_m;
+        right_jump.lateral_m = interval_right_m;
+        right_jump.lateral_index = span.right_lateral_index;
+        right_jump.delta_y = -80;
+        right_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kFallingY;
+        row.jumps.push_back(right_jump);
     }
     return row;
 }
 
+ls2k::vision::BEVSimpleRowScan MakeBoundaryAbsentRow(float forward_m,
+                                                     std::size_t sampleable_count,
+                                                     float sampleable_width_m) {
+    ls2k::vision::BEVSimpleRowScan row{};
+    row.valid = true;
+    row.forward_m = forward_m;
+    row.sampleable_count = sampleable_count;
+    row.sampleable_left_m = -0.5F * sampleable_width_m;
+    row.sampleable_right_m = 0.5F * sampleable_width_m;
+    row.sampleable_width_m = sampleable_width_m;
+    return row;
+}
+
 std::vector<ls2k::vision::BEVSimpleRowScan> WideCrossRows() {
-    return {MakeRow(0.24F, 80U, 78U, 0U, 1.40F, -0.50F, 0.50F),
-            MakeRow(0.30F, 80U, 78U, 0U, 1.40F, -0.58F, 0.58F),
-            MakeRow(0.36F, 80U, 78U, 0U, 1.40F, -0.66F, 0.66F)};
+    return {MakeBoundaryAbsentRow(0.24F, 80U, 1.40F),
+            MakeBoundaryAbsentRow(0.30F, 80U, 1.40F),
+            MakeBoundaryAbsentRow(0.36F, 80U, 1.40F)};
 }
 
 std::vector<ls2k::vision::BEVSimpleRowScan> MakeRowsFromReachRows(
@@ -67,15 +95,10 @@ std::vector<ls2k::vision::BEVSimpleRowScan> MakeRowsFromReachRows(
     for (std::size_t index = 0; index < count; ++index) {
         const float left_reach = left_reach_near_to_far[index];
         const float right_reach = right_reach_near_to_far[index];
-        const std::size_t white_count =
-            static_cast<std::size_t>(std::clamp((left_reach + right_reach) / 1.30F,
-                                                0.0F,
-                                                1.0F) *
-                                     65.0F);
         ls2k::vision::BEVSimpleRowScan row =
             MakeRow(0.06F + static_cast<float>(index) * 0.06F,
                     65U,
-                    std::max<std::size_t>(1U, white_count),
+                    0U,
                     0U,
                     1.30F,
                     -left_reach,
@@ -268,7 +291,12 @@ void TestCrossPresentFromWideRows() {
     Expect(evidence.reason == "present", "present evidence must expose present reason");
     Expect(evidence.confidence >= 0.70F, "present evidence must have configured confidence");
     Expect(evidence.sampleable_count > 0U, "present evidence must expose sampleable support");
-    Expect(evidence.supporting_white_count > 0U, "present evidence must expose white support");
+    Expect(evidence.boundary_absent_row_count == 3U,
+           "present evidence must expose boundary absence support");
+    Expect(evidence.boundary_jump_count == 0U,
+           "present cross evidence must come from absent boundary jumps");
+    Expect(evidence.boundary_span_count == 0U,
+           "present cross evidence must come from absent boundary spans");
     Expect(evidence.forward_max_m >= evidence.forward_min_m, "present evidence must expose forward bounds");
     Expect(evidence.lateral_max_m > evidence.lateral_min_m, "present evidence must expose lateral bounds");
 }
@@ -290,23 +318,24 @@ void TestCrossAbsentReasons() {
         MakeRow(0.2F, 40U, 12U, 0U, 1.0F, -0.10F, 0.10F),
         MakeRow(0.3F, 40U, 12U, 0U, 1.0F, -0.10F, 0.10F),
         MakeRow(0.4F, 40U, 12U, 0U, 1.0F, -0.10F, 0.10F)};
-    Expect(ls2k::vision::DetectCrossExitEvidence(narrow, params).reason == "wide_white_rows_absent",
-           "narrow white rows must not become cross evidence");
+    Expect(ls2k::vision::DetectCrossExitEvidence(narrow, params).reason ==
+               "boundary_absence_rows_absent",
+           "rows with boundary spans must not become cross evidence");
 
     const std::vector<ls2k::vision::BEVSimpleRowScan> loose_white_ratio{
         MakeRow(0.24F, 100U, 94U, 0U, 1.00F, -0.36F, 0.36F),
         MakeRow(0.30F, 100U, 94U, 0U, 1.00F, -0.43F, 0.43F),
         MakeRow(0.36F, 100U, 94U, 0U, 1.00F, -0.50F, 0.50F)};
     Expect(ls2k::vision::DetectCrossExitEvidence(loose_white_ratio, params).reason ==
-               "wide_white_rows_absent",
-           "wide rows below the configured white ratio must not become cross evidence");
+               "boundary_absence_rows_absent",
+           "rows with boundary spans must not become cross evidence");
 
     const std::vector<ls2k::vision::BEVSimpleRowScan> one_side_open{
         MakeRow(0.24F, 170U, 165U, 1U, 1.00F, -0.49F, 0.17F),
         MakeRow(0.30F, 170U, 165U, 1U, 1.00F, -0.49F, 0.17F),
         MakeRow(0.36F, 170U, 165U, 1U, 1.00F, -0.49F, 0.17F)};
     Expect(ls2k::vision::DetectCrossExitEvidence(one_side_open, params).reason ==
-               "wide_white_rows_absent",
+               "boundary_absence_rows_absent",
            "one-side circle-like opening must not become cross evidence");
 
     const std::vector<ls2k::vision::BEVSimpleRowScan> one_side_open_with_straight_edge{
@@ -314,7 +343,7 @@ void TestCrossAbsentReasons() {
         MakeRow(0.30F, 170U, 165U, 0U, 1.00F, -0.49F, 0.25F),
         MakeRow(0.36F, 170U, 165U, 0U, 1.00F, -0.49F, 0.25F)};
     Expect(ls2k::vision::DetectCrossExitEvidence(one_side_open_with_straight_edge, params).reason ==
-               "wide_white_rows_absent",
+               "boundary_absence_rows_absent",
            "one-side opening with straight opposite edge must not become cross evidence");
 
     const std::vector<ls2k::vision::BEVSimpleRowScan> far_wide_bend{
@@ -322,7 +351,7 @@ void TestCrossAbsentReasons() {
         MakeRow(0.86F, 80U, 70U, 2U, 1.30F, -0.61F, 0.61F),
         MakeRow(0.92F, 80U, 70U, 2U, 1.30F, -0.65F, 0.57F)};
     Expect(ls2k::vision::DetectCrossExitEvidence(far_wide_bend, params).reason ==
-               "wide_white_rows_absent",
+               "boundary_absence_rows_absent",
            "far-only wide bend rows must not become cross evidence");
 
     const std::vector<ls2k::vision::BEVSimpleRowScan> transient_expansion{
@@ -330,7 +359,7 @@ void TestCrossAbsentReasons() {
         MakeRow(0.30F, 100U, 98U, 0U, 1.00F, -0.50F, 0.50F),
         MakeRow(0.36F, 100U, 98U, 0U, 1.00F, -0.36F, 0.36F)};
     Expect(ls2k::vision::DetectCrossExitEvidence(transient_expansion, params).reason ==
-               "wide_white_rows_absent",
+               "boundary_absence_rows_absent",
            "a one-row expansion spike must not become cross evidence");
 
     const std::vector<ls2k::vision::BEVSimpleRowScan> below_cross_width_symmetric_expansion{
@@ -339,22 +368,16 @@ void TestCrossAbsentReasons() {
         MakeRow(0.30F, 100U, 98U, 0U, 1.00F, -0.44F, 0.44F)};
     Expect(ls2k::vision::DetectCrossExitEvidence(below_cross_width_symmetric_expansion,
                                                  params).reason ==
-               "wide_white_rows_absent",
+               "boundary_absence_rows_absent",
            "symmetric expansion below the cross width threshold must not become cross evidence");
 }
 
-void TestCrossWhiteRatioCanBeParameterized() {
+void TestCrossWhiteRatioIsNotAuthority() {
     ls2k::port::RuntimeParameters params{};
-    params.bev_element.cross_wide_row_white_ratio_min = 0.98F;
-    const std::vector<ls2k::vision::BEVSimpleRowScan> strict{
-        MakeRow(0.24F, 100U, 97U, 0U, 1.00F, -0.36F, 0.36F),
-        MakeRow(0.30F, 100U, 97U, 0U, 1.00F, -0.43F, 0.43F),
-        MakeRow(0.36F, 100U, 97U, 0U, 1.00F, -0.50F, 0.50F)};
     const ls2k::port::CrossExitElementEvidence evidence =
-        ls2k::vision::DetectCrossExitEvidence(strict, params);
-    Expect(!evidence.present, "white ratio below an explicitly stricter threshold must fail");
-    Expect(evidence.reason == "wide_white_rows_absent",
-           "strict white-ratio rejection must remain fail-closed");
+        ls2k::vision::DetectCrossExitEvidence(WideCrossRows(), params);
+    Expect(evidence.present, "white ratio parameter must not be cross authority in V9");
+    Expect(evidence.reason == "present", "boundary absence must remain the cross authority");
 }
 
 void TestCandidateTakeoverEnabledByDefault() {
@@ -422,8 +445,8 @@ void TestCircleLeftPresentFromRaster() {
            "left circle confidence must pass threshold");
     Expect(evidence.left_raw.support.sampleable_count > 0U,
            "left circle must expose sampleable support");
-    Expect(evidence.left_raw.support.supporting_white_count > 0U,
-           "left circle must expose white support");
+    Expect(evidence.left_raw.support.boundary_span_count > 0U,
+           "left circle must expose boundary span support");
     Expect(!evidence.right_raw.present, "left circle must not produce right circle");
 }
 
@@ -485,20 +508,21 @@ void TestCircleAbsentCases() {
            "missing raster must fail closed");
 }
 
-void TestCircleRejectsSampleableBoundaryClippedOpening() {
+void TestCircleConsumesBoundarySpansAtSampleableBoundary() {
     const ls2k::port::RuntimeParameters params{};
     const std::vector<ls2k::vision::BEVSimpleRowScan> rows =
         MakeRowsFromReachRows({0.12F, 0.18F, 0.65F, 0.65F},
                               {0.20F, 0.20F, 0.20F, 0.20F});
     const ls2k::vision::CircleElementEvidenceResult evidence =
         ls2k::vision::DetectCircleElementEvidence(rows, params);
-    Expect(!evidence.left_raw.present && !evidence.right_raw.present,
-           "sampleable-boundary clipped rows must not become circle evidence");
-    Expect(evidence.left_raw.reason == "insufficient_sampleable_support",
-           "clipped opening rows must fail before boundary growth is trusted");
+    Expect(evidence.left_raw.present,
+           "V9 boundary spans at the sampleable boundary must remain circle facts");
+    Expect(evidence.left_raw.reason == "present",
+           "sampleable-boundary span evidence must use normal present reason");
+    Expect(!evidence.right_raw.present, "left opening must not produce right circle evidence");
 }
 
-void TestCircleRejectsUnknownScreenEdgeClippedRasterOpening() {
+void TestCircleConsumesRasterCompatibilityBoundarySpans() {
     const ls2k::port::RuntimeParameters params{};
     const std::vector<float> left_open{0.12F, 0.18F, 0.34F, 0.42F, 0.42F};
     const std::vector<float> right_straight(5U, 0.20F);
@@ -509,10 +533,10 @@ void TestCircleRejectsUnknownScreenEdgeClippedRasterOpening() {
                                            false);
     const ls2k::vision::CircleElementEvidenceResult left_evidence =
         ls2k::vision::DetectCircleElementEvidence(&left_unknown, params);
-    Expect(!left_evidence.left_raw.present && !left_evidence.right_raw.present,
-           "left unknown screen-edge prefix must not become raster circle evidence");
-    Expect(left_evidence.left_raw.reason == "insufficient_sampleable_support",
-           "left unknown screen-edge rows must be removed before opening classification");
+    Expect(left_evidence.left_raw.present,
+           "raster compatibility spans must not be vetoed by unknown screen-edge prefix");
+    Expect(left_evidence.left_raw.reason == "present",
+           "left compatibility span evidence must use normal present reason");
 
     const std::vector<float> left_straight(5U, 0.20F);
     const std::vector<float> right_open{0.12F, 0.18F, 0.34F, 0.42F, 0.42F};
@@ -523,10 +547,10 @@ void TestCircleRejectsUnknownScreenEdgeClippedRasterOpening() {
                                            true);
     const ls2k::vision::CircleElementEvidenceResult right_evidence =
         ls2k::vision::DetectCircleElementEvidence(&right_unknown, params);
-    Expect(!right_evidence.left_raw.present && !right_evidence.right_raw.present,
-           "right unknown screen-edge suffix must not become raster circle evidence");
-    Expect(right_evidence.right_raw.reason == "insufficient_sampleable_support",
-           "right unknown screen-edge rows must be removed before opening classification");
+    Expect(right_evidence.right_raw.present,
+           "raster compatibility spans must not be vetoed by unknown screen-edge suffix");
+    Expect(right_evidence.right_raw.reason == "present",
+           "right compatibility span evidence must use normal present reason");
 }
 
 void TestCircleOpeningUsesNetExpansionNotStrictMonotonic() {
@@ -603,8 +627,8 @@ void TestCircleRejectsSaturatedWideWhiteRows() {
         ls2k::vision::DetectCircleElementEvidence(&raster, params);
     Expect(!evidence.left_raw.present && !evidence.right_raw.present,
            "two-sided wide opening must stay out of raw circle evidence");
-    Expect(evidence.left_raw.reason == "insufficient_sampleable_support",
-           "sampleable-boundary saturated rows must fail before opening classification");
+    Expect(evidence.left_raw.reason == "both_sides_open",
+           "two-sided boundary span opening should be reported as both_sides_open");
 }
 
 void TestCircleReportsBendForFragmentedDoubleOpening() {
@@ -726,7 +750,7 @@ int main() {
     try {
         TestCrossPresentFromWideRows();
         TestCrossAbsentReasons();
-        TestCrossWhiteRatioCanBeParameterized();
+        TestCrossWhiteRatioIsNotAuthority();
     TestCandidateTakeoverEnabledByDefault();
         TestCandidateCanBeExplicitlyIncluded();
         TestCandidateRejectsGappedLineFacts();
@@ -734,8 +758,8 @@ int main() {
         TestCircleLeftPresentFromSparseRows();
         TestCircleRightPresentFromRaster();
         TestCircleAbsentCases();
-        TestCircleRejectsSampleableBoundaryClippedOpening();
-        TestCircleRejectsUnknownScreenEdgeClippedRasterOpening();
+        TestCircleConsumesBoundarySpansAtSampleableBoundary();
+        TestCircleConsumesRasterCompatibilityBoundarySpans();
         TestCircleOpeningUsesNetExpansionNotStrictMonotonic();
         TestCircleRejectsTransientOpeningSpike();
         TestCircleIgnoresDetachedWhiteIslandOutsideMainBand();
