@@ -208,7 +208,7 @@ void TestLegacyLateralErrorUsesFixedDebugWeight() {
                "linear weighting must use the 24-point global index");
 }
 
-void TestTurnOutputTargetUsesTrackingGeometryTermsAndRawTargetLimit() {
+void TestTurnOutputTargetUsesReferenceTrackingGeometryTermsAndRawTargetLimit() {
     ls2k::port::RuntimeParameters params{};
     params.running_speed_target = 100.0;
     params.raw_turn_output_limit = 50;
@@ -277,15 +277,15 @@ void TestReferenceControlReadinessUsesHoldSelectedNotReferenceSource() {
     const ls2k::port::RuntimeParameters params{};
     const ls2k::port::BEVReferencePath path = MakePath(params, 6, 0.0F, ls2k::port::BEVPathPointSource::kHold);
     const ls2k::port::ReferenceUsability usability = ls2k::reference::EvaluateReferenceUsability(path, params);
-    const ls2k::port::ReferenceTrackingGeometry tracking_geometry =
+    const ls2k::port::ReferenceTrackingGeometry reference_tracking_geometry =
         ls2k::reference::ComputeReferenceTrackingGeometry(path,
                                                        usability,
                                                        params.bev_control_model);
 
     const ls2k::port::ReferenceControlReadiness current =
-        ls2k::reference::EvaluateReferenceControlReadiness(usability, tracking_geometry, false);
+        ls2k::reference::EvaluateReferenceControlReadiness(usability, reference_tracking_geometry, false);
     const ls2k::port::ReferenceControlReadiness held =
-        ls2k::reference::EvaluateReferenceControlReadiness(usability, tracking_geometry, true);
+        ls2k::reference::EvaluateReferenceControlReadiness(usability, reference_tracking_geometry, true);
 
     Expect(current.ready && !current.degraded && current.reason == "ok",
            "reference-control readiness must not infer hold from point source");
@@ -295,16 +295,16 @@ void TestReferenceControlReadinessUsesHoldSelectedNotReferenceSource() {
 
 void TestReferenceControlReadinessRejectsLayerFailures() {
     ls2k::port::ReferenceUsability usability{};
-    ls2k::port::ReferenceTrackingGeometry tracking_geometry{};
+    ls2k::port::ReferenceTrackingGeometry reference_tracking_geometry{};
 
     ls2k::port::ReferenceControlReadiness readiness =
-        ls2k::reference::EvaluateReferenceControlReadiness(usability, tracking_geometry, false);
+        ls2k::reference::EvaluateReferenceControlReadiness(usability, reference_tracking_geometry, false);
     Expect(!readiness.ready && readiness.reason == "reference_unusable",
            "unusable reference must stop before tracking-geometry readiness");
 
     usability.usable = true;
-    readiness = ls2k::reference::EvaluateReferenceControlReadiness(usability, tracking_geometry, false);
-    Expect(!readiness.ready && readiness.reason == "tracking_geometry_uncomputed",
+    readiness = ls2k::reference::EvaluateReferenceControlReadiness(usability, reference_tracking_geometry, false);
+    Expect(!readiness.ready && readiness.reason == "reference_tracking_geometry_uncomputed",
            "uncomputed tracking geometry must stop reference-control readiness");
 }
 
@@ -357,7 +357,7 @@ int main() {
         TestNearSamplesHaveMoreWeightThanFarSamples();
         TestGapStopsWeightedSamples();
         TestLegacyLateralErrorUsesFixedDebugWeight();
-        TestTurnOutputTargetUsesTrackingGeometryTermsAndRawTargetLimit();
+        TestTurnOutputTargetUsesReferenceTrackingGeometryTermsAndRawTargetLimit();
         TestGyroTurnUsesGateApprovedGyroValueOnly();
         TestReferenceControlReadinessUsesHoldSelectedNotReferenceSource();
         TestReferenceControlReadinessRejectsLayerFailures();

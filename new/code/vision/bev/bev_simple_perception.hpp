@@ -6,24 +6,12 @@
 #include <string>
 #include <vector>
 
-#include "vision/image/bev_pixel_classifier.hpp"
 #include "vision/bev/bev_projector.hpp"
 #include "port/bev_reference_types.hpp"
 #include "port/camera_frame_types.hpp"
 #include "port/runtime_parameter_types.hpp"
 
 namespace ls2k::vision {
-
-/// 稠密BEV图像（用于调试，包含每个像素的灰度和分类）
-struct BEVSimpleImage {
-    bool valid = false;               ///< 图像数据是否有效
-    int width = 0;                    ///< 图像宽度（像素）
-    int height = 0;                   ///< 图像高度（像素）
-    float lateral_limit_m = 0.0F;     ///< 横向半宽限制（米）
-    float forward_max_m = 0.0F;       ///< 最大前向距离（米）
-    std::vector<std::uint8_t> gray{}; ///< 灰度值数组
-    std::vector<BEVSimplePixelClass> classes{}; ///< 像素分类数组
-};
 
 enum class BEVBoundaryJumpPolarity {
     kRisingY,
@@ -112,25 +100,12 @@ struct BEVSimplePerceptionResult {
     std::string reference_source = "none";        ///< 参考路径来源字符串
 };
 
-/// 将BEV简单像素分类枚举转换为可读字符串
-const char* ToString(BEVSimplePixelClass class_kind);
 /// 将采样投影状态枚举转换为可读字符串
 const char* ToString(BEVSampleProjectionState state);
 /// 将参考路径模式枚举转换为可读字符串
 const char* ToString(port::ReferenceMode mode);
 /// 将BEV路径点来源枚举转换为可读字符串
 const char* ToString(port::BEVPathPointSource source);
-
-/// 在原始帧上进行双线性插值采样
-/// @param frame 原始相机帧
-/// @param row_px 采样行坐标（像素浮点）
-/// @param col_px 采样列坐标（像素浮点）
-/// @param out_gray [输出] 采样得到的灰度值
-/// @return 采样是否成功
-bool SampleFrameBilinear(const port::LegacyCameraFrameView& frame,
-                         float row_px,
-                         float col_px,
-                         std::uint8_t& out_gray);
 
 void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
                                    const port::BEVBoundaryParameters& params,
@@ -159,17 +134,6 @@ port::BEVReferencePath ExtractStrictLeadingReferenceSegment(
 /// 从行扫描结果构建完整的参考路径（目前委托给ExtractStrictLeadingReferenceSegment）
 port::BEVReferencePath BuildReferencePath(const std::vector<BEVSimpleRowScan>& rows,
                                           const port::RuntimeParameters& params);
-
-/// 构建稠密BEV调试图像（全分辨率投影，仅用于调试/可视化）
-/// @param frame 原始相机帧
-/// @param classification_model 当前帧灰度分类模型
-/// @param params 运行时参数
-/// @param projector BEV投影器
-/// @return 稠密BEV图像
-BEVSimpleImage BuildDebugDenseBevImage(const port::LegacyCameraFrameView& frame,
-                                       const BEVPixelClassificationModel& classification_model,
-                                       const port::RuntimeParameters& params,
-                                       const BEVProjector& projector);
 
 /// 运行完整的BEV简单感知管线
 /// @param frame 原始相机帧

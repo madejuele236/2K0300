@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "port/numeric_parse.hpp"
 #include "port/perf_counter.hpp"
@@ -81,15 +82,15 @@ void PerceptionFrontend::ConsumeMemoryResetRequest() {
 /// 处理一帧图像：故障注入 → 空帧处理 → Otsu → sparse BEV 感知 → 结果缓存。
 /// 支持通过环境变量 LS2K_FAULT_INJECT_DROP_FRAME_EVERY_N 模拟帧丢失。
 /// @param params  运行时参数
-void PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) {
-    LS2K_PERF_SCOPE(port::PerfStage::kPerceptionFrame);
+bool PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) {
     ConsumeMemoryResetRequest();
 
     std::optional<CameraFrameStore::ReadLease> latest =
         frame_store_.AcquireLatestAfter(last_processed_frame_id_);
     if (!latest.has_value()) {
-        return;
+        return false;
     }
+    LS2K_PERF_SCOPE(port::PerfStage::kPerceptionFrame);
     const CameraFrameHandle& handle = latest->Handle();
 
     ++processed_frames_;
@@ -119,12 +120,11 @@ void PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) 
         port::PerceptionResult fallback = BuildDroppedFrameFallback(capture);
         fallback.publish_time_ms = port::NowMs();
         {
-            LS2K_PERF_SCOPE(port::PerfStage::kPerceptionPublish);
             std::lock_guard<std::mutex> lock(state_.shared_mutex);
-            state_.perception = fallback;
+            state_.perception = std::move(fallback);
             ++state_.perception_publish_count;
         }
-        return;
+        return true;
     }
 
     port::MotionHistory motion_history{};
@@ -136,11 +136,11 @@ void PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) 
         frame_pipeline_.ProcessFrame(capture, params, motion_history);
 
     {
-        LS2K_PERF_SCOPE(port::PerfStage::kPerceptionPublish);
         std::lock_guard<std::mutex> lock(state_.shared_mutex);
-        state_.perception = perception;
+        state_.perception = std::move(perception);
         ++state_.perception_publish_count;
     }
+    return true;
 }
 
 }  // namespace ls2k::runtime

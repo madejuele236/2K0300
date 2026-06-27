@@ -762,6 +762,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
       <h2>FSM</h2>
       <dl>
         <dt>Circle</dt><dd id="circleFsm">-</dd>
+        <dt>Circle geom</dt><dd id="circleGeometry">-</dd>
         <dt>Circle reason</dt><dd id="circleReason">-</dd>
       </dl>
     </section>
@@ -854,6 +855,7 @@ const fields = {
   displayMode: document.getElementById("displayMode"),
   motionFsm: document.getElementById("motionFsm"),
   circleFsm: document.getElementById("circleFsm"),
+  circleGeometry: document.getElementById("circleGeometry"),
   circleReason: document.getElementById("circleReason"),
   reference: document.getElementById("reference"),
   gate: document.getElementById("gate"),
@@ -1423,6 +1425,7 @@ function handleEnvelope(buffer, transport) {
     fields.circleFsm.textContent =
       `${circle.enabled === false ? "off" : circle.frame_phase ?? "-"} -> ${circle.next_phase ?? "-"}` +
       ` / ${circle.dir ?? "-"} / ${circle.reference_role ?? "-"}`;
+    fields.circleGeometry.textContent = formatBool(circle.geometry_available ?? null);
     fields.circleReason.textContent = circle.reason ?? "-";
     fields.reference.textContent = `${nested(steering, ["reference", "mode"])} / ${nested(steering, ["reference", "source"])}`;
     fields.gate.textContent =

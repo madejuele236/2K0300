@@ -223,6 +223,8 @@ private:
     int last_state_code_ = -1;
     /** 待发送的排队图像数据（当链路忙时暂存） */
     std::vector<std::uint8_t> pending_image_{};
+    /** 复用的媒体编码缓冲，避免每帧重新分配完整 envelope */
+    std::vector<std::uint8_t> encode_buffer_{};
     /** 底层传输层实现 */
     std::unique_ptr<ISteeringMediaTransport> transport_{};
 };

@@ -56,8 +56,8 @@ struct LateralErrorDebugView {
     std::string reason = "reference_unusable"; ///< 未计算原因
 };
 
-/// 跟踪几何调试视图 —— 描述 selected/aligned reference 的控制几何事实
-struct TrackingGeometryDebugView {
+/// 参考跟踪几何调试视图 —— 描述 selected/aligned reference 的控制几何事实
+struct ReferenceTrackingGeometryDebugView {
     bool computed = false;                  ///< 是否已计算跟踪几何
     double lateral_offset_m = 0.0;          ///< 横向位置项
     double heading_error_rad = 0.0;         ///< 航向误差项
@@ -146,7 +146,7 @@ struct SteeringDebugSnapshot {
     ReferenceDebugView reference{};                          ///< 参考路径信息
     ReferenceEligibilityDebugView eligibility{};             ///< 参考可用性
     LateralErrorDebugView lateral_error{};                   ///< 横向误差估计
-    TrackingGeometryDebugView tracking_geometry{};           ///< 参考跟踪几何
+    ReferenceTrackingGeometryDebugView reference_tracking_geometry{};  ///< 参考跟踪几何
     ReferenceTimeAlignmentDebugView reference_time_alignment{}; ///< reference 时间对齐
     ReferenceControlDebugView reference_control{};           ///< 参考控制就绪
     SafetyGateDebugView safety_gate{};                       ///< 安全门状态

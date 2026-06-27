@@ -15,12 +15,12 @@ constexpr int kLeftEncoderDirectionSign = 1;
 /// 右编码器方向符号（取反以匹配逻辑坐标系）
 constexpr int kRightEncoderDirectionSign = -1;
 
-/// @brief 从环境变量读取正整数（用于故障注入间隔配置）
+/// @brief 从环境变量加载正整数（用于故障注入间隔配置）
 /// @param key 环境变量名
 /// @param diagnostics 诊断输出接口
 /// @param now_ms 当前时间戳
 /// @return 解析得到的正整数，无效或未设置时返回 0
-int ReadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, uint64_t now_ms) {
+int LoadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, uint64_t now_ms) {
     const char* value = std::getenv(key);
     if (value == nullptr || value[0] == '\0') {
         return 0;
@@ -57,12 +57,16 @@ public:
                               port::NowMs()});
             enabled_ = false;
             ready_ = false;
+            inject_invalid_every_n_ = 0;
             return true;
         }
 
         enabled_ = true;
         adaptation_hook_ = profile.encoder.mode == port::SubsystemMode::kAdaptationHook;
         hook_name_ = profile.encoder.hook;
+        inject_invalid_every_n_ = LoadPositiveIntervalEnv("LS2K_FAULT_INJECT_ENCODER_INVALID_EVERY_N",
+                                                          diagnostics,
+                                                          port::NowMs());
 
         if (adaptation_hook_) {
             ready_ = true;
@@ -114,9 +118,8 @@ public:
         }
 
         ++read_count_;
-        const int inject_invalid_every_n = ReadPositiveIntervalEnv(
-            "LS2K_FAULT_INJECT_ENCODER_INVALID_EVERY_N", diagnostics, out.capture_time_ms);
-        if (inject_invalid_every_n > 0 && read_count_ % static_cast<uint64_t>(inject_invalid_every_n) == 0) {
+        if (inject_invalid_every_n_ > 0 &&
+            read_count_ % static_cast<uint64_t>(inject_invalid_every_n_) == 0) {
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kWarning,
                                    "encoder.inject.invalid",
@@ -140,15 +143,7 @@ public:
         out.left = counts.left * kLeftEncoderDirectionSign;
         out.right = counts.right * kRightEncoderDirectionSign;
         out.valid = true;
-        port::EmitRateLimited(diagnostics,
-                              {port::DiagnosticLevel::kInfo,
-                               "encoder.delta.summary",
-                               "logical encoder sample left=" + std::to_string(out.left) +
-                                   " right=" + std::to_string(out.right) +
-                                   " mean=" + std::to_string((out.left + out.right) / 2) +
-                                   " diff=" + std::to_string(out.right - out.left),
-                               out.capture_time_ms},
-                              1000);
+        MaybeEmitSummary(out, diagnostics);
         return out;
     }
 
@@ -167,6 +162,25 @@ public:
     bool Ready() const override { return ready_; }
 
 private:
+    void MaybeEmitSummary(const port::EncoderDelta& sample, port::DiagnosticSink& diagnostics) {
+        constexpr uint64_t kSummaryIntervalMs = 1000;
+        if (sample.capture_time_ms >= last_summary_ms_ &&
+            sample.capture_time_ms - last_summary_ms_ < kSummaryIntervalMs) {
+            return;
+        }
+        if (!diagnostics.ShouldEmit(port::DiagnosticLevel::kInfo, "encoder.delta.summary")) {
+            return;
+        }
+        last_summary_ms_ = sample.capture_time_ms;
+        diagnostics.Emit({port::DiagnosticLevel::kInfo,
+                          "encoder.delta.summary",
+                          "logical encoder sample left=" + std::to_string(sample.left) +
+                              " right=" + std::to_string(sample.right) +
+                              " mean=" + std::to_string((sample.left + sample.right) / 2) +
+                              " diff=" + std::to_string(sample.right - sample.left),
+                          sample.capture_time_ms});
+    }
+
     /// 编码器子系统是否启用
     bool enabled_ = false;
     /// 编码器是否已就绪
@@ -177,6 +191,10 @@ private:
     std::string hook_name_ = "direct-match";
     /// 读取计数（用于故障注入周期性）
     uint64_t read_count_ = 0;
+    /// 故障注入间隔；初始化时读取，避免热路径解析环境变量
+    int inject_invalid_every_n_ = 0;
+    /// 上次样本摘要输出时间
+    uint64_t last_summary_ms_ = 0;
 };
 
 }  // namespace

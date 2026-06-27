@@ -195,7 +195,6 @@ void AssistantService::ApplyDeferredMotionIntentIfReady(RuntimeState& state,
 /// @param state       运行时状态
 /// @param diagnostics 诊断输出接口
 void AssistantService::Tick(RuntimeState& state, port::DiagnosticSink& diagnostics) {
-    LS2K_PERF_SCOPE(port::PerfStage::kAssistantTick);
     if (!configured_ || !enabled_) {
         return;
     }

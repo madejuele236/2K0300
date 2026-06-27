@@ -142,10 +142,7 @@ public:
         pfd.events = POLLIN;
         const uint64_t poll_begin_us = NowUs();
         int poll_rc = 0;
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kCameraV4l2Poll);
-            poll_rc = poll(&pfd, 1, std::max(1, timeout_ms));
-        }
+        poll_rc = poll(&pfd, 1, std::max(1, timeout_ms));
         metadata.poll_wait_us = NowUs() - poll_begin_us;
         if (poll_rc <= 0) {
             if (poll_rc < 0 && errno != EINTR) {

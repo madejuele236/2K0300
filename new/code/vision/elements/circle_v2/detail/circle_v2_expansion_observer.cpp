@@ -319,9 +319,9 @@ bool ReliableStraight(const BoundaryLineFit& fit, const CircleV2Params& params) 
     return fit.straight && fit.confidence >= params.opposite_straight_confidence_min;
 }
 
-std::size_t EntryBottomRowCount(const CircleV2Params& params) {
+std::size_t MinimumEntryBottomRowCount(const CircleV2Params& params) {
     return static_cast<std::size_t>(
-        std::max(kParams.min_support_rows, params.entry_bottom_row_count));
+        std::max(kParams.min_support_rows, params.entry_bottom_min_row_count));
 }
 
 bool RowInsideEntryBottomForwardRoi(const RowObservation& row,
@@ -331,18 +331,16 @@ bool RowInsideEntryBottomForwardRoi(const RowObservation& row,
            row.forward_m <= params.entry_bottom_forward_max_m;
 }
 
-std::vector<RowObservation> BottomRows(const std::vector<RowObservation>& rows,
-                                       const CircleV2Params& params) {
-    std::vector<RowObservation> bottom_rows;
-    const std::size_t target_count = EntryBottomRowCount(params);
-    bottom_rows.reserve(target_count);
-    for (std::size_t index = 0; index < rows.size() && bottom_rows.size() < target_count;
-         ++index) {
-        if (RowInsideEntryBottomForwardRoi(rows[index], params)) {
-            bottom_rows.push_back(rows[index]);
+std::vector<RowObservation> EntryBottomRoiRows(const std::vector<RowObservation>& rows,
+                                               const CircleV2Params& params) {
+    std::vector<RowObservation> roi_rows;
+    roi_rows.reserve(rows.size());
+    for (const RowObservation& row : rows) {
+        if (RowInsideEntryBottomForwardRoi(row, params)) {
+            roi_rows.push_back(row);
         }
     }
-    return bottom_rows;
+    return roi_rows;
 }
 
 bool BottomSideOpeningReached(const std::vector<RowObservation>& bottom_rows, bool use_left) {
@@ -353,15 +351,15 @@ bool BottomSideOpeningReached(const std::vector<RowObservation>& bottom_rows, bo
 bool BottomEntryGateReached(const std::vector<RowObservation>& rows,
                             bool use_left,
                             const CircleV2Params& params) {
-    const std::vector<RowObservation> bottom_rows = BottomRows(rows, params);
-    if (bottom_rows.size() < EntryBottomRowCount(params)) {
+    const std::vector<RowObservation> roi_rows = EntryBottomRoiRows(rows, params);
+    if (roi_rows.size() < MinimumEntryBottomRowCount(params)) {
         return false;
     }
 
     const bool opposite_use_left = !use_left;
-    const BoundaryTrace opposite_trace = BuildBoundaryTrace(bottom_rows, opposite_use_left);
+    const BoundaryTrace opposite_trace = BuildBoundaryTrace(roi_rows, opposite_use_left);
     const BoundaryLineFit opposite_fit = FitBoundaryLine(opposite_trace, opposite_use_left);
-    return BottomSideOpeningReached(bottom_rows, use_left) &&
+    return BottomSideOpeningReached(roi_rows, use_left) &&
            ReliableStraight(opposite_fit, params);
 }
 

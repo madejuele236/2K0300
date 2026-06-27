@@ -2,10 +2,15 @@
 #include "platform/true_ls2k0300/bridge.hpp"
 
 #include <array>
-#include <cstdlib>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cmath>
+#include <cstring>
+#include <exception>
 #include <string>
+#include <thread>
 
 #include "port/numeric_parse.hpp"
 
@@ -26,13 +31,41 @@ constexpr float kAccelFilterOldWeight = 0.1F;
 constexpr int kImuBiasCalibrationSamples = 32;
 /// 用于确认数据流连续性的有效样本数量阈值
 constexpr uint32_t kImuContinuityEvidenceSamples = 32;
+/// 异步 IMU 采样周期；与 200Hz 控制周期对齐
+constexpr auto kImuSamplerPeriod = std::chrono::milliseconds(5);
 
-/// @brief 从环境变量读取正整数（用于故障注入间隔配置）
+enum class CachedInvalidKind : uint8_t {
+    kNone = 0,
+    kReadFailed = 1,
+    kInjected = 2,
+};
+
+struct ImuSampleSnapshot {
+    port::ImuSample sample{};
+    uint64_t generation = 0;
+    CachedInvalidKind invalid_kind = CachedInvalidKind::kNone;
+};
+
+uint32_t FloatBits(float value) {
+    uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value), "float bit packing expects 32-bit float");
+    std::memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+float FloatFromBits(uint32_t bits) {
+    float value = 0.0F;
+    static_assert(sizeof(bits) == sizeof(value), "float bit unpacking expects 32-bit float");
+    std::memcpy(&value, &bits, sizeof(value));
+    return value;
+}
+
+/// @brief 从环境变量加载正整数（用于故障注入间隔配置）
 /// @param key 环境变量名
 /// @param diagnostics 诊断输出接口
 /// @param now_ms 当前时间戳
 /// @return 解析得到的正整数，无效或未设置时返回 0
-int ReadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, uint64_t now_ms) {
+int LoadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, uint64_t now_ms) {
     const char* value = std::getenv(key);
     if (value == nullptr || value[0] == '\0') {
         return 0;
@@ -73,6 +106,8 @@ const char* ImuTypeName(uint8_t imu_type) {
 /// 内部包含加速度低通滤波和陀螺仪零偏校准逻辑。
 class ImuAdapter final : public port::IImuAdapter {
 public:
+    ~ImuAdapter() override { StopSampler(); }
+
     /// @brief 初始化 IMU 适配器
     /// @param profile 硬件描述文件（检查 IMU 子系统是否启用及其模式）
     /// @param diagnostics 诊断输出接口
@@ -85,12 +120,16 @@ public:
                               port::NowMs()});
             enabled_ = false;
             ready_ = false;
+            inject_invalid_every_n_ = 0;
             return true;
         }
 
         enabled_ = true;
         adaptation_hook_ = profile.imu.mode == port::SubsystemMode::kAdaptationHook;
         hook_name_ = profile.imu.hook;
+        inject_invalid_every_n_ = LoadPositiveIntervalEnv("LS2K_FAULT_INJECT_IMU_INVALID_EVERY_N",
+                                                          diagnostics,
+                                                          port::NowMs());
 
         if (adaptation_hook_) {
             ready_ = true;
@@ -116,6 +155,16 @@ public:
                           port::NowMs()});
         if (ready_) {
             PrimeBiasCalibration(diagnostics);
+            try {
+                StartSampler();
+            } catch (const std::exception& ex) {
+                ready_ = false;
+                diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
+                                  "imu.sampler.start_failed",
+                                  std::string("imu async sampler failed to start: ") + ex.what(),
+                                  port::NowMs()});
+                return false;
+            }
         }
         return ready_;
     }
@@ -142,51 +191,32 @@ public:
             return out;
         }
 
-        ++read_count_;
-        const int inject_invalid_every_n =
-            ReadPositiveIntervalEnv("LS2K_FAULT_INJECT_IMU_INVALID_EVERY_N", diagnostics, out.capture_time_ms);
-        if (inject_invalid_every_n > 0 && read_count_ % static_cast<uint64_t>(inject_invalid_every_n) == 0) {
+        const ImuSampleSnapshot cached = SnapshotCachedSample();
+        if (cached.generation == 0) {
+            return out;
+        }
+
+        out = cached.sample;
+        if (cached.generation == last_observed_generation_) {
+            return out;
+        }
+        last_observed_generation_ = cached.generation;
+
+        if (!out.valid) {
             if (valid_streak_ > 0) {
                 continuity_reported_ = false;
             }
             valid_streak_ = 0;
             ++invalid_streak_;
+            const bool injected = cached.invalid_kind == CachedInvalidKind::kInjected;
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kWarning,
-                                   "imu.inject.invalid",
-                                   "injecting bounded Phase B invalid-IMU fault on the accepted runtime entrypoint",
+                                   injected ? "imu.inject.invalid" : "imu.read.invalid",
+                                   injected ? "injecting bounded Phase B invalid-IMU fault on the accepted runtime entrypoint"
+                                            : "imu sample unavailable",
                                    out.capture_time_ms},
                                   1000);
             return out;
-        }
-
-        const true_ls2k0300::ImuBridgeSample sample = true_ls2k0300::ReadImuSample();
-        if (!sample.valid) {
-            if (valid_streak_ > 0) {
-                continuity_reported_ = false;
-            }
-            valid_streak_ = 0;
-            ++invalid_streak_;
-            port::EmitRateLimited(diagnostics,
-                                  {port::DiagnosticLevel::kWarning,
-                                   "imu.read.invalid",
-                                   sample.detail.empty() ? "imu sample unavailable" : sample.detail,
-                                   out.capture_time_ms},
-                                  1000);
-            return out;
-        }
-
-        const std::array<float, 3> acc_mps2 = {static_cast<float>(sample.acc_x) * kAccelMetersPerSecPerCount,
-                                               static_cast<float>(sample.acc_y) * kAccelMetersPerSecPerCount,
-                                               static_cast<float>(sample.acc_z) * kAccelMetersPerSecPerCount};
-        if (!have_filtered_acc_) {
-            filtered_acc_ = acc_mps2;
-            have_filtered_acc_ = true;
-        } else {
-            for (std::size_t i = 0; i < filtered_acc_.size(); ++i) {
-                filtered_acc_[i] =
-                    acc_mps2[i] * kAccelFilterNewWeight + filtered_acc_[i] * kAccelFilterOldWeight;
-            }
         }
 
         if (invalid_streak_ > 0) {
@@ -210,23 +240,6 @@ public:
         }
 
         out.valid = true;
-        out.acc_x = filtered_acc_[0];
-        out.acc_y = filtered_acc_[1];
-        out.acc_z = filtered_acc_[2];
-        out.gyro_x =
-            (static_cast<float>(sample.gyro_x) - gyro_bias_raw_[0]) * kGyroRadPerSecPerCount;
-        out.gyro_y =
-            (static_cast<float>(sample.gyro_y) - gyro_bias_raw_[1]) * kGyroRadPerSecPerCount;
-        out.gyro_z =
-            (static_cast<float>(sample.gyro_z) - gyro_bias_raw_[2]) * kGyroRadPerSecPerCount;
-        port::EmitRateLimited(diagnostics,
-                              {port::DiagnosticLevel::kInfo,
-                               "imu.sample.summary",
-                               "imu normalized sample acc_z=" + std::to_string(out.acc_z) +
-                                   "mps2 gyro_z=" + std::to_string(out.gyro_z) +
-                                   "radps valid_streak=" + std::to_string(valid_streak_),
-                               out.capture_time_ms},
-                              1000);
         return out;
     }
 
@@ -234,6 +247,7 @@ public:
     /// @param diagnostics 诊断输出接口
     void Shutdown(port::DiagnosticSink& diagnostics) override {
         ready_ = false;
+        StopSampler();
         if (enabled_ && !adaptation_hook_) {
             true_ls2k0300::ShutdownImu();
         }
@@ -257,6 +271,143 @@ private:
         valid_streak_ = 0;
         invalid_streak_ = 0;
         continuity_reported_ = false;
+        read_count_ = 0;
+        last_observed_generation_ = 0;
+        cached_sequence_.store(0);
+        cached_capture_time_ms_.store(0);
+        cached_valid_.store(false);
+        cached_invalid_kind_.store(static_cast<uint8_t>(CachedInvalidKind::kNone));
+        cached_acc_x_bits_.store(FloatBits(0.0F));
+        cached_acc_y_bits_.store(FloatBits(0.0F));
+        cached_acc_z_bits_.store(FloatBits(0.0F));
+        cached_gyro_x_bits_.store(FloatBits(0.0F));
+        cached_gyro_y_bits_.store(FloatBits(0.0F));
+        cached_gyro_z_bits_.store(FloatBits(0.0F));
+    }
+
+    /// @brief 启动异步采样线程
+    void StartSampler() {
+        StopSampler();
+        sampler_running_.store(true);
+        sampler_thread_ = std::thread([this]() { SamplerLoop(); });
+    }
+
+    /// @brief 停止异步采样线程
+    void StopSampler() {
+        sampler_running_.store(false);
+        if (sampler_thread_.joinable()) {
+            sampler_thread_.join();
+        }
+    }
+
+    /// @brief IMU 采样线程主循环
+    void SamplerLoop() {
+        auto next_wakeup = std::chrono::steady_clock::now();
+        while (sampler_running_.load()) {
+            PublishCachedSample(PollImuSample());
+            next_wakeup += kImuSamplerPeriod;
+            std::this_thread::sleep_until(next_wakeup);
+            if (std::chrono::steady_clock::now() > next_wakeup + kImuSamplerPeriod) {
+                next_wakeup = std::chrono::steady_clock::now();
+            }
+        }
+    }
+
+    /// @brief 执行一次底层 IMU 采样并归一化
+    ImuSampleSnapshot PollImuSample() {
+        ImuSampleSnapshot cached{};
+        cached.sample.capture_time_ms = port::NowMs();
+
+        ++read_count_;
+        if (inject_invalid_every_n_ > 0 &&
+            read_count_ % static_cast<uint64_t>(inject_invalid_every_n_) == 0) {
+            cached.invalid_kind = CachedInvalidKind::kInjected;
+            return cached;
+        }
+
+        const true_ls2k0300::ImuBridgeSample sample = true_ls2k0300::ReadImuSample();
+        if (!sample.valid) {
+            cached.invalid_kind = CachedInvalidKind::kReadFailed;
+            return cached;
+        }
+
+        cached.sample = NormalizeBridgeSample(sample, cached.sample.capture_time_ms);
+        return cached;
+    }
+
+    /// @brief 将桥接层原始样本转换为控制层 IMU 样本
+    port::ImuSample NormalizeBridgeSample(const true_ls2k0300::ImuBridgeSample& sample, uint64_t capture_time_ms) {
+        port::ImuSample out{};
+        out.capture_time_ms = capture_time_ms;
+        const std::array<float, 3> acc_mps2 = {static_cast<float>(sample.acc_x) * kAccelMetersPerSecPerCount,
+                                               static_cast<float>(sample.acc_y) * kAccelMetersPerSecPerCount,
+                                               static_cast<float>(sample.acc_z) * kAccelMetersPerSecPerCount};
+        if (!have_filtered_acc_) {
+            filtered_acc_ = acc_mps2;
+            have_filtered_acc_ = true;
+        } else {
+            for (std::size_t i = 0; i < filtered_acc_.size(); ++i) {
+                filtered_acc_[i] =
+                    acc_mps2[i] * kAccelFilterNewWeight + filtered_acc_[i] * kAccelFilterOldWeight;
+            }
+        }
+
+        out.valid = true;
+        out.acc_x = filtered_acc_[0];
+        out.acc_y = filtered_acc_[1];
+        out.acc_z = filtered_acc_[2];
+        out.gyro_x =
+            (static_cast<float>(sample.gyro_x) - gyro_bias_raw_[0]) * kGyroRadPerSecPerCount;
+        out.gyro_y =
+            (static_cast<float>(sample.gyro_y) - gyro_bias_raw_[1]) * kGyroRadPerSecPerCount;
+        out.gyro_z =
+            (static_cast<float>(sample.gyro_z) - gyro_bias_raw_[2]) * kGyroRadPerSecPerCount;
+        return out;
+    }
+
+    /// @brief 发布最新采样结果
+    void PublishCachedSample(const ImuSampleSnapshot& cached) {
+        const uint64_t current_sequence = cached_sequence_.load(std::memory_order_relaxed);
+        cached_sequence_.store(current_sequence + 1, std::memory_order_release);
+        cached_capture_time_ms_.store(cached.sample.capture_time_ms, std::memory_order_relaxed);
+        cached_valid_.store(cached.sample.valid, std::memory_order_relaxed);
+        cached_invalid_kind_.store(static_cast<uint8_t>(cached.invalid_kind), std::memory_order_relaxed);
+        cached_acc_x_bits_.store(FloatBits(cached.sample.acc_x), std::memory_order_relaxed);
+        cached_acc_y_bits_.store(FloatBits(cached.sample.acc_y), std::memory_order_relaxed);
+        cached_acc_z_bits_.store(FloatBits(cached.sample.acc_z), std::memory_order_relaxed);
+        cached_gyro_x_bits_.store(FloatBits(cached.sample.gyro_x), std::memory_order_relaxed);
+        cached_gyro_y_bits_.store(FloatBits(cached.sample.gyro_y), std::memory_order_relaxed);
+        cached_gyro_z_bits_.store(FloatBits(cached.sample.gyro_z), std::memory_order_relaxed);
+        cached_sequence_.store(current_sequence + 2, std::memory_order_release);
+    }
+
+    /// @brief 读取最近一次采样结果
+    ImuSampleSnapshot SnapshotCachedSample() const {
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            const uint64_t sequence_before = cached_sequence_.load(std::memory_order_acquire);
+            if (sequence_before == 0 || (sequence_before % 2) != 0) {
+                continue;
+            }
+
+            ImuSampleSnapshot snapshot{};
+            snapshot.generation = sequence_before / 2;
+            snapshot.sample.capture_time_ms = cached_capture_time_ms_.load(std::memory_order_relaxed);
+            snapshot.sample.valid = cached_valid_.load(std::memory_order_relaxed);
+            snapshot.invalid_kind =
+                static_cast<CachedInvalidKind>(cached_invalid_kind_.load(std::memory_order_relaxed));
+            snapshot.sample.acc_x = FloatFromBits(cached_acc_x_bits_.load(std::memory_order_relaxed));
+            snapshot.sample.acc_y = FloatFromBits(cached_acc_y_bits_.load(std::memory_order_relaxed));
+            snapshot.sample.acc_z = FloatFromBits(cached_acc_z_bits_.load(std::memory_order_relaxed));
+            snapshot.sample.gyro_x = FloatFromBits(cached_gyro_x_bits_.load(std::memory_order_relaxed));
+            snapshot.sample.gyro_y = FloatFromBits(cached_gyro_y_bits_.load(std::memory_order_relaxed));
+            snapshot.sample.gyro_z = FloatFromBits(cached_gyro_z_bits_.load(std::memory_order_relaxed));
+
+            const uint64_t sequence_after = cached_sequence_.load(std::memory_order_acquire);
+            if (sequence_before == sequence_after) {
+                return snapshot;
+            }
+        }
+        return {};
     }
 
     /// @brief 执行初始陀螺仪零偏校准
@@ -322,6 +473,34 @@ private:
     bool continuity_reported_ = false;
     /// 读取计数（用于故障注入周期性）
     uint64_t read_count_ = 0;
+    /// 已被控制循环观察到的异步采样代数
+    uint64_t last_observed_generation_ = 0;
+    /// 故障注入间隔；初始化时读取，避免热路径解析环境变量
+    int inject_invalid_every_n_ = 0;
+    /// 异步采样线程是否运行
+    std::atomic<bool> sampler_running_{false};
+    /// 异步采样线程
+    std::thread sampler_thread_{};
+    /// 异步采样发布序列号；奇数表示正在发布，偶数表示稳定
+    std::atomic<uint64_t> cached_sequence_{0};
+    /// 最近一次 IMU 采样时间
+    std::atomic<uint64_t> cached_capture_time_ms_{0};
+    /// 最近一次 IMU 采样是否有效
+    std::atomic<bool> cached_valid_{false};
+    /// 最近一次无效采样原因
+    std::atomic<uint8_t> cached_invalid_kind_{static_cast<uint8_t>(CachedInvalidKind::kNone)};
+    /// 最近一次加速度 X
+    std::atomic<uint32_t> cached_acc_x_bits_{0};
+    /// 最近一次加速度 Y
+    std::atomic<uint32_t> cached_acc_y_bits_{0};
+    /// 最近一次加速度 Z
+    std::atomic<uint32_t> cached_acc_z_bits_{0};
+    /// 最近一次角速度 X
+    std::atomic<uint32_t> cached_gyro_x_bits_{0};
+    /// 最近一次角速度 Y
+    std::atomic<uint32_t> cached_gyro_y_bits_{0};
+    /// 最近一次角速度 Z
+    std::atomic<uint32_t> cached_gyro_z_bits_{0};
 };
 
 }  // namespace

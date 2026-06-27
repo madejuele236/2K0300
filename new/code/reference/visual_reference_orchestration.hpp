@@ -27,6 +27,10 @@ port::VisualReferenceCandidate MakeLineVisualReferenceCandidate(
 port::VisualReferenceSelection SelectVisualReference(
     const std::vector<port::VisualReferenceCandidate>& candidates);
 
+port::VisualReferenceSelection SelectVisualReference(
+    const port::VisualReferenceCandidate* candidates,
+    std::size_t count);
+
 }  // namespace ls2k::reference
 
 #endif  // LS2K_LEGACY_STEERING_VISUAL_REFERENCE_ORCHESTRATION_HPP

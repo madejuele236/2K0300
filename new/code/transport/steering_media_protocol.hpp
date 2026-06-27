@@ -141,7 +141,7 @@ struct SteeringMediaLateralErrorView {
 /**
  * 参考跟踪几何视图 —— 描述 selected/aligned reference 的控制几何事实。
  */
-struct SteeringMediaTrackingGeometryView {
+struct SteeringMediaReferenceTrackingGeometryView {
     /** 是否已成功计算跟踪几何 */
     bool computed = false;
     /** 横向位置项（米） */
@@ -282,8 +282,8 @@ struct SteeringMediaSnapshotView {
     SteeringMediaEligibilityView eligibility{};
     /** 加权横向误差 */
     SteeringMediaLateralErrorView lateral_error{};
-    /** 跟踪几何 */
-    SteeringMediaTrackingGeometryView tracking_geometry{};
+    /** 参考跟踪几何 */
+    SteeringMediaReferenceTrackingGeometryView reference_tracking_geometry{};
     /** reference 时间对齐 */
     SteeringMediaReferenceTimeAlignmentView reference_time_alignment{};
     /** 参考控制就绪状态 */

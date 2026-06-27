@@ -25,13 +25,4 @@ VisualElementPipelineResult RunVisualElementPipeline(const VisualElementPipeline
     return result;
 }
 
-VisualElementPipelineResult RunVisualElementRasterCompatibilityPipeline(
-    const VisualElementRasterCompatibilityInput& input,
-    const port::RuntimeParameters& params) {
-    VisualElementPipelineInput sparse_input{};
-    sparse_input.sparse_rows = input.sparse_rows;
-    sparse_input.line_candidate = input.line_candidate;
-    return RunVisualElementPipeline(sparse_input, params);
-}
-
 }  // namespace ls2k::vision

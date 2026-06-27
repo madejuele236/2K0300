@@ -1,5 +1,5 @@
 {
-  "RUNNING_SPEED_TARGET": 300.0,
+  "RUNNING_SPEED_TARGET": 400.0,
   "YAW_RATE_PID": {
     "P": 0.0,
     "I": 0.0,
@@ -25,13 +25,13 @@
   "perception_stale_ms": 120,
   "pwm_limit": 9000,
   "raw_turn_output_limit": 20000,
-  "wheel_turn_accel_delta_scale": 2.0,
-  "wheel_turn_decel_delta_scale": 1.0,
+  "wheel_turn_accel_delta_scale": 1.0,
+  "wheel_turn_decel_delta_scale": 2.0,
   "pwm_floor": 0,
   "prohibit_reverse_pwm": 0,
   "prohibit_reverse_pwm_step_limit": 1000,
   "brushless_debug_fixed_pwm_enabled": 0,
-  "brushless_debug_fixed_pwm": 1000,
+  "brushless_debug_fixed_pwm": 900,
   "motion_unveto_confirm_cycles": 3,
   "motion_spinup_ms": 800,
   "motion_turn_limit_spinup": 1.0,
@@ -42,7 +42,7 @@
   "control_snapshot_emit_interval_ms": 100,
   "assistant_enabled": 1,
   "steering_media_enabled": 1,
-  "steering_media_port": 48012,
+  "steering_media_port": 43012,
   "steering_media_publish_interval_ms": 20,
   "steering_media_downsample": 1,
   "steering_media_publish_latest_frame": 0,
@@ -107,15 +107,15 @@
   "BEV_CLASSIFICATION": {
     "WHITE_CONFIDENCE_MIN": 0.55,
     "UNKNOWN_CONFIDENCE_MIN": 0.25,
-    "HOLD_LAST_MAX_CYCLES": 32
+    "HOLD_LAST_MAX_CYCLES": 64
   },
   "BEV_BOUNDARY": {
-    "LOCAL_JUMP_MIN_Y": 32
+    "LOCAL_JUMP_MIN_Y": 40
   },
   "BEV_CONTROL_MODEL": {
-    "LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN": 200,
-    "HEADING_ERROR_TO_WHEEL_DELTA_GAIN": 60,
-    "CURVATURE_TO_WHEEL_DELTA_GAIN": 20,
+    "LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN": 150,
+    "HEADING_ERROR_TO_WHEEL_DELTA_GAIN": 50,
+    "CURVATURE_TO_WHEEL_DELTA_GAIN": 15,
     "MIN_LEADING_REFERENCE_SAMPLES": 3,
     "TRACKING_FIT_MIN_SAMPLES": 3
   },
@@ -128,7 +128,7 @@
     "CIRCLE_V2_INNER_TRACE_STALL_YAW_MIN_DEG": 60,
     "CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M": 0.0,
     "CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN": 0.7,
-    "CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT": 6,
+    "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT": 3,
     "CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M": 0.1,
     "CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M": 0.35
   },
@@ -165,6 +165,6 @@
   },
   "assistant_tcp": {
     "host": "192.168.137.1",
-    "port": 48011
+    "port": 43011
   }
 }

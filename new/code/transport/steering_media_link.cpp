@@ -241,11 +241,8 @@ SteeringMediaTransportSendResult SteeringMediaLink::PublishEncoded(
         return SteeringMediaTransportSendResult::kDisconnected;
     }
     std::string detail;
-    SteeringMediaTransportSendResult send_result = SteeringMediaTransportSendResult::kError;
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kMediaSend);
-        send_result = transport_->SendBuffer(encoded, detail);
-    }
+    const SteeringMediaTransportSendResult send_result =
+        transport_->SendBuffer(encoded, detail);
     if (send_result != SteeringMediaTransportSendResult::kSent &&
         send_result != SteeringMediaTransportSendResult::kAcceptedInFlight &&
         send_result != SteeringMediaTransportSendResult::kBusyRejected) {
@@ -270,20 +267,19 @@ SteeringMediaTransportSendResult SteeringMediaLink::PublishEncoded(
  */
 bool SteeringMediaLink::PublishConfigSnapshot(const SteeringMediaConfigSnapshot& snapshot,
                                               port::DiagnosticSink& diagnostics) {
-    std::vector<std::uint8_t> encoded;
+    encode_buffer_.clear();
     std::string error;
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kMediaEncode);
-        if (!EncodeSteeringMediaConfigSnapshot(snapshot, encoded, error)) {
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                              "steering_media.config_snapshot.invalid",
-                              error,
-                              port::NowMs()});
-            return false;
-        }
+    if (!EncodeSteeringMediaConfigSnapshot(snapshot, encode_buffer_, error)) {
+        diagnostics.Emit({port::DiagnosticLevel::kWarning,
+                          "steering_media.config_snapshot.invalid",
+                          error,
+                          port::NowMs()});
+        return false;
     }
     const SteeringMediaTransportSendResult send_result =
-        PublishEncoded(encoded, "steering_media.config_snapshot.failed", diagnostics);
+        PublishEncoded(encode_buffer_,
+                       "steering_media.config_snapshot.failed",
+                       diagnostics);
     return send_result == SteeringMediaTransportSendResult::kSent ||
            send_result == SteeringMediaTransportSendResult::kAcceptedInFlight;
 }
@@ -299,27 +295,24 @@ bool SteeringMediaLink::PublishConfigSnapshot(const SteeringMediaConfigSnapshot&
  */
 SteeringMediaPublishResult SteeringMediaLink::PublishImageFrame(const SteeringMediaImageFrame& frame,
                                                                 port::DiagnosticSink& diagnostics) {
-    std::vector<std::uint8_t> encoded;
+    encode_buffer_.clear();
     std::string error;
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kMediaEncode);
-        if (!EncodeSteeringMediaImageFrame(frame, encoded, error)) {
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                              "steering_media.image_frame.invalid",
-                              error,
-                              port::NowMs()});
-            return SteeringMediaPublishResult::kUnavailable;
-        }
+    if (!EncodeSteeringMediaImageFrame(frame, encode_buffer_, error)) {
+        diagnostics.Emit({port::DiagnosticLevel::kWarning,
+                          "steering_media.image_frame.invalid",
+                          error,
+                          port::NowMs()});
+        return SteeringMediaPublishResult::kUnavailable;
     }
     if (!ready_) {
         return SteeringMediaPublishResult::kUnavailable;
     }
     if (!pending_image_.empty()) {
-        pending_image_ = std::move(encoded);
+        pending_image_.swap(encode_buffer_);
         return SteeringMediaPublishResult::kQueued;
     }
     const SteeringMediaTransportSendResult send_result =
-        PublishEncoded(encoded, "steering_media.image_frame.failed", diagnostics);
+        PublishEncoded(encode_buffer_, "steering_media.image_frame.failed", diagnostics);
     if (send_result == SteeringMediaTransportSendResult::kSent) {
         return SteeringMediaPublishResult::kSent;
     }
@@ -327,7 +320,7 @@ SteeringMediaPublishResult SteeringMediaLink::PublishImageFrame(const SteeringMe
         return SteeringMediaPublishResult::kQueued;
     }
     if (send_result == SteeringMediaTransportSendResult::kBusyRejected) {
-        pending_image_ = std::move(encoded);
+        pending_image_.swap(encode_buffer_);
         return SteeringMediaPublishResult::kQueued;
     }
     return SteeringMediaPublishResult::kUnavailable;

@@ -5,10 +5,10 @@
 namespace ls2k::reference {
 namespace {
 
-bool TrackingGeometryFinite(const port::ReferenceTrackingGeometry& tracking_geometry) {
-    return std::isfinite(tracking_geometry.lateral_offset_m) &&
-           std::isfinite(tracking_geometry.heading_error_rad) &&
-           std::isfinite(tracking_geometry.curvature_m_inv);
+bool ReferenceTrackingGeometryFinite(const port::ReferenceTrackingGeometry& reference_tracking_geometry) {
+    return std::isfinite(reference_tracking_geometry.lateral_offset_m) &&
+           std::isfinite(reference_tracking_geometry.heading_error_rad) &&
+           std::isfinite(reference_tracking_geometry.curvature_m_inv);
 }
 
 }  // namespace
@@ -18,15 +18,15 @@ bool TrackingGeometryFinite(const port::ReferenceTrackingGeometry& tracking_geom
 /// 若处于保持模式，则标记为降级状态
 port::ReferenceControlReadiness EvaluateReferenceControlReadiness(
     const port::ReferenceUsability& selected_usability,
-    const port::ReferenceTrackingGeometry& tracking_geometry,
+    const port::ReferenceTrackingGeometry& reference_tracking_geometry,
     bool hold_selected) {
     port::ReferenceControlReadiness readiness{};
     if (!selected_usability.usable) {
         readiness.reason = "reference_unusable";
         return readiness;
     }
-    if (!tracking_geometry.computed || !TrackingGeometryFinite(tracking_geometry)) {
-        readiness.reason = "tracking_geometry_uncomputed";
+    if (!reference_tracking_geometry.computed || !ReferenceTrackingGeometryFinite(reference_tracking_geometry)) {
+        readiness.reason = "reference_tracking_geometry_uncomputed";
         return readiness;
     }
 

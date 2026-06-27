@@ -137,7 +137,7 @@ CONFIRM_POWERED_START=1 ./debug.sh steering drive --drive-s 10
 - safety gate、reference control、degraded
 - reference、visual reference、eligibility
 - lateral error、yaw control、actuator output
-- camera metadata、threshold、pixel stats
+- camera metadata、V9 boundary facts、display stats
 
 ## Evidence
 
@@ -150,6 +150,15 @@ CONFIRM_POWERED_START=1 ./debug.sh steering drive --drive-s 10
 ```
 
 典型输出在 `new/verification/host-capture-<timestamp>/`，Windows backend 会先写到 Windows 本地临时目录，再复制回 WSL，避免实时写 WSL 路径拖慢接收。
+
+需要证明网页真实渲染了图像和板端 facts 时，用 Playwright CLI 截图：
+
+```bash
+rtk sh -lc 'npx playwright install chromium'
+rtk sh -lc 'npx playwright screenshot --wait-for-timeout=5000 http://127.0.0.1:8765/ ../verification/live-viewer.png'
+```
+
+截图只证明 viewer 显示状态；权威事实仍以板端 `control.steering_snapshot`、steering media header、`config_snapshot.json` 和 runtime log 为准。运行 Playwright 时使用 `rtk sh -lc 'npx playwright ...'`，不要直接用 `rtk npx playwright ...`。
 
 ## 常见问题
 

@@ -1,6 +1,9 @@
 #include "safety/low_voltage_sampler.hpp"
 
 #include <algorithm>
+
+#include "port/perf_counter.hpp"
+
 namespace ls2k::safety {
 
 /// 配置低电压采样器：设置采样间隔，重置上次采样时间
@@ -35,7 +38,11 @@ LowVoltageSamplerUpdate LowVoltageSampler::Tick(port::IPowerMonitorAdapter& powe
     }
     last_sample_attempt_ms_ = now_ms;
 
-    const port::LowVoltageSample sample = power.SampleLowVoltage(diagnostics);
+    port::LowVoltageSample sample{};
+    {
+        LS2K_PERF_SCOPE(port::PerfStage::kLowVoltageSample);
+        sample = power.SampleLowVoltage(diagnostics);
+    }
     const bool emergency = !sample.valid || sample.emergency;
     const bool previous = snapshot.low_voltage_emergency;
 

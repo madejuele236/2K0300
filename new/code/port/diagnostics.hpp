@@ -149,9 +149,6 @@ public:
         if (EnvTruthy("LS2K_LOG_VERBOSE")) {
             return true;
         }
-        if (code == "perf.summary") {
-            return true;
-        }
         if (EndsWith(code, ".summary") ||
             code == "startup.low_voltage.raw" ||
             code == "control.apply.hold_disarmed") {

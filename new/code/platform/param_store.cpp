@@ -617,8 +617,8 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
            IsFiniteInRange(params.circle_v2_inner_trace_stall_yaw_min_deg, 0.0, 720.0) &&
            IsFiniteInRange(params.circle_v2_inner_trace_path_offset_m, 0.0, 2.0) &&
            IsFiniteInRange(params.circle_v2_opposite_straight_confidence_min, 0.0, 1.0) &&
-           params.circle_v2_entry_bottom_row_count >= 1 &&
-           params.circle_v2_entry_bottom_row_count <=
+           params.circle_v2_entry_bottom_min_row_count >= 1 &&
+           params.circle_v2_entry_bottom_min_row_count <=
                static_cast<int>(port::kBevReferenceSampleCount) &&
            IsFiniteInRange(params.circle_v2_entry_bottom_forward_min_m, 0.0, 2.0) &&
            IsFiniteInRange(params.circle_v2_entry_bottom_forward_max_m, 0.0, 2.0) &&
@@ -982,8 +982,8 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
                              optional_malformed);
     ReadOptionalNestedInt(root,
                           "BEV_ELEMENT",
-                          "CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT",
-                          parsed.bev_element.circle_v2_entry_bottom_row_count,
+                          "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT",
+                          parsed.bev_element.circle_v2_entry_bottom_min_row_count,
                           optional_malformed);
     ReadOptionalNestedNumber(root,
                              "BEV_ELEMENT",

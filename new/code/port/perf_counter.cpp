@@ -14,6 +14,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <ctime>
 #include <cstdlib>
 #include <functional>
 #include <sstream>
@@ -101,8 +102,6 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "camera.frame_age";
         case PerfStage::kPerceptionPublish:
             return "perception.publish";
-        case PerfStage::kPerceptionOtsu:
-            return "perception.otsu";
         case PerfStage::kPerceptionBev:
             return "perception.bev";
         case PerfStage::kBevSimple:
@@ -113,16 +112,6 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "bev.simple.scan_rows";
         case PerfStage::kBevSimpleBuildReference:
             return "bev.simple.build_reference";
-        case PerfStage::kPerceptionElementRaster:
-            return "perception.element_raster";
-        case PerfStage::kPerceptionElementRasterLut:
-            return "perception.element_raster.lut";
-        case PerfStage::kPerceptionElementRasterStorage:
-            return "perception.element_raster.storage";
-        case PerfStage::kPerceptionElementRasterClassTable:
-            return "perception.element_raster.class_table";
-        case PerfStage::kPerceptionElementRasterCells:
-            return "perception.element_raster.cells";
         case PerfStage::kCirclePhase1Rows:
             return "circle.phase1.rows";
         case PerfStage::kCirclePhase2RoiScan:
@@ -135,8 +124,6 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "circle.v2.scene";
         case PerfStage::kVisualLineCandidate:
             return "visual.line_candidate";
-        case PerfStage::kVisualReferenceConnectivity:
-            return "visual.reference_connectivity";
         case PerfStage::kVisualReferenceArbitration:
             return "visual.reference_arbitration";
         case PerfStage::kVisualReferenceSelect:
@@ -202,6 +189,16 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
     }
 }
 
+[[maybe_unused]] const char* ClockSourceName(PerfClockSource source) {
+    switch (source) {
+        case PerfClockSource::kWall:
+            return "wall";
+        case PerfClockSource::kThreadCpu:
+            return "thread_cpu";
+    }
+    return "unknown";
+}
+
 [[maybe_unused]] std::string FormatPerfWindowMessage(const PerfWindowSnapshot& snapshot) {
     std::ostringstream message;
     message << "stage=" << StageName(snapshot.stage)
@@ -211,6 +208,7 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             << " last_us=" << snapshot.last_us
             << " max_event=" << snapshot.max_event
             << " max_thread=" << snapshot.max_thread
+            << " clock=" << ClockSourceName(PerfClockSourceForStage(snapshot.stage))
             << " arch_counter=" << (PerfCounterUsesArchCounter() ? "true" : "false")
             << " ticks_per_us_x1000=" << PerfTicksPerUsX1000();
     return message.str();
@@ -224,6 +222,17 @@ std::uint64_t ReadSteadyClockNs() {
     using namespace std::chrono;
     return static_cast<std::uint64_t>(
         duration_cast<nanoseconds>(steady_clock::now().time_since_epoch()).count());
+}
+
+[[maybe_unused]] std::uint64_t ReadThreadCpuClockNs() {
+#if defined(CLOCK_THREAD_CPUTIME_ID)
+    timespec ts{};
+    if (::clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) == 0) {
+        return static_cast<std::uint64_t>(ts.tv_sec) * 1000000000ULL +
+               static_cast<std::uint64_t>(ts.tv_nsec);
+    }
+#endif
+    return ReadSteadyClockNs();
 }
 
 /**
@@ -311,6 +320,18 @@ std::uint64_t ReadPerfTicks() {
 #endif
 }
 
+std::uint64_t ReadPerfTicks(PerfClockSource source) {
+#if LS2K_PERF_ENABLED
+    if (source == PerfClockSource::kThreadCpu) {
+        return ReadThreadCpuClockNs();
+    }
+    return ReadPerfTicks();
+#else
+    (void)source;
+    return 0U;
+#endif
+}
+
 std::uint64_t PerfTicksToUs(std::uint64_t ticks) {
 #if LS2K_PERF_ENABLED
     const std::uint64_t scale = g_ticks_per_us_x1000.load();
@@ -319,6 +340,24 @@ std::uint64_t PerfTicksToUs(std::uint64_t ticks) {
     (void)ticks;
     return 0U;
 #endif
+}
+
+std::uint64_t PerfTicksToUs(PerfClockSource source, std::uint64_t ticks) {
+#if LS2K_PERF_ENABLED
+    if (source == PerfClockSource::kThreadCpu) {
+        return ticks / 1000U;
+    }
+    return PerfTicksToUs(ticks);
+#else
+    (void)source;
+    (void)ticks;
+    return 0U;
+#endif
+}
+
+PerfClockSource PerfClockSourceForStage(PerfStage stage) {
+    (void)stage;
+    return PerfClockSource::kThreadCpu;
 }
 
 bool PerfCounterUsesArchCounter() {
@@ -335,11 +374,19 @@ bool PerfCounterEnabled() {
 
 void RecordPerfStage(PerfStage stage, std::uint64_t elapsed_ticks) {
 #if LS2K_PERF_ENABLED
+    RecordPerfStageUs(stage, PerfTicksToUs(elapsed_ticks));
+#else
+    (void)stage;
+    (void)elapsed_ticks;
+#endif
+}
+
+void RecordPerfStageUs(PerfStage stage, std::uint64_t elapsed_us) {
+#if LS2K_PERF_ENABLED
     const std::size_t index = static_cast<std::size_t>(stage);
     if (index >= kPerfStageCount) {
         return;
     }
-    const std::uint64_t elapsed_us = PerfTicksToUs(elapsed_ticks);
     const std::uint64_t event_sequence =
         g_event_sequence.fetch_add(1U, std::memory_order_relaxed) + 1U;
     PerfStageCounters& counters = g_counters[index];
@@ -360,7 +407,7 @@ void RecordPerfStage(PerfStage stage, std::uint64_t elapsed_ticks) {
     }
 #else
     (void)stage;
-    (void)elapsed_ticks;
+    (void)elapsed_us;
 #endif
 }
 
@@ -428,7 +475,8 @@ void EmitPerfWindowDiagnostics(DiagnosticSink& diagnostics, std::uint64_t now_ms
                           now_ms});
     }
 
-    if (!verbose && worst_snapshot != nullptr) {
+    if (!verbose && worst_snapshot != nullptr &&
+        diagnostics.ShouldEmit(DiagnosticLevel::kInfo, "perf.summary")) {
         std::ostringstream message;
         message << "worst_stage=" << StageName(worst_snapshot->stage)
                 << " worst_max_us=" << worst_snapshot->max_us

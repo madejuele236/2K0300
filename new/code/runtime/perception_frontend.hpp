@@ -27,7 +27,7 @@ public:
     bool Configure(const port::RuntimeParameters& params);
     /// 处理一帧图像：非阻塞取最新帧 → 故障注入 → 感知管线 → 结果缓存
     /// @param params  运行时参数
-    void ProcessOneFrame(const port::RuntimeParameters& params);
+    bool ProcessOneFrame(const port::RuntimeParameters& params);
 
 private:
     /// 消费感知内存复位请求（清空感知管线记忆）

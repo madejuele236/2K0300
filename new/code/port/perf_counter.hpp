@@ -45,24 +45,17 @@ enum class PerfStage : std::size_t {
     kCameraStoreSubmit,     ///< 相机帧提交到 Frame Store
     kCameraFrameAge,        ///< 消费相机帧年龄统计
     kPerceptionPublish,     ///< 感知结果发布到共享状态
-    kPerceptionOtsu,        ///< Otsu二值化
     kPerceptionBev,         ///< BEV投影
     kBevSimple,             ///< 基础稀疏 BEV 寻线事实
     kBevSimpleLut,          ///< 基础稀疏 BEV LUT 准备
     kBevSimpleScanRows,     ///< 基础稀疏 BEV 行扫描
     kBevSimpleBuildReference, ///< 基础稀疏 BEV reference 构建
-    kPerceptionElementRaster,  ///< 元素栅格化
-    kPerceptionElementRasterLut, ///< 元素栅格 LUT 准备
-    kPerceptionElementRasterStorage, ///< 元素栅格存储准备
-    kPerceptionElementRasterClassTable, ///< 元素栅格分类表构建
-    kPerceptionElementRasterCells, ///< 元素栅格逐 cell 采样分类
     kCirclePhase1Rows,      ///< circle Phase1 sparse row evidence
     kCirclePhase2RoiScan,   ///< circle Phase2 ROI scan
     kCirclePhase2ReferenceBuild, ///< circle Phase2 reference candidate build
     kVisualElementPipeline, ///< 视觉元素 pipeline
     kCircleV2Scene,         ///< Circle V2 场景解释器
     kVisualLineCandidate,   ///< 基础 line candidate 包装
-    kVisualReferenceConnectivity, ///< 视觉 reference 连通性过滤
     kVisualReferenceArbitration, ///< 视觉 reference 候选仲裁
     kVisualReferenceSelect, ///< 视觉 reference arbitration
     kReferenceUsability,    ///< reference 可用性评估
@@ -84,14 +77,28 @@ enum class PerfStage : std::size_t {
     kCount                  ///< 阶段总数（哨兵）
 };
 
+enum class PerfClockSource : std::uint8_t {
+    kWall = 0,
+    kThreadCpu = 1,
+};
+
 /** @brief 初始化性能计数器 */
 bool InitializePerfCounter();
 
 /** @brief 读取当前性能计时器的计数值 */
 std::uint64_t ReadPerfTicks();
 
+/** @brief 按指定时钟源读取当前性能计数值 */
+std::uint64_t ReadPerfTicks(PerfClockSource source);
+
 /** @brief 将计数值转换为微秒 */
 std::uint64_t PerfTicksToUs(std::uint64_t ticks);
+
+/** @brief 按指定时钟源将计数值转换为微秒 */
+std::uint64_t PerfTicksToUs(PerfClockSource source, std::uint64_t ticks);
+
+/** @brief 返回阶段使用的性能时钟源 */
+PerfClockSource PerfClockSourceForStage(PerfStage stage);
 
 /** @brief 检查是否使用硬件周期计数器 */
 bool PerfCounterUsesArchCounter();
@@ -108,6 +115,9 @@ bool PerfCounterEnabled();
  * @param elapsed_ticks 经过的计数值
  */
 void RecordPerfStage(PerfStage stage, std::uint64_t elapsed_ticks);
+
+/** @brief 记录一个阶段的耗时（微秒） */
+void RecordPerfStageUs(PerfStage stage, std::uint64_t elapsed_us);
 
 /**
  * @brief 输出当前时间窗口内所有阶段的性能诊断信息
@@ -128,12 +138,15 @@ public:
     /** @brief 构造时记录起始计数值 */
     explicit PerfScope(PerfStage stage)
         : stage_(stage),
-          start_ticks_(PerfCounterEnabled() ? ReadPerfTicks() : 0U) {}
+          clock_source_(PerfClockSourceForStage(stage)),
+          start_ticks_(PerfCounterEnabled() ? ReadPerfTicks(clock_source_) : 0U) {}
 
     /** @brief 析构时自动计算并记录耗时 */
     ~PerfScope() {
         if (start_ticks_ != 0U) {
-            RecordPerfStage(stage_, ReadPerfTicks() - start_ticks_);
+            RecordPerfStageUs(stage_,
+                              PerfTicksToUs(clock_source_,
+                                            ReadPerfTicks(clock_source_) - start_ticks_));
         }
     }
 
@@ -142,6 +155,7 @@ public:
 
 private:
     PerfStage stage_;               ///< 当前计时阶段
+    PerfClockSource clock_source_;  ///< 当前阶段使用的时钟源
     std::uint64_t start_ticks_;     ///< 起始计数值
 };
 

@@ -106,7 +106,7 @@ int main() {
                       "\"CIRCLE_V2_INNER_TRACE_STALL_YAW_MIN_DEG\": 12.5,"
                       "\"CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M\": 0.07,"
                       "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\": 0.63,"
-                      "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\": 3,"
+                      "\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\": 3,"
                       "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\": 0.05,"
                       "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\": 0.85}"));
         CaptureDiagnostics enabled_diagnostics{};
@@ -180,8 +180,8 @@ int main() {
         Expect(std::abs(enabled.bev_element.circle_v2_opposite_straight_confidence_min -
                         0.63F) < 1.0e-6F,
                "CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN should parse");
-        Expect(enabled.bev_element.circle_v2_entry_bottom_row_count == 3,
-               "CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT should parse");
+        Expect(enabled.bev_element.circle_v2_entry_bottom_min_row_count == 3,
+               "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT should parse");
         Expect(std::abs(enabled.bev_element.circle_v2_entry_bottom_forward_min_m -
                         0.05F) < 1.0e-6F,
                "CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M should parse");
@@ -239,9 +239,9 @@ int main() {
         Expect(std::abs(absent.bev_element.circle_v2_opposite_straight_confidence_min -
                         builtin_defaults.bev_element.circle_v2_opposite_straight_confidence_min) < 1.0e-6F,
                "missing BEV_ELEMENT should keep CircleV2 opposite-straight confidence default");
-        Expect(absent.bev_element.circle_v2_entry_bottom_row_count ==
-                   builtin_defaults.bev_element.circle_v2_entry_bottom_row_count,
-               "missing BEV_ELEMENT should keep CircleV2 entry bottom row-count default");
+        Expect(absent.bev_element.circle_v2_entry_bottom_min_row_count ==
+                   builtin_defaults.bev_element.circle_v2_entry_bottom_min_row_count,
+               "missing BEV_ELEMENT should keep CircleV2 entry bottom min-row-count default");
         Expect(std::abs(absent.bev_element.circle_v2_entry_bottom_forward_min_m -
                         builtin_defaults.bev_element.circle_v2_entry_bottom_forward_min_m) < 1.0e-6F,
                "missing BEV_ELEMENT should keep CircleV2 entry bottom min default");
@@ -554,20 +554,20 @@ int main() {
             base + "_malformed_v2_entry_rows.json";
         WriteText(malformed_v2_entry_rows_path,
                   MinimalRuntimeParametersJson(
-                      "  \"BEV_ELEMENT\": {\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\": 0}"));
+                      "  \"BEV_ELEMENT\": {\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\": 0}"));
         CaptureDiagnostics malformed_v2_entry_rows_diagnostics{};
         const ls2k::port::RuntimeParameters malformed_v2_entry_rows =
             LoadFixture(malformed_v2_entry_rows_path,
                         malformed_v2_entry_rows_diagnostics);
         Expect(malformed_v2_entry_rows.loaded_from_defaults,
-               "CircleV2 entry bottom row count below one should fall back to defaults");
+               "CircleV2 entry bottom min row count below one should fall back to defaults");
         Expect(malformed_v2_entry_rows.parse_failure,
-               "CircleV2 entry bottom row count below one should set parse_failure");
-        Expect(malformed_v2_entry_rows.bev_element.circle_v2_entry_bottom_row_count ==
-                   builtin_defaults.bev_element.circle_v2_entry_bottom_row_count,
-               "CircleV2 entry bottom row-count fallback should keep default");
+               "CircleV2 entry bottom min row count below one should set parse_failure");
+        Expect(malformed_v2_entry_rows.bev_element.circle_v2_entry_bottom_min_row_count ==
+                   builtin_defaults.bev_element.circle_v2_entry_bottom_min_row_count,
+               "CircleV2 entry bottom min-row-count fallback should keep default");
         Expect(malformed_v2_entry_rows_diagnostics.SawCode("params.parse"),
-               "CircleV2 entry bottom row count below one should emit params.parse");
+               "CircleV2 entry bottom min row count below one should emit params.parse");
 
         const std::string malformed_boundary_path = base + "_malformed_boundary.json";
         WriteText(malformed_boundary_path,

@@ -353,17 +353,17 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
         perception.reference_lateral_error.weighted_sample_count;
     debug_snapshot.steering.lateral_error.weight_sum = perception.reference_lateral_error.weight_sum;
     debug_snapshot.steering.lateral_error.reason = perception.reference_lateral_error.reason;
-    debug_snapshot.steering.tracking_geometry.computed =
+    debug_snapshot.steering.reference_tracking_geometry.computed =
         perception.reference_tracking_geometry.computed;
-    debug_snapshot.steering.tracking_geometry.lateral_offset_m =
+    debug_snapshot.steering.reference_tracking_geometry.lateral_offset_m =
         perception.reference_tracking_geometry.lateral_offset_m;
-    debug_snapshot.steering.tracking_geometry.heading_error_rad =
+    debug_snapshot.steering.reference_tracking_geometry.heading_error_rad =
         perception.reference_tracking_geometry.heading_error_rad;
-    debug_snapshot.steering.tracking_geometry.curvature_m_inv =
+    debug_snapshot.steering.reference_tracking_geometry.curvature_m_inv =
         perception.reference_tracking_geometry.curvature_m_inv;
-    debug_snapshot.steering.tracking_geometry.sample_count =
+    debug_snapshot.steering.reference_tracking_geometry.sample_count =
         perception.reference_tracking_geometry.sample_count;
-    debug_snapshot.steering.tracking_geometry.reason =
+    debug_snapshot.steering.reference_tracking_geometry.reason =
         perception.reference_tracking_geometry.reason;
     debug_snapshot.steering.reference_time_alignment.enabled =
         perception.reference_time_alignment.enabled;
@@ -915,10 +915,7 @@ void ControlLoop::Tick() {
         imu = platform_.imu->Read(diagnostics_);
     }
     port::EncoderDelta encoder{};
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kControlEncoderRead);
-        encoder = platform_.encoder->ReadDelta(diagnostics_);
-    }
+    encoder = platform_.encoder->ReadDelta(diagnostics_);
 
     const uint64_t now_ms = port::NowMs();
     port::PerceptionResult perception{};
@@ -933,15 +930,12 @@ void ControlLoop::Tick() {
         std::lock_guard<std::mutex> lock(state_.shared_mutex);
         state_.imu = imu;
         state_.encoder = encoder;
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kMotionHistoryRecord);
-            state_.motion_history.Push({now_ms,
-                                        imu.valid,
-                                        imu.gyro_z,
-                                        encoder.valid,
-                                        encoder.left,
-                                        encoder.right});
-        }
+        state_.motion_history.Push({now_ms,
+                                    imu.valid,
+                                    imu.gyro_z,
+                                    encoder.valid,
+                                    encoder.left,
+                                    encoder.right});
         perception = state_.perception;
         motion_history = state_.motion_history;
         command_history = state_.command_history;
@@ -955,11 +949,8 @@ void ControlLoop::Tick() {
     perception = BuildControlTimePerception(perception, motion_history, command_history, now_ms, params_);
     // --- 第 2 阶段：门控评估 ---
     ControlGateDecision gate{};
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kControlDecision);
-        gate =
-            EvaluateControlGate(BuildControlGateInputs(perception, imu, encoder, low_voltage_emergency, now_ms, params_));
-    }
+    gate =
+        EvaluateControlGate(BuildControlGateInputs(perception, imu, encoder, low_voltage_emergency, now_ms, params_));
     EmitVetoDiagnostics(diagnostics_, gate, now_ms);
     EmitGateIntervalDiagnostics(diagnostics_,
                                 have_gate_interval_,

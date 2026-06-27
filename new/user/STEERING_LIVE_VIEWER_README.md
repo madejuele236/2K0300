@@ -176,7 +176,7 @@ Windows 热点常用 host 地址是 `192.168.137.1`。板端连接这个地址�
 - reference mode/source、visual reference、eligibility
 - lateral error、turn output、actuator output
 - camera source、V4L2 seq、timing、buffer
-- pixel stats、threshold
+- display stats、V9 boundary row/jump/span facts
 
 左侧图像默认显示 host-only BEV 变换图像；旧的元素框、中心线和横向误差 overlay 默认关闭。BEV 显示只消费板端已经发送的图像和真实运行参数，不向板端回写，也不重新定义控制决策：
 
@@ -186,9 +186,38 @@ Windows 热点常用 host 地址是 `192.168.137.1`。板端连接这个地址�
 - BEV 显示宽度以 `DEBUG_GRID_WIDTH` 为基础并加宽到可见梯形范围，前向范围来自 `BEV_GEOMETRY.FORWARD_SAMPLE_*`；如果找不到有效可见范围，才退回 `SEARCH_LATERAL_LIMIT_M`。
 - 如果 `config_snapshot` 尚未到达或 projector 参数无效，网页自动退回 raw 显示并在 Display 字段标出 fallback。
 
-启动参数 `--display-mode bev|raw` 控制默认显示图像；等价环境变量是 `LS2K_LIVE_DISPLAY_MODE`。`steering_snapshot.visual_reference.path_candidates` 会随每帧 media header 发送板端已经构建的候选路径事实：`kind/source/reason/confidence/mode` 和各个 `sampled_path` 有效点的 `(forward_m,lateral_m,confidence,source)`。网页直接把这些只读事实点绘制到 canvas 上，不再在侧栏显示候选摘要；绘制不得在网页里复刻一份无人维护的感知算法。CircleV2 的独立几何中间点如果没有出现在发送端合同中，网页不推断、不绘制。
+启动参数 `--display-mode bev|raw` 控制默认显示图像；等价环境变量是 `LS2K_LIVE_DISPLAY_MODE`。`steering_snapshot.visual_reference.path_candidates` 会随每帧 media header 发送板端已经构建的候选路径事实：`kind/source/reason/confidence/mode` 和各个 `sampled_path` 有效点的 `(forward_m,lateral_m,confidence,source)`。网页直接把这些只读事实点绘制到 canvas 上，不再在侧栏显示候选摘要；绘制不得在网页里复刻一份无人维护的感知算法。侧栏 Boundary 显示板端 `perception_tag`、`boundary_row_count`、`boundary_jump_count` 和 `boundary_span_count`；Display stats 只描述当前显示 payload 的灰度范围，不是 runtime authority。CircleV2 的独立几何中间点如果没有出现在发送端合同中，网页不推断、不绘制。
 
 如果右侧 `messages_published` 为 0，说明主机 viewer 正常，但还没有收到板端 media 帧。
+
+## Playwright 页面取证
+
+需要把“viewer 真实显示了图像和板端 facts”固化为 evidence 时，使用 Playwright CLI 截图。它只访问本地只读网页，不连接板端 TCP，也不发送车辆控制命令。
+
+首次使用时安装 Chromium：
+
+```bash
+rtk sh -lc 'npx playwright install chromium'
+```
+
+截图命令：
+
+```bash
+rtk sh -lc 'npx playwright screenshot --wait-for-timeout=5000 http://127.0.0.1:8765/ ../verification/live-viewer.png'
+```
+
+在 OpenSpec 板端证据中推荐把截图直接放到 change 的 verification 目录：
+
+```bash
+rtk sh -lc 'npx playwright screenshot --wait-for-timeout=5000 http://127.0.0.1:8765/ ../../openspec/changes/<change-name>/verification/board-raw/live-viewer.png'
+```
+
+注意：
+
+- 从本仓库运行时，使用 `rtk sh -lc 'npx playwright ...'`；不要直接运行 `rtk npx playwright ...`，避免 RTK 命令解析层误判 Playwright 参数。
+- 截图只能证明网页渲染状态。算法权威仍来自板端 `control.steering_snapshot`、steering media header、`config_snapshot.json` 和 runtime log。
+- 取证截图应能看到非空图像、transport、frame id、camera source、boundary rows/jumps/spans、reference 和 actuator apply outcome。
+- 如果 `npx playwright screenshot` 报浏览器不存在，先运行上面的 `install chromium`；这只安装本机 Playwright 浏览器，不改变板端程序。
 
 ## Evidence 输出
 

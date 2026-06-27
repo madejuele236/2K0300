@@ -1,8 +1,7 @@
 #include "vision/bev/bev_simple_perception.hpp"
 
 // Simple BEV perception pipeline:
-// frame view -> virtual BEV sparse row scan -> V9 boundary facts -> reference path.
-// Debug dense BEV remains output-only and does not feed runtime authority.
+// frame view -> luma sampler -> sparse BEV row facts -> reference path.
 
 #include <algorithm>
 #include <array>
@@ -17,8 +16,6 @@
 
 namespace ls2k::vision {
 namespace {
-
-constexpr std::uint8_t kInvalidGray = 0U;
 
 float LateralAtIndex(std::size_t index, float lateral_limit, float lateral_step) {
     return -lateral_limit + static_cast<float>(index) * lateral_step;
@@ -105,43 +102,6 @@ bool LutMatches(const BEVSampleProjectionLut& lut,
 
 }  // namespace
 
-// 统一的双线性灰度采样入口，供稀疏参考行扫描和 debug 稠密 BEV 复用。
-// 采样坐标必须落在原始图像范围内；投影越界时返回 false，而不是把坐标夹到图像边缘。
-// 这样可以避免把视野外或投影失败区域误当成边缘像素参与黑白分类。
-// out_gray 只在返回 true 时有效。
-bool SampleFrameBilinear(const port::LegacyCameraFrameView& frame,
-                         float row_px,
-                         float col_px,
-                         std::uint8_t& out_gray) {
-    if (!frame.Valid()) {
-        return false;
-    }
-    if (row_px < 0.0F || col_px < 0.0F || row_px > static_cast<float>(frame.height - 1) ||
-        col_px > static_cast<float>(frame.width - 1)) {
-        return false;
-    }
-
-    const int row0 = static_cast<int>(std::floor(row_px));
-    const int col0 = static_cast<int>(std::floor(col_px));
-    const int row1 = std::min(row0 + 1, frame.height - 1);
-    const int col1 = std::min(col0 + 1, frame.width - 1);
-    const float row_frac = row_px - static_cast<float>(row0);
-    const float col_frac = col_px - static_cast<float>(col0);
-
-    const auto gray_at = [&frame](int row, int col) -> float {
-        const std::size_t index =
-            static_cast<std::size_t>(row) * static_cast<std::size_t>(frame.stride) +
-            static_cast<std::size_t>(col);
-        return static_cast<float>(frame.gray[index]);
-    };
-
-    const float top = gray_at(row0, col0) * (1.0F - col_frac) + gray_at(row0, col1) * col_frac;
-    const float bottom = gray_at(row1, col0) * (1.0F - col_frac) + gray_at(row1, col1) * col_frac;
-    const float gray = top * (1.0F - row_frac) + bottom * row_frac;
-    out_gray = static_cast<std::uint8_t>(std::lround(std::clamp(gray, 0.0F, 255.0F)));
-    return true;
-}
-
 void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
                                    const port::BEVBoundaryParameters& params,
                                    float min_span_width_m,
@@ -194,71 +154,6 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
         span.right_lateral_index = right.lateral_index;
         row.spans.push_back(span);
     }
-}
-
-namespace {
-
-port::BEVPoint PixelToBevPoint(int x,
-                               int y,
-                               int width,
-                               int height,
-                               float lateral_limit_m,
-                               float forward_max_m) {
-    const float normalized_x = width > 1 ? static_cast<float>(x) / static_cast<float>(width - 1) : 0.5F;
-    const float normalized_y = height > 1 ? static_cast<float>(y) / static_cast<float>(height - 1) : 1.0F;
-    port::BEVPoint point{};
-    point.lateral_m = normalized_x * (2.0F * lateral_limit_m) - lateral_limit_m;
-    point.forward_m = (1.0F - normalized_y) * forward_max_m;
-    return point;
-}
-
-}  // namespace
-
-// 构建 debug 用的稠密 BEV 图像，只用于展示和离线观察。
-// runtime 参考线提取仍然使用后面的稀疏行扫描，不从这个 debug 图反向读取事实。
-// 这保持了“显示辅助”和“控制事实”的边界，避免 debug 数据影响实际寻线。
-BEVSimpleImage BuildDebugDenseBevImage(const port::LegacyCameraFrameView& frame,
-                                       const BEVPixelClassificationModel& classification_model,
-                                       const port::RuntimeParameters& params,
-                                       const BEVProjector& projector) {
-    BEVSimpleImage image{};
-    if (!projector.Valid() || !frame.Valid()) {
-        return image;
-    }
-
-    const float lateral_limit = std::max(0.1F, params.bev_geometry.search_lateral_limit_m);
-    const float forward_max = params.bev_geometry.forward_samples_m.back();
-    const int width = std::max(2, params.bev_projector.debug_grid_width * 2);
-    const float scale_px_per_m = static_cast<float>(width) / std::max(1.0e-4F, lateral_limit * 2.0F);
-    const int height = std::max(2, static_cast<int>(std::lround(forward_max * scale_px_per_m)));
-
-    image.valid = true;
-    image.width = width;
-    image.height = height;
-    image.lateral_limit_m = lateral_limit;
-    image.forward_max_m = forward_max;
-    image.gray.assign(static_cast<std::size_t>(width * height), kInvalidGray);
-    image.classes.assign(static_cast<std::size_t>(width * height), BEVSimplePixelClass::kInvalid);
-
-    for (int y = 0; y < height; ++y) {
-        for (int x = 0; x < width; ++x) {
-            const port::BEVPoint bev_point = PixelToBevPoint(x, y, width, height, lateral_limit, forward_max);
-            port::ImagePoint image_point{};
-            if (!projector.ProjectVehicleToImage(bev_point, image_point)) {
-                continue;
-            }
-            std::uint8_t gray = 0;
-            if (!SampleFrameBilinear(frame, image_point.row_px, image_point.col_px, gray)) {
-                continue;
-            }
-            const std::size_t index = static_cast<std::size_t>(y * width + x);
-            image.gray[index] = gray;
-            image.classes[index] =
-                ClassifyBevPixel(gray, classification_model, params.bev_classification);
-        }
-    }
-
-    return image;
 }
 
 namespace {
@@ -348,10 +243,6 @@ enum class SingleEdgeKind {
 
 using CenterCandidateRows =
     std::array<std::vector<CenterCandidate>, port::kBevReferenceSampleCount>;
-
-float ReferenceMaxJump(const port::RuntimeParameters& params) {
-    return params.bev_geometry.reference_lateral_jump_gate_m;
-}
 
 BEVBoundaryTraceClipOptions BoundaryTraceClipOptionsFromParams(
     const port::RuntimeParameters& params) {
@@ -773,17 +664,30 @@ CenterCandidateRows BuildOrdinaryCenterCandidates(
     return candidate_rows;
 }
 
-const CenterCandidate* ChooseCenterCandidate(const std::vector<CenterCandidate>& candidates,
+bool RowHasBoundaryJumpBetween(const BEVSimpleRowScan& row,
+                               float lhs_lateral_m,
+                               float rhs_lateral_m) {
+    const float low = std::min(lhs_lateral_m, rhs_lateral_m);
+    const float high = std::max(lhs_lateral_m, rhs_lateral_m);
+    for (const BEVBoundaryJump& jump : row.jumps) {
+        if (jump.lateral_m > low && jump.lateral_m < high) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const CenterCandidate* ChooseCenterCandidate(const BEVSimpleRowScan& row,
+                                             const std::vector<CenterCandidate>& candidates,
                                              bool have_previous,
-                                             float previous_lateral,
-                                             const port::RuntimeParameters& params) {
+                                             float previous_lateral) {
     const CenterCandidate* best = nullptr;
     float best_cost = 0.0F;
-    const float max_jump = ReferenceMaxJump(params);
     for (const CenterCandidate& candidate : candidates) {
         const float target = have_previous ? previous_lateral : 0.0F;
         const float cost = std::fabs(candidate.lateral_m - target);
-        if (have_previous && cost > max_jump) {
+        if (have_previous &&
+            RowHasBoundaryJumpBetween(row, previous_lateral, candidate.lateral_m)) {
             continue;
         }
         if (best == nullptr || cost < best_cost) {
@@ -813,10 +717,10 @@ port::BEVReferencePath ExtractStrictLeadingReferenceSegment(
 
     for (std::size_t index = 0; index < rows.size() && index < reference.sampled_path.size(); ++index) {
         const CenterCandidate* candidate =
-            ChooseCenterCandidate(candidate_rows[index],
+            ChooseCenterCandidate(rows[index],
+                                  candidate_rows[index],
                                   have_previous,
-                                  previous_lateral,
-                                  params);
+                                  previous_lateral);
         if (candidate == nullptr) {
             if (segment_started) {
                 break;
@@ -914,20 +818,6 @@ bool EnsureBEVSampleProjectionLut(BEVSampleProjectionLut& lut,
     return true;
 }
 
-const char* ToString(BEVSimplePixelClass class_kind) {
-    switch (class_kind) {
-        case BEVSimplePixelClass::kInvalid:
-            return "invalid";
-        case BEVSimplePixelClass::kUnknown:
-            return "unknown";
-        case BEVSimplePixelClass::kBlack:
-            return "black";
-        case BEVSimplePixelClass::kWhite:
-            return "white";
-    }
-    return "invalid";
-}
-
 const char* ToString(BEVSampleProjectionState state) {
     switch (state) {
         case BEVSampleProjectionState::kSampleable:
@@ -986,10 +876,7 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
         result.boundary_jump_count += row.jumps.size();
         result.boundary_span_count += row.spans.size();
     }
-    {
-        LS2K_PERF_SCOPE(port::PerfStage::kBevSimpleBuildReference);
-        result.reference_path = BuildReferencePath(result.rows, params);
-    }
+    result.reference_path = BuildReferencePath(result.rows, params);
     result.reference_mode = ToString(result.reference_path.mode);
     result.reference_source =
         result.reference_path.mode == port::ReferenceMode::kIntervalCenter ? "simple_interval_center" : "none";

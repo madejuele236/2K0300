@@ -94,7 +94,7 @@ struct AssistantLateralErrorView {
 };
 
 /// @brief 参考跟踪几何视图
-struct AssistantTrackingGeometryView {
+struct AssistantReferenceTrackingGeometryView {
     bool computed = false;                    ///< 是否已计算跟踪几何
     double lateral_offset_m = 0.0;            ///< 横向位置项（米）
     double heading_error_rad = 0.0;           ///< 航向误差项（弧度）
@@ -148,7 +148,7 @@ struct AssistantTelemetryView {
     AssistantReferenceView reference{};                 ///< 参考路径视图
     AssistantEligibilityView eligibility{};             ///< 合格性视图
     AssistantLateralErrorView lateral_error{};           ///< 横向误差视图
-    AssistantTrackingGeometryView tracking_geometry{};   ///< 跟踪几何视图
+    AssistantReferenceTrackingGeometryView reference_tracking_geometry{};  ///< 参考跟踪几何视图
     AssistantReferenceControlView reference_control{};   ///< 参考控制视图
     AssistantSafetyGateView safety_gate{};               ///< 安全门视图
     AssistantDegradedView degraded{};                    ///< 降级模式视图

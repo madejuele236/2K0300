@@ -1,4 +1,3 @@
-#include <array>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -30,26 +29,8 @@ void ExpectSample(const ls2k::port::CameraPixelFrameView& frame,
     Expect(y == expected, message + ": unexpected luma");
 }
 
-void TestGraySampling() {
-    std::array<std::uint8_t, 12> gray{
-        10U, 20U, 30U, 40U,
-        50U, 60U, 70U, 80U,
-        90U, 100U, 110U, 120U,
-    };
-    ls2k::port::CameraPixelFrameView frame{};
-    frame.valid = true;
-    frame.format = ls2k::port::CameraFrameFormat::kGray;
-    frame.data = gray.data();
-    frame.width = 4;
-    frame.height = 3;
-    frame.stride = 4;
-
-    ExpectSample(frame, 1.0F, 2.0F, 70U, "gray integer sample");
-    ExpectSample(frame, 0.5F, 0.5F, 35U, "gray bilinear sample");
-}
-
-void TestYuyvSamplingWithStride() {
-    std::vector<std::uint8_t> yuyv(3U * 10U, 0U);
+ls2k::port::CameraPixelFrameView MakeYuyvFrameView(std::vector<std::uint8_t>& yuyv) {
+    yuyv.assign(3U * 10U, 0U);
     const auto set_y = [&yuyv](int row, int col, std::uint8_t y) {
         yuyv[static_cast<std::size_t>(row) * 10U +
              static_cast<std::size_t>(col) * 2U] = y;
@@ -74,13 +55,22 @@ void TestYuyvSamplingWithStride() {
     frame.width = 4;
     frame.height = 3;
     frame.stride = 10;
+    return frame;
+}
+
+void TestYuyvSamplingWithStride() {
+    std::vector<std::uint8_t> yuyv{};
+    const ls2k::port::CameraPixelFrameView frame = MakeYuyvFrameView(yuyv);
 
     ExpectSample(frame, 1.0F, 2.0F, 70U, "yuyv integer sample");
     ExpectSample(frame, 0.5F, 0.5F, 35U, "yuyv bilinear sample");
 }
 
-void TestBoundariesAndLegacyAdapter() {
-    std::array<std::uint8_t, 4> gray{1U, 2U, 3U, 4U};
+void TestBoundariesAndFormatContract() {
+    std::vector<std::uint8_t> yuyv{};
+    const ls2k::port::CameraPixelFrameView frame = MakeYuyvFrameView(yuyv);
+
+    std::vector<std::uint8_t> gray(4U, 0U);
     ls2k::port::CameraPixelFrameView invalid_stride{};
     invalid_stride.valid = true;
     invalid_stride.format = ls2k::port::CameraFrameFormat::kYuyv;
@@ -92,22 +82,19 @@ void TestBoundariesAndLegacyAdapter() {
     Expect(!ls2k::vision::SampleLumaAt(invalid_stride, 0.0F, 0.0F, y),
            "invalid yuyv stride must fail");
 
-    ls2k::port::LegacyCameraFrame legacy{};
-    legacy.width = 2;
-    legacy.height = 2;
-    legacy.gray[0] = 11U;
-    legacy.gray[1] = 22U;
-    legacy.gray[2] = 33U;
-    legacy.gray[3] = 44U;
-    const ls2k::port::CameraPixelFrameView pixel =
-        ls2k::port::MakeCameraPixelFrameView(legacy.View(7U, 123U));
-    Expect(pixel.Valid(), "legacy adapter must produce valid pixel view");
-    Expect(pixel.frame_id == 7U && pixel.capture_time_ms == 123U,
-           "legacy adapter must preserve stamp");
-    ExpectSample(pixel, 1.0F, 1.0F, 44U, "legacy adapter sample");
-    Expect(!ls2k::vision::SampleLumaAt(pixel, -0.1F, 0.0F, y),
+    ls2k::port::CameraPixelFrameView gray_frame{};
+    gray_frame.valid = true;
+    gray_frame.format = ls2k::port::CameraFrameFormat::kGray;
+    gray_frame.data = gray.data();
+    gray_frame.width = 2;
+    gray_frame.height = 2;
+    gray_frame.stride = 2;
+    Expect(!ls2k::vision::SampleLumaAt(gray_frame, 0.0F, 0.0F, y),
+           "gray frame must not be accepted by the YUYV luma sampler");
+
+    Expect(!ls2k::vision::SampleLumaAt(frame, -0.1F, 0.0F, y),
            "negative row must fail");
-    Expect(!ls2k::vision::SampleLumaAt(pixel, 0.0F, 2.0F, y),
+    Expect(!ls2k::vision::SampleLumaAt(frame, 0.0F, 4.0F, y),
            "outside col must fail");
 }
 
@@ -115,9 +102,8 @@ void TestBoundariesAndLegacyAdapter() {
 
 int main() {
     try {
-        TestGraySampling();
         TestYuyvSamplingWithStride();
-        TestBoundariesAndLegacyAdapter();
+        TestBoundariesAndFormatContract();
     } catch (const TestFailure& failure) {
         std::cerr << "FAIL: " << failure.message << '\n';
         return 1;

@@ -28,23 +28,23 @@ void SteeringYawController::Reset() {}
 /// SteeringYawController::ComputeTurnOutputTarget 实现
 /// 根据参考跟踪几何和速度目标计算转向输出目标
 TurnOutputTargetComputation SteeringYawController::ComputeTurnOutputTarget(
-    const port::ReferenceTrackingGeometry& tracking_geometry,
+    const port::ReferenceTrackingGeometry& reference_tracking_geometry,
     double effective_speed_target,
     port::BEVControllerMemory& memory) {
     const float speed_scale =
         static_cast<float>(effective_speed_target) / std::max(running_speed_target_, 1.0F);
     const float lateral_term =
-        lateral_offset_to_wheel_delta_gain_ * speed_scale * tracking_geometry.lateral_offset_m;
+        lateral_offset_to_wheel_delta_gain_ * speed_scale * reference_tracking_geometry.lateral_offset_m;
     const float heading_term =
-        heading_error_to_wheel_delta_gain_ * speed_scale * tracking_geometry.heading_error_rad;
+        heading_error_to_wheel_delta_gain_ * speed_scale * reference_tracking_geometry.heading_error_rad;
     const float curvature_term =
         curvature_to_wheel_delta_gain_ * speed_scale *
-        tracking_geometry.curvature_m_inv;
+        reference_tracking_geometry.curvature_m_inv;
     const float turn_output_candidate =
         lateral_term + heading_term + curvature_term;
     const float turn_output_target =
         std::clamp(turn_output_candidate, -raw_turn_output_limit_, raw_turn_output_limit_);
-    memory.weighted_lateral_error_last = tracking_geometry.lateral_offset_m;
+    memory.weighted_lateral_error_last = reference_tracking_geometry.lateral_offset_m;
     memory.last_gain_scale = speed_scale;
     memory.turn_output_target_last = turn_output_target;
 

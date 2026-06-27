@@ -358,14 +358,16 @@ int main(int argc, char** argv) {
                       0.0,
                       1.0,
                       "BEV_ELEMENT.CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN");
-        ExpectInt(params.bev_element.circle_v2_entry_bottom_row_count,
-                  NumberField(element, "CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT"),
-                  "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT");
-        Expect(params.bev_element.circle_v2_entry_bottom_row_count >= 1,
-               "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT must be >= 1");
-        Expect(params.bev_element.circle_v2_entry_bottom_row_count <=
+        ExpectInt(params.bev_element.circle_v2_entry_bottom_min_row_count,
+                  NumberField(element, "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT"),
+                  "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT");
+        Expect(params.bev_element.circle_v2_entry_bottom_min_row_count >= 1,
+               "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT must be >= 1");
+        Expect(params.bev_element.circle_v2_entry_bottom_min_row_count <=
                    static_cast<int>(ls2k::port::kBevReferenceSampleCount),
-               "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT must fit sparse samples");
+               "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT must fit sparse samples");
+        Expect(element.find("\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\"") == std::string::npos,
+               "BEV_ELEMENT must not retain removed CircleV2 entry bottom row-count field");
         ExpectNear(params.bev_element.circle_v2_entry_bottom_forward_min_m,
                    NumberField(element, "CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M"),
                    "BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M");

@@ -130,7 +130,7 @@ python3 calibrate_bev_projector_from_live.py --write-params
 ./start_with_params_upload.sh no-motion
 ```
 
-该工具只消费 viewer 的 `/config.bin` 和 `/latest.bin`，按当前帧多条横线检测道路左右边界并鲁棒拟合源图梯形；默认只保存 `calibration_result.json` 和 `calibration_overlay.png`，不写参数。写入后仍要以 no-motion 观察 `tracking_geometry`、`eligibility` 和网页 BEV 图像，不用控制增益掩盖错误标定。
+该工具只消费 viewer 的 `/config.bin` 和 `/latest.bin`，按当前帧多条横线检测道路左右边界并鲁棒拟合源图梯形；默认只保存 `calibration_result.json` 和 `calibration_overlay.png`，不写参数。写入后仍要以 no-motion 观察 `reference_tracking_geometry`、`eligibility` 和网页 BEV 图像，不用控制增益掩盖错误标定。
 
 新的 `host-capture` evidence bundle 包含：
 

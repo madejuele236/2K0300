@@ -91,7 +91,7 @@ port::ReferenceTrackingGeometry ComputeReferenceTrackingGeometry(
 
     const std::size_t start_index = FirstPresentSegmentStart(reference_path);
     if (start_index >= reference_path.sampled_path.size()) {
-        return UncomputedOutput("tracking_geometry_unavailable");
+        return UncomputedOutput("reference_tracking_geometry_unavailable");
     }
 
     const std::size_t bounded_count =
@@ -135,7 +135,7 @@ port::ReferenceTrackingGeometry ComputeReferenceTrackingGeometry(
     }
 
     if (used_count < min_samples) {
-        return UncomputedOutput("insufficient_tracking_geometry_samples");
+        return UncomputedOutput("insufficient_reference_tracking_geometry_samples");
     }
 
     float matrix[3][4] = {
@@ -145,7 +145,7 @@ port::ReferenceTrackingGeometry ComputeReferenceTrackingGeometry(
     };
     std::array<float, 3> coeff{};
     if (!Solve3x3(matrix, coeff)) {
-        return UncomputedOutput("tracking_geometry_fit_degenerate");
+        return UncomputedOutput("reference_tracking_geometry_fit_degenerate");
     }
 
     const float c = coeff[0];
@@ -158,7 +158,7 @@ port::ReferenceTrackingGeometry ComputeReferenceTrackingGeometry(
     const float curvature_m_inv = (2.0F * a) / std::pow(1.0F + b * b, 1.5F);
     if (!std::isfinite(lateral_offset_m) || !std::isfinite(heading_error_rad) ||
         !std::isfinite(curvature_m_inv)) {
-        return UncomputedOutput("tracking_geometry_nonfinite");
+        return UncomputedOutput("reference_tracking_geometry_nonfinite");
     }
 
     port::ReferenceTrackingGeometry output{};

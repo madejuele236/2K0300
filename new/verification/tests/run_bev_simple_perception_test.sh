@@ -11,10 +11,8 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/verification/tests/bev_simple_perception_test.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/single_boundary_offset.cpp" \
-  "${REPO_ROOT}/new/code/vision/bev/reference_connectivity.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_simple_perception.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
-  "${REPO_ROOT}/new/code/vision/bev/bev_element_raster.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_usability.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_continuity.cpp" \
   -o "${OUT_BIN}"

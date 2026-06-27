@@ -11,7 +11,7 @@ constexpr float kSpecialCandidateConfidenceMin = 0.65F;
 /// 候选验证结果
 struct CandidateValidation {
     bool accepted = false;                ///< 候选是否通过验证
-    std::string rejected_reason = "none"; ///< 拒绝原因
+    const char* rejected_reason = "none"; ///< 拒绝原因
 };
 
 /// 判断候选类型是否为特殊类型（非车道线）
@@ -140,14 +140,16 @@ port::VisualReferenceCandidate MakeLineVisualReferenceCandidate(
 /// 3. 若无特殊候选则选择最佳车道线候选
 /// 4. 若特殊候选出现置信度平局则返回ambiguous
 port::VisualReferenceSelection SelectVisualReference(
-    const std::vector<port::VisualReferenceCandidate>& candidates) {
+    const port::VisualReferenceCandidate* candidates,
+    std::size_t count) {
     port::VisualReferenceSelection selection{};
     const port::VisualReferenceCandidate* best_line = nullptr;
     const port::VisualReferenceCandidate* best_special = nullptr;
     int best_special_priority = -1;
     bool best_special_tied = false;
 
-    for (const port::VisualReferenceCandidate& candidate : candidates) {
+    for (std::size_t index = 0; index < count; ++index) {
+        const port::VisualReferenceCandidate& candidate = candidates[index];
         if (!candidate.present) {
             continue;
         }
@@ -209,6 +211,11 @@ port::VisualReferenceSelection SelectVisualReference(
         selection.reason = "no_valid_visual_reference_candidate";
     }
     return selection;
+}
+
+port::VisualReferenceSelection SelectVisualReference(
+    const std::vector<port::VisualReferenceCandidate>& candidates) {
+    return SelectVisualReference(candidates.data(), candidates.size());
 }
 
 }  // namespace ls2k::reference

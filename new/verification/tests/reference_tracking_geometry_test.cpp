@@ -132,7 +132,7 @@ void TestInsufficientSamplesFailClosed() {
     const ls2k::port::BEVReferencePath path = MakePolynomialPath(params, 3, 0.0F, 0.0F, 0.0F);
     const auto output = Compute(path, params);
     Expect(!output.computed, "tracking geometry must reject too few fit samples");
-    Expect(output.reason == "insufficient_tracking_geometry_samples",
+    Expect(output.reason == "insufficient_reference_tracking_geometry_samples",
            "tracking geometry insufficient-sample reason must be explicit");
 }
 
@@ -145,7 +145,7 @@ void TestDegenerateFitFailsClosed() {
     path.sampled_path[2] = Sample(0.2F, 0.2F);
     const auto output = Compute(path, params);
     Expect(!output.computed, "degenerate fit must fail closed");
-    Expect(output.reason == "tracking_geometry_fit_degenerate",
+    Expect(output.reason == "reference_tracking_geometry_fit_degenerate",
            "degenerate fit reason must be explicit");
 }
 

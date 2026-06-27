@@ -1,9 +1,9 @@
 #include "runtime/pipelines/steering_frame_pipeline.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cmath>
-#include <vector>
 
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_continuity.hpp"
@@ -44,7 +44,7 @@ constexpr float kPi = 3.14159265358979323846F;
 /// @param continuity            参考连续性结果
 /// @param selected_usability    选中参考的可用性
 /// @param lateral_error         参考横向误差估计
-/// @param tracking_geometry     参考跟踪几何事实
+/// @param reference_tracking_geometry     参考跟踪几何事实
 /// @param reference_control     参考控制就绪状态
 /// @param publish_time_ms       发布时间戳
 /// @return                      组装好的 PerceptionResult
@@ -59,10 +59,9 @@ port::PerceptionResult BuildPerceptionResult(
     const port::ReferenceContinuityResult& continuity,
     const port::ReferenceUsability& selected_usability,
     const port::ReferenceLateralErrorEstimate& lateral_error,
-    const port::ReferenceTrackingGeometry& tracking_geometry,
+    const port::ReferenceTrackingGeometry& reference_tracking_geometry,
     const port::ReferenceControlReadiness& reference_control,
     uint64_t publish_time_ms) {
-    LS2K_PERF_SCOPE(port::PerfStage::kPerceptionResultBuild);
     port::PerceptionResult perception{};
     perception.published = true;
     perception.fresh = true;
@@ -84,7 +83,7 @@ port::PerceptionResult BuildPerceptionResult(
     perception.visual_reference_selection = visual_selection;
     perception.reference_usability = selected_usability;
     perception.reference_lateral_error = lateral_error;
-    perception.reference_tracking_geometry = tracking_geometry;
+    perception.reference_tracking_geometry = reference_tracking_geometry;
     perception.reference_control = reference_control;
     return perception;
 }
@@ -198,8 +197,8 @@ CircleV2Params BuildCircleV2Params(const port::RuntimeParameters& params) {
         params.bev_element.circle_v2_inner_trace_path_offset_m;
     circle_params.opposite_straight_confidence_min =
         params.bev_element.circle_v2_opposite_straight_confidence_min;
-    circle_params.entry_bottom_row_count =
-        params.bev_element.circle_v2_entry_bottom_row_count;
+    circle_params.entry_bottom_min_row_count =
+        params.bev_element.circle_v2_entry_bottom_min_row_count;
     circle_params.entry_bottom_forward_min_m =
         params.bev_element.circle_v2_entry_bottom_forward_min_m;
     circle_params.entry_bottom_forward_max_m =
@@ -217,6 +216,7 @@ port::CircleV2TelemetrySnapshot BuildCircleV2TelemetrySnapshot(bool enabled,
     snapshot.reference_role = vision::ToString(telemetry.reference_role);
     snapshot.reason = vision::ToString(telemetry.reason);
     snapshot.motion_arc_available = telemetry.motion_arc_available;
+    snapshot.geometry_available = telemetry.geometry_available;
     snapshot.inner_trace_elapsed_ms = telemetry.inner_trace_elapsed_ms;
     snapshot.directed_turn_angle_rad = telemetry.directed_turn_angle_rad;
     snapshot.entry_points = telemetry.entry_points;
@@ -266,7 +266,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     port::ReferenceContinuityResult continuity{};
     port::ReferenceUsability selected_usability{};
     port::ReferenceLateralErrorEstimate lateral_error{};
-    port::ReferenceTrackingGeometry tracking_geometry{};
+    port::ReferenceTrackingGeometry reference_tracking_geometry{};
     port::ReferenceControlReadiness reference_control{};
     port::PerceptionHealth health{};
     port::VisualElementEvidenceFrame element_evidence{};
@@ -288,23 +288,15 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                                &sample_lut_);
         }
         port::VisualReferenceCandidate line_candidate{};
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kVisualLineCandidate);
-            line_candidate =
-                reference::MakeLineVisualReferenceCandidate(current_facts.reference_path,
-                                                            current_facts.reference_source);
-        }
+        line_candidate =
+            reference::MakeLineVisualReferenceCandidate(current_facts.reference_path,
+                                                        current_facts.reference_source);
 
         vision::VisualElementPipelineInput element_input{};
         element_input.sparse_rows = &current_facts.rows;
-        element_input.frame = &capture.view;
-        element_input.projector = &projector_;
         element_input.line_candidate = line_candidate;
         vision::VisualElementPipelineResult element_result{};
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kVisualElementPipeline);
-            element_result = vision::RunVisualElementPipeline(element_input, params);
-        }
+        element_result = vision::RunVisualElementPipeline(element_input, params);
         element_evidence = element_result.evidence;
 
         std::optional<port::VisualReferenceCandidate> circle_candidate{};
@@ -325,17 +317,14 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                        params.bev_geometry.nominal_road_half_width_m);
             scene_frame.motion_arc = MotionArcView(&motion_query, QueryMotionArcYawDelta);
             scene_frame.stamp.capture_time_ms = capture.capture_time_ms;
-            {
-                LS2K_PERF_SCOPE(port::PerfStage::kCircleV2Scene);
-                const CircleV2StepResult circle_result =
-                    CircleV2Scene{}.Step(scene_frame,
-                                          prior_memory.circle_v2,
-                                          BuildCircleV2Params(params));
-                perception_memory_.circle_v2 = circle_result.next_memory;
-                circle_v2_snapshot =
-                    BuildCircleV2TelemetrySnapshot(true, circle_result.telemetry);
-                circle_candidate = AdaptCircleV2ReferencePlan(circle_result.reference_plan);
-            }
+            const CircleV2StepResult circle_result =
+                CircleV2Scene{}.Step(scene_frame,
+                                      prior_memory.circle_v2,
+                                      BuildCircleV2Params(params));
+            perception_memory_.circle_v2 = circle_result.next_memory;
+            circle_v2_snapshot =
+                BuildCircleV2TelemetrySnapshot(true, circle_result.telemetry);
+            circle_candidate = AdaptCircleV2ReferencePlan(circle_result.reference_plan);
         } else {
             if (prior_memory.circle_v2.phase != CirclePhase::kIdle) {
                 ResetCircleV2Memory(perception_memory_.circle_v2);
@@ -348,36 +337,31 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
 
         port::ReferenceUsability current_usability{};
         {
-            LS2K_PERF_SCOPE(port::PerfStage::kVisualReferenceSelect);
-            std::vector<port::VisualReferenceCandidate> candidates;
-            candidates.reserve(1U + element_result.candidates.size() +
-                               (circle_candidate.has_value() ? 1U : 0U));
-            {
-                LS2K_PERF_SCOPE(port::PerfStage::kVisualReferenceConnectivity);
-                candidates.push_back(line_candidate);
-                for (const port::VisualReferenceCandidate& candidate :
-                     element_result.candidates) {
-                    candidates.push_back(candidate);
-                }
-                if (circle_candidate.has_value()) {
-                    candidates.push_back(*circle_candidate);
+            std::array<port::VisualReferenceCandidate,
+                       port::kVisualReferenceCandidatePathCapacity>
+                candidates{};
+            std::size_t candidate_count = 0;
+            candidates[candidate_count++] = line_candidate;
+            for (const port::VisualReferenceCandidate& candidate :
+                 element_result.candidates) {
+                if (candidate_count < candidates.size()) {
+                    candidates[candidate_count++] = candidate;
                 }
             }
-            for (const port::VisualReferenceCandidate& candidate : candidates) {
+            if (circle_candidate.has_value() && candidate_count < candidates.size()) {
+                candidates[candidate_count++] = *circle_candidate;
+            }
+            for (std::size_t index = 0; index < candidate_count; ++index) {
+                const port::VisualReferenceCandidate& candidate = candidates[index];
                 if (candidate.present) {
                     port::AppendVisualReferenceCandidatePath(candidate_paths, candidate);
                 }
             }
-            {
-                LS2K_PERF_SCOPE(port::PerfStage::kVisualReferenceArbitration);
-                visual_selection = reference::SelectVisualReference(candidates);
-            }
+            visual_selection = reference::SelectVisualReference(candidates.data(),
+                                                                candidate_count);
         }
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kReferenceUsability);
-            current_usability =
-                reference::EvaluateReferenceUsability(visual_selection.reference_path, params);
-        }
+        current_usability =
+            reference::EvaluateReferenceUsability(visual_selection.reference_path, params);
         if (current_usability.usable) {
             continuity.reference_path = visual_selection.reference_path;
             continuity.mode = visual_selection.reference_path.mode;
@@ -404,29 +388,20 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                 selected_usability = hold_usability;
             } else {
                 continuity = {};
-                {
-                    LS2K_PERF_SCOPE(port::PerfStage::kReferenceUsability);
-                    selected_usability =
-                        reference::EvaluateReferenceUsability(continuity.reference_path, params);
-                }
+                selected_usability =
+                    reference::EvaluateReferenceUsability(continuity.reference_path, params);
             }
         }
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kReferenceLateralError);
-            lateral_error = reference::ComputeReferenceLateralError(continuity.reference_path,
-                                                                    selected_usability,
-                                                                    params);
-        }
-        tracking_geometry =
+        lateral_error = reference::ComputeReferenceLateralError(continuity.reference_path,
+                                                                selected_usability,
+                                                                params);
+        reference_tracking_geometry =
             reference::ComputeReferenceTrackingGeometry(continuity.reference_path,
                                                         selected_usability,
                                                         params.bev_control_model);
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kReferenceControlReadiness);
-            reference_control = reference::EvaluateReferenceControlReadiness(selected_usability,
-                                                                             tracking_geometry,
-                                                                             continuity.hold_selected);
-        }
+        reference_control = reference::EvaluateReferenceControlReadiness(selected_usability,
+                                                                         reference_tracking_geometry,
+                                                                         continuity.hold_selected);
         perception_memory_.reference_hold = continuity.next_hold_state;
     }
 
@@ -440,7 +415,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                  continuity,
                                  selected_usability,
                                  lateral_error,
-                                 tracking_geometry,
+                                 reference_tracking_geometry,
                                  reference_control,
                                  port::NowMs());
 }

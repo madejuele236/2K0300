@@ -74,6 +74,11 @@ void SteeringMediaService::MaybeEmitWindowSummary(std::uint64_t now_ms,
     if (now_ms < last_summary_ms_ || now_ms - last_summary_ms_ < 1000U) {
         return;
     }
+    last_summary_ms_ = now_ms;
+    if (!diagnostics.ShouldEmit(port::DiagnosticLevel::kInfo, "steering_media.summary")) {
+        ResetWindowStats();
+        return;
+    }
 
     std::ostringstream message;
     message << "ticks=" << window_stats_.ticks
@@ -100,7 +105,6 @@ void SteeringMediaService::MaybeEmitWindowSummary(std::uint64_t now_ms,
                       "steering_media.summary",
                       message.str(),
                       now_ms});
-    last_summary_ms_ = now_ms;
     ResetWindowStats();
 }
 
@@ -164,12 +168,12 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.lateral_error.weighted_sample_count = snapshot.lateral_error.weighted_sample_count;
     view.lateral_error.weight_sum = snapshot.lateral_error.weight_sum;
     view.lateral_error.reason = snapshot.lateral_error.reason;
-    view.tracking_geometry.computed = snapshot.tracking_geometry.computed;
-    view.tracking_geometry.lateral_offset_m = snapshot.tracking_geometry.lateral_offset_m;
-    view.tracking_geometry.heading_error_rad = snapshot.tracking_geometry.heading_error_rad;
-    view.tracking_geometry.curvature_m_inv = snapshot.tracking_geometry.curvature_m_inv;
-    view.tracking_geometry.sample_count = snapshot.tracking_geometry.sample_count;
-    view.tracking_geometry.reason = snapshot.tracking_geometry.reason;
+    view.reference_tracking_geometry.computed = snapshot.reference_tracking_geometry.computed;
+    view.reference_tracking_geometry.lateral_offset_m = snapshot.reference_tracking_geometry.lateral_offset_m;
+    view.reference_tracking_geometry.heading_error_rad = snapshot.reference_tracking_geometry.heading_error_rad;
+    view.reference_tracking_geometry.curvature_m_inv = snapshot.reference_tracking_geometry.curvature_m_inv;
+    view.reference_tracking_geometry.sample_count = snapshot.reference_tracking_geometry.sample_count;
+    view.reference_tracking_geometry.reason = snapshot.reference_tracking_geometry.reason;
     view.reference_time_alignment.enabled = snapshot.reference_time_alignment.enabled;
     view.reference_time_alignment.valid = snapshot.reference_time_alignment.valid;
     view.reference_time_alignment.reason = snapshot.reference_time_alignment.reason;
@@ -314,7 +318,6 @@ void SteeringMediaService::FillImageFrame(const port::CameraPixelFrameView& capt
 void SteeringMediaService::Tick(RuntimeState& state,
                                 CameraFrameStore& frame_store,
                                 port::DiagnosticSink& diagnostics) {
-    LS2K_PERF_SCOPE(port::PerfStage::kSteeringMediaTick);
     if (!configured_ || !enabled_) {
         return;
     }

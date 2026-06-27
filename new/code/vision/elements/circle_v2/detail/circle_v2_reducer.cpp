@@ -100,6 +100,7 @@ CircleV2Telemetry BuildCircleV2Telemetry(const CircleV2Decision& decision,
     telemetry.reference_role = decision.reference.role;
     telemetry.reason = decision.reason;
     telemetry.motion_arc_available = events.motion_arc_available;
+    telemetry.geometry_available = geometry.available;
     telemetry.inner_trace_elapsed_ms = events.inner_trace_elapsed_ms;
     telemetry.directed_turn_angle_rad = events.directed_turn_angle_rad;
     telemetry.entry_points.left.available = expansion.left_p_available;

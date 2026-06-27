@@ -72,12 +72,12 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.lateral_error.weighted_sample_count = 4;
     snapshot.steering.lateral_error.weight_sum = 2.5;
     snapshot.steering.lateral_error.reason = "ok";
-    snapshot.steering.tracking_geometry.computed = true;
-    snapshot.steering.tracking_geometry.lateral_offset_m = 0.011;
-    snapshot.steering.tracking_geometry.heading_error_rad = -0.022;
-    snapshot.steering.tracking_geometry.curvature_m_inv = 0.33;
-    snapshot.steering.tracking_geometry.sample_count = 5;
-    snapshot.steering.tracking_geometry.reason = "ok";
+    snapshot.steering.reference_tracking_geometry.computed = true;
+    snapshot.steering.reference_tracking_geometry.lateral_offset_m = 0.011;
+    snapshot.steering.reference_tracking_geometry.heading_error_rad = -0.022;
+    snapshot.steering.reference_tracking_geometry.curvature_m_inv = 0.33;
+    snapshot.steering.reference_tracking_geometry.sample_count = 5;
+    snapshot.steering.reference_tracking_geometry.reason = "ok";
     snapshot.steering.perception_health.projector_ok = true;
     snapshot.steering.perception_health.reason = "ok";
     snapshot.steering.reference_control.ready = true;
@@ -140,9 +140,9 @@ void TestSnapshotFactsMapToAssistantView() {
            "selected reference mode must be copied");
     Expect(telemetry.reference.source == "roadblock_bypass",
            "selected reference source must be copied");
-    Expect(telemetry.tracking_geometry.computed,
+    Expect(telemetry.reference_tracking_geometry.computed,
            "tracking geometry computed state must be copied");
-    Expect(telemetry.tracking_geometry.sample_count == 5,
+    Expect(telemetry.reference_tracking_geometry.sample_count == 5,
            "tracking geometry sample count must be copied");
     Expect(telemetry.yaw_control.curvature_term > 0.09,
            "yaw curvature term must be copied");
@@ -190,7 +190,7 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
     Expect(Contains(json,
                     "\"reference\":{\"mode\":\"interval_center\",\"source\":\"roadblock_bypass\"}"),
            "assistant telemetry must preserve selected reference facts");
-    Expect(Contains(json, "\"tracking_geometry\":{\"computed\":true"),
+    Expect(Contains(json, "\"reference_tracking_geometry\":{\"computed\":true"),
            "assistant telemetry must include tracking geometry object");
     Expect(Contains(json, "\"lateral_offset_m\":0.011"),
            "assistant telemetry must include tracking lateral offset");

@@ -149,6 +149,8 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " circle_v2.reason=" << snapshot.steering.circle_v2.reason
                      << " circle_v2.motion_arc_available="
                      << BoolToken(snapshot.steering.circle_v2.motion_arc_available)
+                     << " circle_v2.geometry_available="
+                     << BoolToken(snapshot.steering.circle_v2.geometry_available)
                      << " circle_v2.inner_trace_elapsed_ms="
                      << snapshot.steering.circle_v2.inner_trace_elapsed_ms
                      << " circle_v2.directed_turn_angle_rad="
@@ -227,18 +229,18 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.lateral_error.weighted_sample_count
                      << " lateral_error.weight_sum=" << snapshot.steering.lateral_error.weight_sum
                      << " lateral_error.reason=" << snapshot.steering.lateral_error.reason
-                     << " tracking_geometry.computed="
-                     << BoolToken(snapshot.steering.tracking_geometry.computed)
-                     << " tracking_geometry.lateral_offset_m="
-                     << snapshot.steering.tracking_geometry.lateral_offset_m
-                     << " tracking_geometry.heading_error_rad="
-                     << snapshot.steering.tracking_geometry.heading_error_rad
-                     << " tracking_geometry.curvature_m_inv="
-                     << snapshot.steering.tracking_geometry.curvature_m_inv
-                     << " tracking_geometry.sample_count="
-                     << snapshot.steering.tracking_geometry.sample_count
-                     << " tracking_geometry.reason="
-                     << snapshot.steering.tracking_geometry.reason
+                     << " reference_tracking_geometry.computed="
+                     << BoolToken(snapshot.steering.reference_tracking_geometry.computed)
+                     << " reference_tracking_geometry.lateral_offset_m="
+                     << snapshot.steering.reference_tracking_geometry.lateral_offset_m
+                     << " reference_tracking_geometry.heading_error_rad="
+                     << snapshot.steering.reference_tracking_geometry.heading_error_rad
+                     << " reference_tracking_geometry.curvature_m_inv="
+                     << snapshot.steering.reference_tracking_geometry.curvature_m_inv
+                     << " reference_tracking_geometry.sample_count="
+                     << snapshot.steering.reference_tracking_geometry.sample_count
+                     << " reference_tracking_geometry.reason="
+                     << snapshot.steering.reference_tracking_geometry.reason
                      << " reference_time_alignment.enabled="
                      << BoolToken(snapshot.steering.reference_time_alignment.enabled)
                      << " reference_time_alignment.valid="

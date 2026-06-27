@@ -20,8 +20,9 @@ active 视觉热路径以 sparse BEV row facts 为公共视觉事实面；full B
 
 ```text
 camera frame
--> Otsu threshold
+-> luma sampler reads Y
 -> sparse BEV row scans
+     ├─ local Y boundary jumps / spans / traces
      ├─ line reference builder
      │    -> line BEVReferencePath candidate
      ├─ cross visual evidence
@@ -55,8 +56,8 @@ line candidate + element candidates
 
 各层只消费上一层的明确输出，不窥探别层内部语义：
 
-- `reference_path` 只表达白点事实。
-- `present` 只表达白点事实存在。
+- `reference_path` 只表达当前帧或 hold 选择后的路径事实。
+- `present` 只表达对应路径采样点事实存在。
 - `source` / `mode` 只用于 debug、overlay、protocol，不参与可用性、tracking geometry、控制、安全决策。
 - `usable` 只属于 reference usability 层。
 - `computed` 只属于 reference tracking-geometry 层。
@@ -99,7 +100,7 @@ debug、overlay、media、assistant telemetry 只能序列化事实，不能参�
 - visual reference orchestration 是唯一把 line candidate 与 element candidates 汇总成 current visual `BEVReferencePath` 的层。
 - reference continuity / usability / tracking geometry / readiness / safety / yaw 链路只消费 orchestration 后的 selected reference facts，不直接消费 raster 或元素内部细节。
 
-### 采样与分类
+### 采样与边界
 
 - sparse scan 只处理 BEV metric sample。
 - sample 投影状态只表达是否能采样：
@@ -107,10 +108,10 @@ debug、overlay、media、assistant telemetry 只能序列化事实，不能参�
   - `kOutsideFrame`
   - `kProjectionFailed`
 - `OutsideFrame` / `ProjectionFailed` 不得变成 edge、opening、元素或路径证据。
-- 分类只基于中心像素亮度与阈值，输出 white / black / unknown / invalid。
+- active sparse row 通过 luma sampler 读取 Y，并由统一 boundary helper 输出 local Y boundary jumps / spans。
 - 图像边缘、扫描边界、FOV 边界都不能冒充 observed boundary 或元素事实。
-- sparse BEV 横线内的两侧边点，只有在同一横线的 BEV 采样序列中无 black 隔断时，才能被认为是同一条道路的两边。
-- row 内连通性只判断 BEV 横向采样事实：中间出现 black 即不连通；图像外、不可采样或投影失败区域不被当作 black。
+- sparse BEV 横线内的两侧边点，只有形成同一行 boundary span 时，才能被认为是同一道路片段的两边。
+- row 内连通性只判断同一条 sparse BEV 横向采样事实；图像外、不可采样或投影失败区域不被当作隔断。
 - row 间边界连续性只使用 BEV metric 距离；`BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M` 的单位是 BEV 米制距离，不是原图像素距离。
 - 不增加“原图和 BEV 是否匹配”的业务防御判断。原图只提供采样值；BEV row facts 和 BEV metric 几何是 runtime 视觉判断的事实面。
 
@@ -118,7 +119,7 @@ debug、overlay、media、assistant telemetry 只能序列化事实，不能参�
 
 - `BEVReferencePath` 表达“从 index 0 开始的近端连续控制路径”。
 - 当前 strict builder 不补点、不插值、不跨 gap、不把远端点接回近端。
-- index 0 没有 interval，则当前视觉 reference 无事实。
+- 当前视觉 reference 只能来自 boundary span/trace 生成的近端连续候选。
 - 中间第一处断点之后全部 `present=false`、`source=kNone`。
 - hold 只能复制上一帧 leading present 段，source 必须重写为 `hold`。
 - hold 是 continuity 层事实，不是视觉事实。
@@ -142,7 +143,7 @@ none
 ```
 
 - gate veto、emergency stop、hold disarmed、no-drive 时，不调用 yaw/turn controller，不更新 yaw/turn memory。
-- turn-output target 只由 `tracking_geometry` + speed target 计算；legacy weighted lateral-error 只作为迁移期 debug 对照事实。
+- turn-output target 只由 `reference_tracking_geometry` + speed target 计算；legacy weighted lateral-error 只作为迁移期 debug 对照事实。
 - gyro feedback 只在 gate clear 且 motion allow-drive 时运行。
 
 ### Low Voltage
@@ -166,7 +167,7 @@ none
   - `YAW_RATE_PID`
   - `low_voltage_raw_threshold`
   - `BEV_GEOMETRY`
-  - `BEV_CLASSIFICATION`
+  - `BEV_BOUNDARY`
   - `BEV_CONTROL_MODEL`
   - `BEV_ELEMENT`
 
@@ -228,7 +229,7 @@ V1 sparse-first 架构的迁移背景，不再作为 active circle/cross 实现�
 
 `steering_bev_simple_perception.*`
 
-- 负责 sparse BEV row scan、white intervals、line current visual reference candidate。
+- 负责 sparse BEV row scan、local Y boundary jumps/spans/traces、line current visual reference candidate。
 - 产出的 sparse rows 是 line、cross、circle Phase1 的公共视觉事实面。
 - 不 include / 不依赖 reference usability。
 - 不 include / 不直接调用 circle、cross、roadblock、ML detector。
@@ -335,7 +336,7 @@ V1 sparse-first 架构的迁移背景，不再作为 active circle/cross 实现�
 
 ### 类型语义
 
-- `BEVPathSample::present`：白点事实存在。
+- `BEVPathSample::present`：路径采样点事实存在。
 - `BEVPathPointSource`：`kNone`、`kIntervalCenter`、`kHold`。
 - `ReferenceMode`：`kNone`、`kIntervalCenter`、`kHoldLast`。
 - `ReferenceUsability::usable`：reference 是否足够连续。
@@ -356,7 +357,7 @@ debug JSON 分组应保持：
   "reference": {},
   "eligibility": {},
   "lateral_error": {},
-  "tracking_geometry": {},
+  "reference_tracking_geometry": {},
   "reference_control": {},
   "safety_gate": {},
   "degraded": {},
@@ -375,14 +376,13 @@ steering media config snapshot 必须暴露当前真实参数，包括：
   "low_voltage_raw_threshold": 400,
   "BEV_PROJECTOR": {},
   "BEV_GEOMETRY": {},
-  "BEV_CLASSIFICATION": {},
+  "BEV_BOUNDARY": {},
   "BEV_CONTROL_MODEL": {},
   "BEV_ELEMENT": {
     "CROSS_EXIT_TAKEOVER_ENABLED": 1,
-    "CROSS_WIDE_ROW_WHITE_RATIO_MIN": 0.95,
     "CIRCLE_V2_ENABLED": 1,
     "CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG": 330,
-    "CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT": 3
+    "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT": 3
   }
 }
 ```
@@ -414,8 +414,10 @@ rtk bash new/verification/tests/run_reference_usability_lateral_error_test.sh
 rtk bash new/verification/tests/run_reference_tracking_geometry_test.sh
 rtk bash new/verification/tests/run_assistant_telemetry_selftest.sh
 rtk bash new/verification/tests/run_steering_media_selftest.sh
-rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 rtk bash new/verification/tests/run_perf_counter_test.sh
+rtk bash new/tools/static_analysis/run_semgrep.sh
+rtk bash new/tools/static_analysis/run_clang_tidy.sh
+rtk bash new/tools/static_analysis/run_sonarqube.sh
 rtk env SKIP_UPLOAD=1 new/user/build.sh
 rtk git diff --check
 rtk codegraph sync
@@ -519,5 +521,5 @@ rtk codegraph sync
 - 为了路径连续性在 builder 层预留空 options。
 - 在 simple perception 里做 hold、usability、tracking geometry 或 control。
 - 在路径层补救元素证据层断裂。
-- 用平滑算法掩盖底层白点/边界证据错误。
+- 用平滑算法掩盖底层 boundary/reference 证据错误。
 - 为特殊场景开硬编码模板，除非先有明确视觉事实与测试夹具支撑。

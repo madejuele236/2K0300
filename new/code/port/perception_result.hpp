@@ -42,6 +42,7 @@ struct CircleV2TelemetrySnapshot {
     std::string reference_role = "none";      ///< 本帧 reference role
     std::string reason = "none";              ///< 稳定原因枚举文本
     bool motion_arc_available = false;        ///< 本帧 InnerTrace yaw 积分是否可查询
+    bool geometry_available = false;          ///< 本帧 CircleV2 reference geometry 是否可用
     uint64_t inner_trace_elapsed_ms = 0;       ///< InnerTrace 已持续时间
     float directed_turn_angle_rad = 0.0F;      ///< 按锁存方向归一化后的 yaw 积分
     CircleV2EntryPointObservation entry_points{};  ///< 本帧入口 P 点观测

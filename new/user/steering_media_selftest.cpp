@@ -230,6 +230,7 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.circle_v2.dir = "left";
     snapshot.steering.circle_v2.reference_role = "exit_trace";
     snapshot.steering.circle_v2.reason = "exit_hold_released";
+    snapshot.steering.circle_v2.geometry_available = true;
     snapshot.steering.circle_v2.entry_points.left.available = true;
     snapshot.steering.circle_v2.entry_points.left.point.forward_m = 0.5F;
     snapshot.steering.circle_v2.entry_points.left.point.lateral_m = -0.25F;
@@ -261,12 +262,12 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.lateral_error.weighted_sample_count = 4;
     snapshot.steering.lateral_error.weight_sum = 3.75;
     snapshot.steering.lateral_error.reason = "ok";
-    snapshot.steering.tracking_geometry.computed = true;
-    snapshot.steering.tracking_geometry.lateral_offset_m = -0.08;
-    snapshot.steering.tracking_geometry.heading_error_rad = 0.04;
-    snapshot.steering.tracking_geometry.curvature_m_inv = 0.12;
-    snapshot.steering.tracking_geometry.sample_count = 5;
-    snapshot.steering.tracking_geometry.reason = "ok";
+    snapshot.steering.reference_tracking_geometry.computed = true;
+    snapshot.steering.reference_tracking_geometry.lateral_offset_m = -0.08;
+    snapshot.steering.reference_tracking_geometry.heading_error_rad = 0.04;
+    snapshot.steering.reference_tracking_geometry.curvature_m_inv = 0.12;
+    snapshot.steering.reference_tracking_geometry.sample_count = 5;
+    snapshot.steering.reference_tracking_geometry.reason = "ok";
     snapshot.steering.reference_time_alignment.enabled = true;
     snapshot.steering.reference_time_alignment.valid = true;
     snapshot.steering.reference_time_alignment.reason = "aligned_effective_se2";
@@ -337,13 +338,13 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose weighted lateral sample count");
     Require(Contains(message, "lateral_error.weight_sum=3.75"),
             "steering snapshot must expose lateral-error weight sum");
-    Require(Contains(message, "tracking_geometry.lateral_offset_m=-0.08"),
+    Require(Contains(message, "reference_tracking_geometry.lateral_offset_m=-0.08"),
             "steering snapshot must expose tracking geometry lateral offset");
-    Require(Contains(message, "tracking_geometry.heading_error_rad=0.04"),
+    Require(Contains(message, "reference_tracking_geometry.heading_error_rad=0.04"),
             "steering snapshot must expose tracking geometry heading");
-    Require(Contains(message, "tracking_geometry.curvature_m_inv=0.12"),
+    Require(Contains(message, "reference_tracking_geometry.curvature_m_inv=0.12"),
             "steering snapshot must expose tracking geometry curvature");
-    Require(Contains(message, "tracking_geometry.sample_count=5"),
+    Require(Contains(message, "reference_tracking_geometry.sample_count=5"),
             "steering snapshot must expose tracking geometry sample count");
     Require(Contains(message, "yaw_control.turn_output_target=-0.18"),
             "steering snapshot must expose turn-output target");
@@ -371,6 +372,8 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose CircleV2 reference role");
     Require(Contains(message, "circle_v2.reason=exit_hold_released"),
             "steering snapshot must expose CircleV2 reason");
+    Require(Contains(message, "circle_v2.geometry_available=true"),
+            "steering snapshot must expose CircleV2 geometry availability");
     Require(Contains(message, "circle_v2.entry_points.left.available=true"),
             "steering snapshot must expose CircleV2 left P availability");
     Require(Contains(message, "circle_v2.entry_points.left.forward_m=0.5"),
@@ -585,8 +588,10 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
             "config snapshot must include CircleV2 opposite-straight confidence threshold");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\":6"),
-            "config snapshot must include CircleV2 entry bottom row count");
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\":6"),
+            "config snapshot must include CircleV2 entry bottom min row count");
+    Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\""),
+            "config snapshot must not include removed CircleV2 entry bottom row-count field");
     Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.10000000149"),
             "config snapshot must include CircleV2 entry bottom forward min");
     Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.34999999404"),
@@ -992,6 +997,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.circle_v2.dir = "left";
         state.control_debug_snapshot.steering.circle_v2.reference_role = "inner_trace";
         state.control_debug_snapshot.steering.circle_v2.reason = "none";
+        state.control_debug_snapshot.steering.circle_v2.geometry_available = true;
         state.control_debug_snapshot.steering.circle_v2.entry_points.left.available = true;
         state.control_debug_snapshot.steering.circle_v2.entry_points.left.point.forward_m = 0.5F;
         state.control_debug_snapshot.steering.circle_v2.entry_points.left.point.lateral_m = -0.25F;
@@ -1023,12 +1029,12 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.lateral_error.weighted_sample_count = 4;
         state.control_debug_snapshot.steering.lateral_error.weight_sum = 3.75;
         state.control_debug_snapshot.steering.lateral_error.reason = "ok";
-        state.control_debug_snapshot.steering.tracking_geometry.computed = true;
-        state.control_debug_snapshot.steering.tracking_geometry.lateral_offset_m = -0.08;
-        state.control_debug_snapshot.steering.tracking_geometry.heading_error_rad = 0.04;
-        state.control_debug_snapshot.steering.tracking_geometry.curvature_m_inv = 0.12;
-        state.control_debug_snapshot.steering.tracking_geometry.sample_count = 5;
-        state.control_debug_snapshot.steering.tracking_geometry.reason = "ok";
+        state.control_debug_snapshot.steering.reference_tracking_geometry.computed = true;
+        state.control_debug_snapshot.steering.reference_tracking_geometry.lateral_offset_m = -0.08;
+        state.control_debug_snapshot.steering.reference_tracking_geometry.heading_error_rad = 0.04;
+        state.control_debug_snapshot.steering.reference_tracking_geometry.curvature_m_inv = 0.12;
+        state.control_debug_snapshot.steering.reference_tracking_geometry.sample_count = 5;
+        state.control_debug_snapshot.steering.reference_tracking_geometry.reason = "ok";
         state.control_debug_snapshot.steering.reference_time_alignment.enabled = true;
         state.control_debug_snapshot.steering.reference_time_alignment.valid = true;
         state.control_debug_snapshot.steering.reference_time_alignment.reason = "aligned_effective_se2";
@@ -1123,8 +1129,10 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must expose CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
             "service config snapshot must expose CircleV2 opposite-straight confidence threshold");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\":6"),
-            "service config snapshot must expose CircleV2 entry bottom row count");
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\":6"),
+            "service config snapshot must expose CircleV2 entry bottom min row count");
+    Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\""),
+            "service config snapshot must not expose removed CircleV2 entry bottom row-count field");
     Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.10000000149"),
             "service config snapshot must expose CircleV2 entry bottom forward min");
     Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.34999999404"),
@@ -1180,6 +1188,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include CircleV2 telemetry");
     Require(Contains(header_json, "\"reference_role\":\"inner_trace\""),
             "image frame must expose CircleV2 reference role");
+    Require(Contains(header_json, "\"geometry_available\":true"),
+            "image frame must expose CircleV2 geometry availability");
     Require(Contains(header_json, "\"entry_points\":{\"left\":{\"available\":true,\"forward_m\":0.5,\"lateral_m\":-0.25}"),
             "image frame must expose CircleV2 left P coordinate");
     Require(Contains(header_json, "\"right\":{\"available\":false,\"forward_m\":null,\"lateral_m\":null}"),
@@ -1208,7 +1218,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include lateral-error sample count");
     Require(Contains(header_json, "\"weight_sum\":3.75"),
             "image frame must include lateral-error weight sum");
-    Require(Contains(header_json, "\"tracking_geometry\":{\"computed\":true"),
+    Require(Contains(header_json, "\"reference_tracking_geometry\":{\"computed\":true"),
             "image frame must include tracking-geometry group");
     Require(Contains(header_json, "\"lateral_offset_m\":-0.08"),
             "image frame must include tracking lateral offset");

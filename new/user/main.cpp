@@ -443,10 +443,7 @@ void TickLowVoltage(ls2k::port::PlatformBundle& platform,
     }
     low_voltage_snapshot.low_voltage_emergency = runtime_state.low_voltage_emergency.load();
     ls2k::safety::LowVoltageSamplerUpdate low_voltage_update{};
-    {
-        LS2K_PERF_SCOPE(ls2k::port::PerfStage::kLowVoltageSample);
-        low_voltage_update = low_voltage_sampler.Tick(*platform.power, low_voltage_snapshot, diagnostics, now_ms);
-    }
+    low_voltage_update = low_voltage_sampler.Tick(*platform.power, low_voltage_snapshot, diagnostics, now_ms);
     if (!low_voltage_update.sampled) {
         return;
     }
@@ -512,14 +509,13 @@ void RunMainLoop(ls2k::port::PlatformBundle& platform,
         if (HandlePendingSignals(runtime_state, diagnostics)) {
             break;
         }
-        {
-            LS2K_PERF_SCOPE(ls2k::port::PerfStage::kMainLoop);
-            const uint64_t now_ms = ls2k::port::NowMs();
-            const uint64_t elapsed_ms = now_ms >= loop_start_ms ? now_ms - loop_start_ms : 0;
-            TickAutomationStart(automation, runtime_state, diagnostics, elapsed_ms);
-            TickLowVoltage(platform, runtime_state, low_voltage_sampler, diagnostics, now_ms);
-            perception.ProcessOneFrame(params);
-            assistant_service.Tick(runtime_state, diagnostics);
+        const uint64_t now_ms = ls2k::port::NowMs();
+        const uint64_t elapsed_ms = now_ms >= loop_start_ms ? now_ms - loop_start_ms : 0;
+        TickAutomationStart(automation, runtime_state, diagnostics, elapsed_ms);
+        TickLowVoltage(platform, runtime_state, low_voltage_sampler, diagnostics, now_ms);
+        const bool processed_frame = perception.ProcessOneFrame(params);
+        assistant_service.Tick(runtime_state, diagnostics);
+        if (processed_frame) {
             ++processed_frames;
             if (automation.emit_frame_progress) {
                 diagnostics.Emit({ls2k::port::DiagnosticLevel::kInfo,
@@ -527,15 +523,12 @@ void RunMainLoop(ls2k::port::PlatformBundle& platform,
                                   "processed_frames=" + std::to_string(processed_frames),
                                   now_ms});
             }
-            if (TickAutomationStopAndFaultReset(
-                    automation, runtime_state, diagnostics, elapsed_ms, auto_reset_sent)) {
-                break;
-            }
         }
-        {
-            LS2K_PERF_SCOPE(ls2k::port::PerfStage::kMainSleep);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (TickAutomationStopAndFaultReset(
+                automation, runtime_state, diagnostics, elapsed_ms, auto_reset_sent)) {
+            break;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 

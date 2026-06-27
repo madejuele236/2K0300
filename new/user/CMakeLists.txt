@@ -86,8 +86,6 @@ set(NEW_SRCS
     ../code/vision/bev/bev_projector.cpp
     ../code/vision/bev/single_boundary_offset.cpp
     ../code/vision/bev/bev_simple_perception.cpp
-    ../code/vision/bev/bev_element_raster.cpp
-    ../code/vision/elements/circle_element_evidence.cpp
     ../code/vision/elements/cross_exit_element_evidence.cpp
     ../code/vision/elements/visual_element_evidence.cpp
     ../code/vision/elements/visual_element_pipeline.cpp
@@ -188,10 +186,7 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../verification/tests/bev_simple_perception_test.cpp
         ../code/vision/bev/bev_projector.cpp
         ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/reference_connectivity.cpp
         ../code/vision/bev/bev_simple_perception.cpp
-        ../code/vision/bev/bev_element_raster.cpp
-        ../code/vision/elements/circle_element_evidence.cpp
         ../code/vision/elements/visual_element_evidence.cpp
         ../code/vision/elements/cross_exit_element_evidence.cpp
         ../code/vision/elements/visual_element_pipeline.cpp
@@ -241,7 +236,6 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../verification/tests/visual_reference_orchestration_test.cpp
         ../code/vision/bev/bev_projector.cpp
         ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/reference_connectivity.cpp
         ../code/vision/bev/bev_simple_perception.cpp
         ../code/reference/visual_reference_orchestration.cpp
     )
@@ -262,31 +256,11 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp
         ../code/vision/elements/circle_v2/detail/circle_v2_composer.cpp
         ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/elements/circle_element_evidence.cpp
-        ../code/vision/bev/bev_element_raster.cpp
         ../code/vision/bev/bev_projector.cpp
         ../code/vision/bev/bev_simple_perception.cpp
     )
     target_link_libraries(
         steering_circle_v2_scene_test
-        pthread
-        m
-    )
-
-    add_executable(
-        visual_element_evidence_test
-        ../verification/tests/visual_element_evidence_test.cpp
-        ../code/vision/bev/bev_projector.cpp
-        ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/bev_simple_perception.cpp
-        ../code/vision/bev/bev_element_raster.cpp
-        ../code/vision/elements/circle_element_evidence.cpp
-        ../code/vision/elements/cross_exit_element_evidence.cpp
-        ../code/vision/elements/visual_element_pipeline.cpp
-        ../code/reference/visual_reference_orchestration.cpp
-    )
-    target_link_libraries(
-        visual_element_evidence_test
         pthread
         m
     )
@@ -370,38 +344,6 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         m
     )
 
-    add_executable(
-        scene_overlay_probe
-        ../user/scene_overlay_probe.cpp
-        ../code/vision/image/otsu_threshold.cpp
-        ../code/vision/image/luma_sampler.cpp
-        ../code/vision/bev/bev_projector.cpp
-        ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/bev_simple_perception.cpp
-        ../code/vision/bev/bev_element_raster.cpp
-        ../code/vision/elements/circle_element_evidence.cpp
-        ../code/vision/elements/cross_exit_element_evidence.cpp
-        ../code/vision/elements/visual_element_pipeline.cpp
-        ../code/reference/visual_reference_orchestration.cpp
-        ../code/reference/reference_usability.cpp
-        ../code/reference/reference_lateral_error.cpp
-        ../code/reference/reference_tracking_geometry.cpp
-        ../code/reference/reference_control_readiness.cpp
-        ../code/control/steering_yaw_controller.cpp
-        ../code/vision/elements/circle_v2/circle_v2_scene.cpp
-        ../code/vision/elements/circle_v2/circle_v2_reference_adapter.cpp
-        ../code/vision/elements/circle_v2/detail/circle_v2_event_observer.cpp
-        ../code/vision/elements/circle_v2/detail/circle_v2_expansion_observer.cpp
-        ../code/vision/elements/circle_v2/detail/circle_v2_reducer.cpp
-        ../code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp
-        ../code/vision/elements/circle_v2/detail/circle_v2_composer.cpp
-        ../code/port/perf_counter.cpp
-    )
-    target_link_libraries(
-        scene_overlay_probe
-        pthread
-        m
-    )
 endif()
 
 if(LS2K_TFLM_OP_BENCH)

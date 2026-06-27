@@ -10,17 +10,12 @@
 
 #include "vision/bev/bev_projector.hpp"
 #include "vision/bev/bev_boundary_trace_clip.hpp"
-#include "vision/bev/bev_element_raster.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
-#include "vision/bev/reference_connectivity.hpp"
 #include "reference/reference_continuity.hpp"
 #include "reference/reference_usability.hpp"
 #include "vision/bev/single_boundary_offset.hpp"
 
 namespace {
-
-static_assert(sizeof(ls2k::port::BEVElementRasterCellClass) == 1);
-static_assert(sizeof(ls2k::port::BEVElementRasterProjectionState) == 1);
 
 struct TestFailure {
     std::string message;
@@ -64,58 +59,43 @@ ls2k::port::LegacyCameraFrame MakeFrame(std::uint8_t fill = 0U) {
     return frame;
 }
 
+struct TestPixelFrame {
+    std::vector<std::uint8_t> bytes{};
+    ls2k::port::CameraPixelFrameView view{};
+};
+
+TestPixelFrame MakeYuyvPixelFrame(const ls2k::port::LegacyCameraFrame& frame,
+                                  std::uint64_t frame_id,
+                                  std::uint64_t capture_time_ms) {
+    TestPixelFrame pixel{};
+    const int stride = frame.width * 2;
+    pixel.bytes.assign(static_cast<std::size_t>(stride) *
+                           static_cast<std::size_t>(frame.height),
+                       128U);
+    for (int row = 0; row < frame.height; ++row) {
+        for (int col = 0; col < frame.width; ++col) {
+            pixel.bytes[static_cast<std::size_t>(row) * static_cast<std::size_t>(stride) +
+                        static_cast<std::size_t>(col) * 2U] =
+                frame.gray[static_cast<std::size_t>(row) *
+                               static_cast<std::size_t>(frame.width) +
+                           static_cast<std::size_t>(col)];
+        }
+    }
+    pixel.view.valid = true;
+    pixel.view.format = ls2k::port::CameraFrameFormat::kYuyv;
+    pixel.view.data = pixel.bytes.data();
+    pixel.view.width = frame.width;
+    pixel.view.height = frame.height;
+    pixel.view.stride = stride;
+    pixel.view.frame_id = frame_id;
+    pixel.view.capture_time_ms = capture_time_ms;
+    return pixel;
+}
+
 ls2k::vision::BEVProjector MakeProjector(const ls2k::port::RuntimeParameters& params) {
     ls2k::vision::BEVProjector projector{};
     Expect(projector.Configure(params.bev_projector), "default projector must configure");
     return projector;
-}
-
-ls2k::vision::BEVPixelClassificationModel TestClassificationModel(int threshold = 100) {
-    ls2k::vision::BEVPixelClassificationModel model{};
-    model.valid = ls2k::vision::ValidGrayThreshold(threshold);
-    model.threshold = threshold;
-    return model;
-}
-
-ls2k::vision::BEVProjector MakeIdentityConnectivityProjector() {
-    ls2k::port::BEVProjectorCalibration calibration{};
-    calibration.source_points = {
-        {ls2k::port::ImagePoint{0.0F, 0.0F},
-         ls2k::port::ImagePoint{0.0F, 9.0F},
-         ls2k::port::ImagePoint{9.0F, 0.0F},
-         ls2k::port::ImagePoint{9.0F, 9.0F}}};
-    calibration.target_points = {
-        {ls2k::port::BEVPoint{0.0F, 0.0F},
-         ls2k::port::BEVPoint{0.0F, 9.0F},
-         ls2k::port::BEVPoint{9.0F, 0.0F},
-         ls2k::port::BEVPoint{9.0F, 9.0F}}};
-    ls2k::vision::BEVProjector projector{};
-    Expect(projector.Configure(calibration),
-           "identity connectivity projector must configure");
-    return projector;
-}
-
-ls2k::port::BEVReferencePath MakeReferencePath(
-    const std::vector<ls2k::port::BEVPoint>& points) {
-    ls2k::port::BEVReferencePath path{};
-    path.mode = points.empty() ? ls2k::port::ReferenceMode::kNone
-                               : ls2k::port::ReferenceMode::kIntervalCenter;
-    for (std::size_t index = 0; index < points.size() &&
-                                index < path.sampled_path.size(); ++index) {
-        ls2k::port::BEVPathSample& sample = path.sampled_path[index];
-        sample.present = true;
-        sample.point = points[index];
-        sample.confidence = 1.0F;
-        sample.source = ls2k::port::BEVPathPointSource::kIntervalCenter;
-    }
-    return path;
-}
-
-ls2k::vision::ReferenceConnectivityFrameView ConnectivityView(
-    const ls2k::port::LegacyCameraFrameView& frame,
-    const ls2k::vision::BEVProjector& projector,
-    const ls2k::port::RuntimeParameters& params) {
-    return {frame, projector, TestClassificationModel(), params.bev_classification};
 }
 
 void DrawVehicleStripe(ls2k::port::LegacyCameraFrame& frame,
@@ -138,15 +118,6 @@ void DrawVehicleStripe(ls2k::port::LegacyCameraFrame& frame,
             }
         }
     }
-}
-
-int CountClass(const ls2k::vision::BEVSimpleImage& image, ls2k::vision::BEVSimplePixelClass klass) {
-    return static_cast<int>(std::count(image.classes.begin(), image.classes.end(), klass));
-}
-
-int CountRasterClass(const ls2k::vision::BEVElementRasterFrame& raster,
-                     ls2k::port::BEVElementRasterCellClass klass) {
-    return static_cast<int>(std::count(raster.classes.begin(), raster.classes.end(), klass));
 }
 
 int CountPresentPathPoints(const ls2k::port::BEVReferencePath& reference,
@@ -323,16 +294,10 @@ void TestBevLocalBoundaryFacts() {
     DrawVehicleStripe(frame, projector, params, -0.18F, 0.18F, 255U);
 
     ls2k::vision::BEVSampleProjectionLut lut{};
+    TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 1U, 1U);
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
-    const ls2k::vision::BEVSimpleImage debug_bev =
-        ls2k::vision::BuildDebugDenseBevImage(frame.View(1, 1), TestClassificationModel(), params, projector);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
 
-    Expect(debug_bev.valid, "debug API must generate a BEV image");
-    Expect(CountClass(debug_bev, ls2k::vision::BEVSimplePixelClass::kWhite) > 0,
-           "drawn BEV stripe must classify as white in the debug BEV image");
-    Expect(CountClass(debug_bev, ls2k::vision::BEVSimplePixelClass::kBlack) > 0,
-           "background must classify as black in the BEV image");
     Expect(result.rows.size() == ls2k::port::kBevReferenceSampleCount,
            "row scanner must scan the configured BEV forward samples");
 
@@ -357,268 +322,6 @@ void TestBevLocalBoundaryFacts() {
            "reference points must explicitly come from boundary span centers");
 }
 
-void TestUnknownBandUsesCenterBrightnessOnly() {
-    ls2k::port::RuntimeParameters params{};
-    ls2k::vision::BEVProjector projector = MakeProjector(params);
-    ls2k::port::LegacyCameraFrame frame = MakeFrame(112U);
-
-    ls2k::vision::BEVSampleProjectionLut lut{};
-    const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
-    const ls2k::vision::BEVSimpleImage debug_bev =
-        ls2k::vision::BuildDebugDenseBevImage(frame.View(1, 1), TestClassificationModel(), params, projector);
-
-    Expect(debug_bev.valid, "uniform frame must still produce a debug BEV image");
-    Expect(CountClass(debug_bev, ls2k::vision::BEVSimplePixelClass::kUnknown) > 0,
-           "near-threshold BEV pixels must classify as unknown");
-    Expect(!ls2k::reference::EvaluateReferenceUsability(result.reference_path, params).usable,
-           "uniform luma must not be promoted into boundary reference points");
-}
-
-void TestAdaptiveBandComesFromOtsuClassDeciles() {
-    ls2k::port::RuntimeParameters params{};
-    ls2k::vision::OtsuThresholdResult otsu{};
-    otsu.valid = true;
-    otsu.threshold = 112;
-    otsu.black_upper_decile_gray = 98.0F;
-    otsu.white_lower_decile_gray = 135.0F;
-
-    const ls2k::vision::BEVPixelClassificationModel model =
-        ls2k::vision::MakeBEVPixelClassificationModel(otsu,
-                                                      params.bev_classification);
-
-    Expect(model.valid, "valid Otsu result must produce a valid classification model");
-    ExpectNear(model.black_decision_band,
-               56.0F,
-               1.0e-3F,
-               "black-side decision band must place the unknown cutoff at the black upper decile");
-    ExpectNear(model.white_decision_band,
-               41.81818F,
-               1.0e-3F,
-               "white-side decision band must place the white cutoff at the white lower decile");
-    Expect(ls2k::vision::ClassifyBevPixel(135U,
-                                          model,
-                                          params.bev_classification) ==
-               ls2k::vision::BEVSimplePixelClass::kWhite,
-           "white lower-decile anchor must keep real low-end white facts");
-    Expect(ls2k::vision::ClassifyBevPixel(123U,
-                                          model,
-                                          params.bev_classification) ==
-               ls2k::vision::BEVSimplePixelClass::kUnknown,
-           "gray values close to the Otsu threshold must remain unknown");
-}
-
-void TestInvalidClassificationModelDoesNotClampThreshold() {
-    ls2k::port::RuntimeParameters params{};
-    ls2k::vision::BEVPixelClassificationModel model{};
-    model.valid = true;
-    model.threshold = 300;
-
-    Expect(ls2k::vision::ClassifyBevPixel(255U,
-                                          model,
-                                          params.bev_classification) ==
-               ls2k::vision::BEVSimplePixelClass::kInvalid,
-           "out-of-range threshold must not be clamped into a valid classifier");
-}
-
-void TestInvalidClassificationModelRejectsDecisionBand() {
-    ls2k::port::RuntimeParameters params{};
-    ls2k::vision::BEVPixelClassificationModel model{};
-    model.valid = true;
-    model.threshold = 100;
-    model.black_decision_band = 0.0F;
-    model.white_decision_band = 32.0F;
-
-    Expect(ls2k::vision::ClassifyBevPixel(80U,
-                                          model,
-                                          params.bev_classification) ==
-               ls2k::vision::BEVSimplePixelClass::kInvalid,
-           "nonpositive black-side band must invalidate the classification model");
-
-    model.black_decision_band = 32.0F;
-    model.white_decision_band = -1.0F;
-    Expect(ls2k::vision::ClassifyBevPixel(120U,
-                                          model,
-                                          params.bev_classification) ==
-               ls2k::vision::BEVSimplePixelClass::kInvalid,
-           "nonpositive white-side band must invalidate the classification model");
-}
-
-void TestElementRasterClassificationAndCoordinates() {
-    ls2k::port::RuntimeParameters params{};
-    ls2k::port::BEVElementRasterParameters raster_options{};
-    raster_options.width = 320;
-    ls2k::vision::BEVProjector projector = MakeProjector(params);
-    ls2k::port::LegacyCameraFrame frame = MakeFrame(0U);
-    DrawVehicleStripe(frame, projector, params, -0.18F, 0.18F, 255U);
-
-    ls2k::vision::BEVElementRasterLut lut{};
-    const ls2k::vision::BEVElementRasterFrame default_disabled =
-        ls2k::vision::BuildBEVElementRaster(
-            frame.View(1, 1), TestClassificationModel(), params, raster_options, projector, &lut);
-    Expect(!default_disabled.valid, "default-disabled element raster must be unavailable");
-    Expect(default_disabled.classes.empty(), "default-disabled element raster must expose no cells");
-
-    raster_options.enabled = true;
-    const ls2k::vision::BEVElementRasterFrame raster =
-        ls2k::vision::BuildBEVElementRaster(
-            frame.View(1, 1), TestClassificationModel(), params, raster_options, projector, &lut);
-
-    Expect(raster.valid, "enabled element raster must build from a valid projector and frame");
-    Expect(raster.width == raster_options.width,
-           "element raster width must follow explicit raster options");
-    Expect(raster.height > 2, "element raster height must be derived from metric aspect ratio");
-    Expect(CountRasterClass(raster, ls2k::port::BEVElementRasterCellClass::kWhite) > 0,
-           "drawn BEV stripe must classify as white in the element raster");
-    Expect(CountRasterClass(raster, ls2k::port::BEVElementRasterCellClass::kBlack) > 0,
-           "background must classify as black in the element raster");
-
-    int cell_x = 0;
-    int cell_y = 0;
-    Expect(raster.MetricToCell({0.60F, 0.0F}, cell_x, cell_y),
-           "metric point inside raster must map to a cell");
-    const ls2k::port::BEVPoint round_trip = raster.CellToMetric(cell_x, cell_y);
-    Expect(std::abs(round_trip.lateral_m) < 0.01F,
-           "center metric point must round-trip near raster center");
-
-    raster_options.enabled = false;
-    const ls2k::vision::BEVElementRasterFrame disabled =
-        ls2k::vision::BuildBEVElementRaster(
-            frame.View(1, 1), TestClassificationModel(), params, raster_options, projector, &lut);
-    Expect(!disabled.valid, "disabled element raster must be unavailable");
-    Expect(disabled.classes.empty(), "disabled element raster must expose no cells");
-}
-
-void TestElementRasterSegmentTouchesBlack() {
-    ls2k::vision::BEVElementRasterFrame raster{};
-    raster.valid = true;
-    raster.enabled = true;
-    raster.width = 5;
-    raster.height = 5;
-    raster.lateral_limit_m = 0.5F;
-    raster.forward_max_m = 1.0F;
-    raster.classes.assign(25U, ls2k::port::BEVElementRasterCellClass::kWhite);
-    raster.projection_states.assign(25U, ls2k::port::BEVElementRasterProjectionState::kSampleable);
-    raster.classes[raster.Index(2, 2)] = ls2k::port::BEVElementRasterCellClass::kBlack;
-
-    Expect(raster.SegmentTouchesBlackCells(0, 0, 4, 4),
-           "cell segment crossing a black cell must report black contact");
-    Expect(!raster.SegmentTouchesBlackCells(0, 4, 1, 4),
-           "cell segment without black cells must remain clear");
-    Expect(raster.SegmentTouchesBlack({1.0F, -0.5F}, {0.0F, 0.5F}),
-           "metric segment crossing a black cell must report black contact");
-}
-
-void TestReferenceConnectivityHelper() {
-    ls2k::port::RuntimeParameters params{};
-    const ls2k::vision::BEVProjector projector =
-        MakeIdentityConnectivityProjector();
-    const ls2k::port::BEVReferencePath diagonal =
-        MakeReferencePath({{1.0F, 1.0F}, {8.0F, 8.0F}});
-
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        Expect(ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(1, 1), projector, params),
-                   diagonal),
-               "all-white segment must pass connectivity");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 4, 4, 0U);
-        Expect(!ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(2, 2), projector, params),
-                   diagonal),
-               "diagonal black pixel must block connectivity");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 1, 1, 0U);
-        Expect(!ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(3, 3), projector, params),
-                   diagonal),
-               "endpoint black pixel must block connectivity");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 4, 4, 105U);
-        Expect(ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(4, 4), projector, params),
-                   diagonal),
-               "unknown pixel must not block V5 black-only connectivity");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 4, 4, 0U);
-        const ls2k::port::BEVReferencePath crossing =
-            MakeReferencePath({{4.0F, -5.0F}, {4.0F, 14.0F}});
-        Expect(!ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(5, 5), projector, params),
-                   crossing),
-               "image-internal black pixel must block even when segment endpoints are outside");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 4, 4, 0U);
-        const ls2k::port::BEVReferencePath outside =
-            MakeReferencePath({{-5.0F, -5.0F}, {-5.0F, 14.0F}});
-        Expect(ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(5, 5), projector, params),
-                   outside),
-               "black pixels must not block a segment whose visible part never enters the frame");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        const ls2k::port::BEVReferencePath single =
-            MakeReferencePath({{1.0F, 1.0F}});
-        Expect(ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(5, 5), projector, params),
-                   single),
-               "single-point path must not be rejected by connectivity");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 1, 1, 0U);
-        const ls2k::port::BEVReferencePath single =
-            MakeReferencePath({{2.0F, 2.0F}});
-        Expect(!ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(6, 6), projector, params),
-                   single),
-               "vehicle-origin to first reference sample must pass connectivity");
-    }
-    {
-        ls2k::port::LegacyCameraFrame frame = MakeFrame(255U);
-        frame.width = 10;
-        frame.height = 10;
-        SetPixel(frame, 8, 8, 0U);
-        ls2k::port::BEVReferencePath gapped =
-            MakeReferencePath({{1.0F, 1.0F}, {2.0F, 2.0F}, {8.0F, 8.0F}});
-        gapped.sampled_path[2].present = false;
-        gapped.sampled_path[3].present = true;
-        gapped.sampled_path[3].point = {8.0F, 8.0F};
-        Expect(ls2k::vision::ReferencePathHasNoBlackSegments(
-                   ConnectivityView(frame.View(6, 6), projector, params),
-                   gapped),
-               "path connectivity must stop at the first absent leading sample");
-    }
-}
-
 void TestBevGeometryControlsWideImageScan() {
     ls2k::port::RuntimeParameters params{};
     params.bev_geometry.search_lateral_limit_m = 0.85F;
@@ -627,8 +330,9 @@ void TestBevGeometryControlsWideImageScan() {
     DrawVehicleStripe(frame, projector, params, 0.50F, 0.70F, 255U);
 
     ls2k::vision::BEVSampleProjectionLut lut{};
+    TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 1U, 1U);
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
 
     bool saw_wide_right_span = false;
     for (const ls2k::vision::BEVSimpleRowScan& row : result.rows) {
@@ -647,8 +351,9 @@ void TestHoldIsExplicitNonVisualSource() {
     DrawVehicleStripe(frame, projector, params, -0.18F, 0.18F, 255U);
 
     ls2k::vision::BEVSampleProjectionLut lut{};
+    TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 1U, 1U);
     const ls2k::vision::BEVSimplePerceptionResult first =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(1, 1)), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
     const ls2k::port::ReferenceUsability first_usability =
         ls2k::reference::EvaluateReferenceUsability(first.reference_path, params);
     Expect(first_usability.usable, "first frame must produce usable visual facts");
@@ -656,8 +361,9 @@ void TestHoldIsExplicitNonVisualSource() {
         ls2k::reference::MakeReferenceHoldState(first.reference_path, params);
 
     ls2k::port::LegacyCameraFrame blank = MakeFrame(0U);
+    TestPixelFrame blank_pixel = MakeYuyvPixelFrame(blank, 2U, 2U);
     const ls2k::vision::BEVSimplePerceptionResult blank_facts =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(blank.View(2, 2)), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(blank_pixel.view, params, projector, &lut);
     const ls2k::port::ReferenceUsability blank_usability =
         ls2k::reference::EvaluateReferenceUsability(blank_facts.reference_path, params);
     Expect(!blank_usability.usable, "blank current frame must be selected only if hold is unavailable");
@@ -1011,12 +717,10 @@ void TestOrdinaryReferenceSelectsAfterCandidateInterpretation() {
            "existing hold bridge must remain responsible for double-lost continuity");
 }
 
-void TestDefaultReferenceJumpGateDoesNotRejectLargeAdjacentChange() {
+void TestBoundaryJumpConnectivityRejectsLateralCrossing() {
     ls2k::port::RuntimeParameters params{};
     params.bev_geometry.lateral_step_m = 0.02F;
     params.bev_geometry.boundary_trace_max_adjacent_distance_m = 1.0F;
-    Expect(params.bev_geometry.reference_lateral_jump_gate_m > 10.0F,
-           "default reference jump gate must be disabled for normal BEV ranges");
     std::vector<ls2k::vision::BEVSimpleRowScan> rows;
     rows.reserve(ls2k::port::kBevReferenceSampleCount);
     for (float forward : params.bev_geometry.forward_samples_m) {
@@ -1029,8 +733,32 @@ void TestDefaultReferenceJumpGateDoesNotRejectLargeAdjacentChange() {
     const ls2k::port::BEVReferencePath reference =
         ls2k::vision::BuildReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
+           "row-local boundary jump between adjacent center candidates must stop connectivity");
+}
+
+void TestDeprecatedReferenceJumpGateDoesNotAffectReference() {
+    ls2k::port::RuntimeParameters params{};
+    params.bev_geometry.reference_lateral_jump_gate_m = 0.0F;
+    params.bev_geometry.boundary_trace_max_adjacent_distance_m = 1.0F;
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    rows.reserve(ls2k::port::kBevReferenceSampleCount);
+    for (float forward : params.bev_geometry.forward_samples_m) {
+        rows.push_back(SyntheticRow(forward, -1.0F, 1.0F));
+    }
+    AddSyntheticInterval(rows[0], -0.08F, 0.08F);
+    AddSyntheticInterval(rows[1], -0.06F, 0.10F);
+    AddSyntheticInterval(rows[2], -0.06F, 0.10F);
+
+    const ls2k::port::BEVReferencePath reference =
+        ls2k::vision::BuildReferencePath(rows, params);
+    Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
-           "disabled reference jump gate must not reject a boundary-continuous large adjacent change");
+           "deprecated reference jump gate must not reject active visual reference facts");
+    ExpectNear(reference.sampled_path[1].point.lateral_m,
+               0.02F,
+               1.0e-5F,
+               "test fixture must exercise a nonzero lateral change");
 }
 
 void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
@@ -1040,10 +768,11 @@ void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
     DrawVehicleStripe(frame, projector, params, -0.12F, 0.16F, 255U);
 
     ls2k::vision::BEVSampleProjectionLut lut{};
+    TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 7U, 7U);
     const ls2k::vision::BEVSimplePerceptionResult cached =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(7, 7)), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
     const ls2k::vision::BEVSimplePerceptionResult uncached =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(7, 7)), params, projector, nullptr);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, nullptr);
 
     Expect(lut.valid, "sparse projection LUT must be built for a valid frame/projector identity");
     Expect(lut.entries.size() ==
@@ -1080,7 +809,7 @@ void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
     params.bev_geometry.lateral_step_m *= 0.5F;
     Expect(ls2k::vision::EnsureBEVSampleProjectionLut(
                lut,
-               ls2k::port::MakeCameraPixelFrameView(frame.View(7, 7)),
+               pixel.view,
                params,
                projector),
            "LUT must rebuild successfully after sampling identity changes");
@@ -1096,8 +825,9 @@ void TestSparseRowCountUsesOriginalForwardSamplePrefix() {
     DrawVehicleStripe(frame, projector, params, -0.18F, 0.18F, 255U);
 
     ls2k::vision::BEVSampleProjectionLut lut{};
+    TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 9U, 9U);
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(ls2k::port::MakeCameraPixelFrameView(frame.View(9, 9)), params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
 
     Expect(result.rows.size() == 12U,
            "SPARSE_ROW_COUNT=12 must scan exactly the first 12 sparse rows");
@@ -1124,13 +854,6 @@ int main() {
         TestSingleBoundaryOffsetHelperGeometry();
         TestBoundaryTraceClipHelperRule();
         TestBevLocalBoundaryFacts();
-        TestUnknownBandUsesCenterBrightnessOnly();
-        TestAdaptiveBandComesFromOtsuClassDeciles();
-        TestInvalidClassificationModelDoesNotClampThreshold();
-        TestInvalidClassificationModelRejectsDecisionBand();
-        TestElementRasterClassificationAndCoordinates();
-        TestElementRasterSegmentTouchesBlack();
-        TestReferenceConnectivityHelper();
         TestBevGeometryControlsWideImageScan();
         TestHoldIsExplicitNonVisualSource();
         TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap();
@@ -1143,7 +866,8 @@ int main() {
         TestBoundaryContinuityRemovesRowWhenBothSidesClip();
         TestSingleEdgeOffsetMayLeaveSampleableSpan();
         TestOrdinaryReferenceSelectsAfterCandidateInterpretation();
-        TestDefaultReferenceJumpGateDoesNotRejectLargeAdjacentChange();
+        TestBoundaryJumpConnectivityRejectsLateralCrossing();
+        TestDeprecatedReferenceJumpGateDoesNotAffectReference();
         TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange();
         TestSparseRowCountUsesOriginalForwardSamplePrefix();
     } catch (const TestFailure& failure) {

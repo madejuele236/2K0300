@@ -165,6 +165,13 @@ std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithExpansionAfterRoiSt
                           0.22F, 0.22F, 0.22F, 0.22F});
 }
 
+std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithLateRoiExpansion() {
+    return RowsFromReach({0.20F, 0.20F, 0.20F, 0.20F,
+                          0.30F, 0.36F, 0.42F},
+                         {0.22F, 0.22F, 0.22F, 0.22F,
+                          0.22F, 0.22F, 0.22F});
+}
+
 std::vector<ls2k::vision::BEVSimpleRowScan> LeftInnerTraceRows() {
     return RowsFromReach({0.20F, 0.20F, 0.35F, 0.35F, 0.35F, 0.20F},
                          {0.20F, 0.20F, 0.20F, 0.20F, 0.20F, 0.20F});
@@ -498,6 +505,18 @@ void TestApproachConsumesOnlyLockedDirectionExpansion() {
     params.entry_bottom_forward_min_m = 0.0F;
     params.entry_bottom_forward_max_m = 0.25F;
 
+    std::vector<ls2k::vision::BEVSimpleRowScan> late_roi_rows =
+        LeftEntryRowsWithLateRoiExpansion();
+    params.entry_bottom_min_row_count = 3;
+    params.entry_bottom_forward_min_m = 0.0F;
+    params.entry_bottom_forward_max_m = 0.45F;
+    const ls2k::vision::detail::CircleV2Events late_roi_events =
+        EventsFor(Frame(late_roi_rows, 0.0F), prior, params);
+    Expect(late_roi_events.entry_gate_reached,
+           "Approach bottom gate must search the full configured forward ROI");
+    params.entry_bottom_forward_min_m = 0.0F;
+    params.entry_bottom_forward_max_m = 0.25F;
+
     prior.dir = ls2k::vision::CircleDir::kRight;
     const ls2k::vision::detail::CircleV2Events right_events =
         EventsFor(Frame(right_rows, 0.0F), prior, params);
@@ -707,6 +726,8 @@ void TestActivePhasesSurviveMissingOrdinaryRoad() {
     Expect(inner_result.telemetry.reason ==
                ls2k::vision::CircleV2TelemetryReason::kNone,
            "InnerTrace raw-row geometry must not report unavailable geometry");
+    Expect(inner_result.telemetry.geometry_available,
+           "InnerTrace telemetry must expose available raw-row geometry");
 }
 
 void TestInnerTraceSurvivesUnavailableMotionArc() {
@@ -769,6 +790,8 @@ void TestExitTraceRejectsNonStraightOuterEdge() {
            "ExitTrace must reject a non-straight opposite outer edge");
     Expect(result.telemetry.reason == ls2k::vision::CircleV2TelemetryReason::kGeometryUnavailable,
            "non-straight ExitTrace geometry must report geometry unavailable");
+    Expect(!result.telemetry.geometry_available,
+           "ExitTrace telemetry must expose unavailable geometry");
 }
 
 void TestExitTraceUsesOrdinaryRoadHalfWidthFact() {
@@ -790,6 +813,8 @@ void TestExitTraceUsesOrdinaryRoadHalfWidthFact() {
             params);
     Expect(result.reference_plan.has_value(),
            "ExitTrace must produce a plan from straight role-specific geometry");
+    Expect(result.telemetry.geometry_available,
+           "ExitTrace telemetry must expose available geometry");
     const float lateral =
         result.reference_plan->reference_path.sampled_path[0].point.lateral_m;
     Expect(std::fabs(lateral - 0.38F) < 1.0e-5F,

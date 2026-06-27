@@ -121,7 +121,7 @@ struct BEVElementParameters {
     float circle_v2_inner_trace_stall_yaw_min_deg = 60.0F; ///< InnerTrace 超时退回 Idle 的最小明显 yaw 积分
     float circle_v2_inner_trace_path_offset_m = 0.0F; ///< InnerTrace 从内圆边线向道路内部偏移的距离
     float circle_v2_opposite_straight_confidence_min = 0.70F; ///< CircleV2 对侧直线最低拟合置信度
-    int circle_v2_entry_bottom_row_count = 6; ///< Approach entry gate 使用的下部 ROI 行数
+    int circle_v2_entry_bottom_min_row_count = 6; ///< Approach entry gate 下部 ROI 最少证据行数
     float circle_v2_entry_bottom_forward_min_m = 0.1F; ///< Approach entry gate 下部 ROI 前向下限
     float circle_v2_entry_bottom_forward_max_m = 0.35F; ///< Approach entry gate 下部 ROI 前向上限
 };

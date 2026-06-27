@@ -29,9 +29,16 @@ bool CopyRawToPixelView(const port::CameraRawFrameView& raw,
         out.stride < raw.stride) {
         return false;
     }
+    const std::size_t row_bytes = static_cast<std::size_t>(raw.stride);
+    const std::size_t total_bytes =
+        row_bytes * static_cast<std::size_t>(raw.height);
+    if (out.stride == raw.stride) {
+        std::copy(raw.data, raw.data + total_bytes, out.data);
+        return true;
+    }
     for (int row = 0; row < raw.height; ++row) {
         const std::uint8_t* src =
-            raw.data + static_cast<std::size_t>(row) * static_cast<std::size_t>(raw.stride);
+            raw.data + static_cast<std::size_t>(row) * row_bytes;
         std::uint8_t* dst =
             out.data + static_cast<std::size_t>(row) * static_cast<std::size_t>(out.stride);
         std::copy(src, src + raw.stride, dst);
@@ -177,11 +184,7 @@ void CameraCaptureWorker::ThreadMain() {
             diagnostics_,
             [&](const port::CameraRawFrameView& raw) {
                 saw_raw_frame = raw.valid;
-                LS2K_PERF_SCOPE(port::PerfStage::kCameraFrameMaterialize);
-                {
-                    LS2K_PERF_SCOPE(port::PerfStage::kCameraStoreSubmit);
-                    materialized = ConvertRawFrameViewToStore(raw);
-                }
+                materialized = ConvertRawFrameViewToStore(raw);
                 return materialized;
             });
         if (!saw_raw_frame) {

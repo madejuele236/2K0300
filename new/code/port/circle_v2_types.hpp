@@ -56,7 +56,7 @@ struct CircleV2Params {
     float inner_trace_stall_yaw_min_rad = 0.28797932658F;
     float inner_trace_path_offset_m = 0.0F;
     float opposite_straight_confidence_min = 0.50F;
-    int entry_bottom_row_count = 4;
+    int entry_bottom_min_row_count = 4;
     float entry_bottom_forward_min_m = 0.0F;
     float entry_bottom_forward_max_m = 0.25F;
 };
@@ -84,6 +84,7 @@ struct CircleV2Telemetry {
     CircleV2ReferenceRole reference_role = CircleV2ReferenceRole::kNone;
     CircleV2TelemetryReason reason = CircleV2TelemetryReason::kNone;
     bool motion_arc_available = false;
+    bool geometry_available = false;
     uint64_t inner_trace_elapsed_ms = 0;
     float directed_turn_angle_rad = 0.0F;
     CircleV2EntryPointObservation entry_points{};

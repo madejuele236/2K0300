@@ -38,11 +38,11 @@ public:
     void Reset();
 
     /// 从参考跟踪几何计算转向输出目标
-    /// @param tracking_geometry selected/aligned reference 的跟踪几何事实
+    /// @param reference_tracking_geometry selected/aligned reference 的跟踪几何事实
     /// @param effective_speed_target 有效速度目标
     /// @param memory 控制器记忆状态（更新上一帧误差和增益）
     /// @return 转向输出目标计算结果
-    TurnOutputTargetComputation ComputeTurnOutputTarget(const port::ReferenceTrackingGeometry& tracking_geometry,
+    TurnOutputTargetComputation ComputeTurnOutputTarget(const port::ReferenceTrackingGeometry& reference_tracking_geometry,
                                                         double effective_speed_target,
                                                         port::BEVControllerMemory& memory);
 

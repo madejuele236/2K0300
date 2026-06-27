@@ -220,8 +220,8 @@ void AppendCircleV2PointObservationJson(std::ostringstream& stream,
  * @return JSON 格式的快照字符串
  */
 // NOLINTNEXTLINE(readability-function-size)
-std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot) {
-    std::ostringstream stream;
+void AppendSteeringSnapshotJson(std::ostringstream& stream,
+                                const SteeringMediaSnapshotView& snapshot) {
     stream << "{";
     stream << "\"perception_health\":{\"projector_ok\":";
     AppendJsonBool(stream, snapshot.perception_health.projector_ok);
@@ -244,6 +244,8 @@ std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot)
     AppendJsonString(stream, snapshot.circle_v2.reason);
     stream << ",\"motion_arc_available\":";
     AppendJsonBool(stream, snapshot.circle_v2.motion_arc_available);
+    stream << ",\"geometry_available\":";
+    AppendJsonBool(stream, snapshot.circle_v2.geometry_available);
     stream << ",\"inner_trace_elapsed_ms\":"
            << snapshot.circle_v2.inner_trace_elapsed_ms;
     stream << ",\"directed_turn_angle_rad\":"
@@ -291,17 +293,17 @@ std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot)
     stream << ",\"reason\":";
     AppendJsonString(stream, snapshot.lateral_error.reason);
     stream << "}";
-    stream << ",\"tracking_geometry\":{\"computed\":";
-    AppendJsonBool(stream, snapshot.tracking_geometry.computed);
+    stream << ",\"reference_tracking_geometry\":{\"computed\":";
+    AppendJsonBool(stream, snapshot.reference_tracking_geometry.computed);
     stream << ",\"lateral_offset_m\":";
-    AppendJsonNumber(stream, snapshot.tracking_geometry.lateral_offset_m);
+    AppendJsonNumber(stream, snapshot.reference_tracking_geometry.lateral_offset_m);
     stream << ",\"heading_error_rad\":";
-    AppendJsonNumber(stream, snapshot.tracking_geometry.heading_error_rad);
+    AppendJsonNumber(stream, snapshot.reference_tracking_geometry.heading_error_rad);
     stream << ",\"curvature_m_inv\":";
-    AppendJsonNumber(stream, snapshot.tracking_geometry.curvature_m_inv);
-    stream << ",\"sample_count\":" << snapshot.tracking_geometry.sample_count;
+    AppendJsonNumber(stream, snapshot.reference_tracking_geometry.curvature_m_inv);
+    stream << ",\"sample_count\":" << snapshot.reference_tracking_geometry.sample_count;
     stream << ",\"reason\":";
-    AppendJsonString(stream, snapshot.tracking_geometry.reason);
+    AppendJsonString(stream, snapshot.reference_tracking_geometry.reason);
     stream << "}";
     stream << ",\"reference_time_alignment\":{\"enabled\":";
     AppendJsonBool(stream, snapshot.reference_time_alignment.enabled);
@@ -385,7 +387,6 @@ std::string BuildSteeringSnapshotJson(const SteeringMediaSnapshotView& snapshot)
     stream << ",\"boundary_jump_count\":" << snapshot.boundary_jump_count;
     stream << ",\"boundary_span_count\":" << snapshot.boundary_span_count;
     stream << "}";
-    return stream.str();
 }
 
 /**
@@ -633,8 +634,8 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header,
                      snapshot.param_snapshot.bev_element
                          .circle_v2_opposite_straight_confidence_min);
-    header << ",\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\":"
-           << snapshot.param_snapshot.bev_element.circle_v2_entry_bottom_row_count;
+    header << ",\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\":"
+           << snapshot.param_snapshot.bev_element.circle_v2_entry_bottom_min_row_count;
     header << ",\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":";
     AppendJsonNumber(header,
                      snapshot.param_snapshot.bev_element
@@ -778,7 +779,7 @@ bool EncodeSteeringMediaImageFrame(const SteeringMediaImageFrame& frame,
            << (frame.source_height > 0 ? frame.source_height : frame.height);
     header << ",\"downsample\":" << std::max(1, frame.downsample);
     header << ",\"steering_snapshot\":";
-    header << BuildSteeringSnapshotJson(frame.steering_snapshot);
+    AppendSteeringSnapshotJson(header, frame.steering_snapshot);
     header << "}";
     return EncodeEnvelope(header.str(), frame.pixel_data, frame.pixel_size, encoded, error);
 }

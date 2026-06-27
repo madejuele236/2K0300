@@ -42,16 +42,16 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
         snapshot.steering.lateral_error.weighted_sample_count;
     telemetry.lateral_error.weight_sum = snapshot.steering.lateral_error.weight_sum;
     telemetry.lateral_error.reason = snapshot.steering.lateral_error.reason;
-    telemetry.tracking_geometry.computed = snapshot.steering.tracking_geometry.computed;
-    telemetry.tracking_geometry.lateral_offset_m =
-        snapshot.steering.tracking_geometry.lateral_offset_m;
-    telemetry.tracking_geometry.heading_error_rad =
-        snapshot.steering.tracking_geometry.heading_error_rad;
-    telemetry.tracking_geometry.curvature_m_inv =
-        snapshot.steering.tracking_geometry.curvature_m_inv;
-    telemetry.tracking_geometry.sample_count =
-        snapshot.steering.tracking_geometry.sample_count;
-    telemetry.tracking_geometry.reason = snapshot.steering.tracking_geometry.reason;
+    telemetry.reference_tracking_geometry.computed = snapshot.steering.reference_tracking_geometry.computed;
+    telemetry.reference_tracking_geometry.lateral_offset_m =
+        snapshot.steering.reference_tracking_geometry.lateral_offset_m;
+    telemetry.reference_tracking_geometry.heading_error_rad =
+        snapshot.steering.reference_tracking_geometry.heading_error_rad;
+    telemetry.reference_tracking_geometry.curvature_m_inv =
+        snapshot.steering.reference_tracking_geometry.curvature_m_inv;
+    telemetry.reference_tracking_geometry.sample_count =
+        snapshot.steering.reference_tracking_geometry.sample_count;
+    telemetry.reference_tracking_geometry.reason = snapshot.steering.reference_tracking_geometry.reason;
     telemetry.perception_health.projector_ok =
         snapshot.steering.perception_health.projector_ok;
     telemetry.perception_health.reason = snapshot.steering.perception_health.reason;
