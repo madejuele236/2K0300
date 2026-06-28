@@ -6,8 +6,8 @@
 #include <limits>
 #include <optional>
 
-#include "vision/bev/bev_simple_perception.hpp"
 #include "port/bev_reference_types.hpp"
+#include "vision/bev/bev_row_facts.hpp"
 
 namespace ls2k::vision {
 

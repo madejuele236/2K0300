@@ -3,12 +3,11 @@
 
 #include <vector>
 
-#include "vision/bev/bev_projector.hpp"
-#include "vision/bev/bev_simple_perception.hpp"
 #include "port/camera_frame_types.hpp"
 #include "port/runtime_parameter_types.hpp"
 #include "port/visual_element_evidence_types.hpp"
 #include "port/visual_reference_orchestration_types.hpp"
+#include "vision/bev/bev_row_facts.hpp"
 
 namespace ls2k::vision {
 

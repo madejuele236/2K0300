@@ -2,7 +2,7 @@
 #define LS2K_RUNTIME_STEERING_FRAME_PERCEPTION_PIPELINE_HPP
 
 #include "vision/bev/bev_projector.hpp"
-#include "vision/bev/bev_simple_perception.hpp"
+#include "vision/bev/bev_sample_projection_lut.hpp"
 #include "port/diagnostics.hpp"
 #include "port/motion_history_types.hpp"
 #include "port/perception_result.hpp"

@@ -85,6 +85,10 @@ set(NEW_SRCS
     ../code/vision/image/luma_sampler.cpp
     ../code/vision/bev/bev_projector.cpp
     ../code/vision/bev/single_boundary_offset.cpp
+    ../code/vision/bev/bev_boundary_row.cpp
+    ../code/vision/bev/bev_sample_projection_lut.cpp
+    ../code/vision/bev/bev_sparse_row_scanner.cpp
+    ../code/vision/bev/bev_reference_path_builder.cpp
     ../code/vision/bev/bev_simple_perception.cpp
     ../code/vision/elements/cross_exit_element_evidence.cpp
     ../code/vision/elements/visual_element_evidence.cpp
@@ -186,7 +190,12 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../verification/tests/bev_simple_perception_test.cpp
         ../code/vision/bev/bev_projector.cpp
         ../code/vision/bev/single_boundary_offset.cpp
+        ../code/vision/bev/bev_boundary_row.cpp
+        ../code/vision/bev/bev_sample_projection_lut.cpp
+        ../code/vision/bev/bev_sparse_row_scanner.cpp
+        ../code/vision/bev/bev_reference_path_builder.cpp
         ../code/vision/bev/bev_simple_perception.cpp
+        ../code/vision/image/luma_sampler.cpp
         ../code/vision/elements/visual_element_evidence.cpp
         ../code/vision/elements/cross_exit_element_evidence.cpp
         ../code/vision/elements/visual_element_pipeline.cpp
@@ -234,9 +243,6 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
     add_executable(
         visual_reference_orchestration_test
         ../verification/tests/visual_reference_orchestration_test.cpp
-        ../code/vision/bev/bev_projector.cpp
-        ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/bev_simple_perception.cpp
         ../code/reference/visual_reference_orchestration.cpp
     )
     target_link_libraries(
@@ -256,8 +262,6 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp
         ../code/vision/elements/circle_v2/detail/circle_v2_composer.cpp
         ../code/vision/bev/single_boundary_offset.cpp
-        ../code/vision/bev/bev_projector.cpp
-        ../code/vision/bev/bev_simple_perception.cpp
     )
     target_link_libraries(
         steering_circle_v2_scene_test

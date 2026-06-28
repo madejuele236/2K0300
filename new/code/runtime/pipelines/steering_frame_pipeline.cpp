@@ -14,6 +14,7 @@
 #include "reference/visual_reference_orchestration.hpp"
 #include "port/perf_counter.hpp"
 #include "runtime/runtime_state.hpp"
+#include "vision/bev/bev_simple_perception.hpp"
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
 

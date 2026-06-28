@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-#include "vision/bev/bev_simple_perception.hpp"
+#include "vision/bev/bev_boundary_row.hpp"
 
 namespace {
 

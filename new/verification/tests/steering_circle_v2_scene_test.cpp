@@ -7,6 +7,7 @@
 
 #include "vision/elements/circle_v2/detail/circle_v2_internal.hpp"
 #include "runtime/runtime_state.hpp"
+#include "vision/bev/bev_row_facts.hpp"
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
 
