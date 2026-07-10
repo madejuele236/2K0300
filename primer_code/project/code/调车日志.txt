@@ -1,0 +1,1886 @@
+
+12.14
+{
+
+调小了角速度环 KP 振荡明显减小，把速度环maxout拉满才能看清楚效果，实现过弯。
+加入 0.01 KI值后小车左右摆头情况明显减少,但小车过弯时能明显感到卡顿感。
+加入 3 KD 后 小响应变慢 连续过弯时存在为无法及时转向的滞后感
+KD 改为 1后，响应变快 但在连续过弯处还是会跑出赛道 准备调节图像环
+角速度环：PID_Init(&Dis,10,0.01,1,2000,10000,0);
+
+将图像环 KP 调大后，小车摆头明显严重(从20调到了30)保持20效果较好
+KI 0.01 MAXOUT 2000 -> 3000
+感觉还是在在转向有些慢 可能时是打角行太靠下（40行）
+KD 0->6 摆头变多 对噪声太敏感
+改回来了Image.Kp = 20;
+    Image.Ki = 0.01;
+    Image.Kd = 0.5;
+    Image.Kd_feedback = 10;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 3000;
+
+}
+12.15{
+运行程序时出现以下报错
+can not open file /sys/bus/iio/devices/iio:device1/in_anglvel_x_raw
+can not open file /sys/bus/iio/devices/iio:device1/in_anglvel_y_raw
+can not open file /sys/bus/iio/devices/iio:device1/in_anglvel_z_raw
+can not open file /sys/bus/iio/devices/iio:device1/in_accel_x_raw
+can not open file /sys/bus/iio/devices/iio:device1/in_accel_y_raw
+can not open file /sys/bus/iio/devices/iio:device1/in_accel_z_raw
+原来是陀螺仪的线接反了  
+    速度200的一些参数
+    PID_Init(&Dis,10,0.01,4.5,2000,10000,0);
+    Speed_PID_Init(&Velocity_L,3.6,15,0.08,4.5,10000,10000,200);//4
+    Speed_PID_Init(&Velocity_R,3.6,15,0.08,4.5,10000,10000,200);//4
+    void Direction_PID_Init()
+    Image.Kp = 20;
+    Image.Ki = 0.01;
+    Image.Kd = 0.05;
+    Image.Kd_feedback = 10;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 3000;
+    
+速度200->250 Err_Dir[40] ->35
+
+DIS->KP 12.5->10 摆头严重，漂移严重
+DIS->Ki 0.01-> 0.05摆头严重,漂移严重
+DIS ->kP 10 -> 20
+DIS ->KI 4.5->6
+
+重调速度环（调之前速度环参数）
+Speed_PID_Init(&Velocity_L,3.6,15,0.08,4.5,10000,10000,200);
+Speed_PID_Init(&Velocity_R,3.6,15,0.08,4.5,10000,10000,200);
+}
+
+12.17{
+    单调速度环增大P项会使速度输出的波动增大
+    小车两个轮子转速明显不一样
+    滤波以后更平滑一些
+    波峰和波谷的差值在10左右
+    speed :160 -- 1000duty
+    速度环 maxI -- 10000 0.07
+    加入图像环 左右轮转速不一 左轮转速明显快于右轮 导致小车一直靠右边线行驶
+    maxI 好像可以纠正两个轮子转速不一
+
+}
+12.18{
+    准备调大（小）转向环(感觉是速度环的问题)ki的值(有点摆头) 增量式代码没有积分限幅
+    PID_Init(&Dis,0.2,0.00025,0,0,3000,0);
+    三环串在一起，每次过第一个十字的时候，进十字转向力不够，出的时候回正的力也不够，感觉滞后性有点强
+}
+12.20{
+    调车 串 + 并
+    void Direction_PID_Init(){
+    Image.Kp = 50;
+    Image.Ki = 0;
+    Image.Kd = 0.00;
+    Image.Kd_feedback = 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 8000;
+    
+}
+    PID_Init(&Dis,0.2,0.00035,0.06,0,3000,0);
+    Speed_PID_Init(&Velocity,2.4,15,0.07,4.5,10000,10000,30);
+    修改编码器部分代码 将原来的两次滤波改为一次滤波
+    右轮速度比左轮快
+    把速度环改成增量式
+
+    还是两个轮子分开调吧
+    I项大了抖动会增大，同时会有超调
+}
+12.23{
+    void Direction_PID_Init(){
+    Image.Kp = 10;
+    Image.Ki = 0;
+    Image.Kd = 0.00;
+    Image.Kd_feedback = 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 8000;
+    
+}    Speed_PID_Init(&Velocity_L,0,21,0.18,10,10000,10000,30);
+    Speed_PID_Init(&Velocity_R,0,21,0.18,0,10000,10000,30);
+    速度环D项大了会抖动的更剧烈
+    起步过冲是P项太大了
+
+    串上角速度环（增量式和位置式都试过）后会出现转不过弯的问题（主要表现为滞后性很强）（多番尝试调整），然后环岛部分的找拐点应该有问题
+    下次尝试速度调整为300 重调一下参数
+    记得看一下转向时两个轮子的转速 确定一下转向时的输出
+    当前是图像环串上速度环
+    Direction_PID_Init();
+
+
+
+
+    Speed_PID_Init(&Velocity_L,2.4,14,0.18,4.2,10000,10000,30);
+    Speed_PID_Init(&Velocity_R,2.4,14,0.18,4.2,10000,10000,30);
+
+    void Direction_PID_Init(){
+    Image.Kp = 10;
+    Image.Ki = 0;
+    Image.Kd = 0.00;
+    Image.Kd_feedback = 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 8000;
+    
+}
+
+
+
+
+uint32_t fPS;
+uint32_t it_time;
+void pitcallback()
+    
+    ICM_getEulerianAngles();
+    Encoder_update();
+    
+    if(run_flag==1)
+    
+    speed_goal=250;
+    //外环 把图像 角速度 输出 输入到差速环 差速环再并上速度环
+    Image_out = Image_PID_Calculate(&Image,Dir_Err[30],icm_data.gyro_z);
+    Dis_Out = Inc_Cal(&Dis,Image_out,Dis_Speed);//角速度环
+
+    v_left_target  = speed_goal - Image_out;
+    v_right_target = speed_goal + Image_out;
+
+
+    PWM_L = Speed_PID_Cal(&Velocity_L,v_left_target,encoder_L.speed);
+    PWM_R = Speed_PID_Cal(&Velocity_R,v_right_target,encoder_R.speed);
+    set_pwm(PWM_L,PWM_R);
+
+}
+12.24{
+   写了 flash
+   speed 250 - 300
+   KD 4.2-10
+   过弯时300的差速不够
+   积分好像有点太大了
+   过第一个十字的圆环有问题 右轮的速度突然掉了
+}
+1.24{
+    角速度环太大
+    
+}
+改前
+  cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
+
+  cv::resize(grayFrame, resizedFrame, cv::Size(LCDW_1, LCDH_1), 
+          0, 0, cv::INTER_AREA);
+  cv::flip(resizedFrame,flippedFrame,-1);
+    translationMatrix = (cv::Mat_<float>(2,3) << 1, 0, 4, 0, 1, 0);
+  cv::warpAffine(flippedFrame, translatedFrame, translationMatrix, flippedFrame.size(), 
+                   cv::INTER_LINEAR, cv::BORDER_CONSTANT, 0);
+
+
+改后
+     cv::flip(frame,flippedFrame,-1);
+     cv::cvtColor(flippedFrame,grayFrame,cv::COLOR_BGR2GRAY);
+     cv::resize(grayFrame,resizedFrame,cv::Size(LCDW_1,LCDH_1),0,0,cv::INTER_AREA);
+     translationMatrix = (cv::Mat_<float>(2,3) << 1, 0, 7, 0, 1, 0);
+     cv::warpAffine(resizedFrame, translatedFrame, translationMatrix, resizedFrame.size(), 
+                    cv::INTER_LINEAR, cv::BORDER_CONSTANT, 0);
+
+
+3.20{
+    初始参数 弹射起步 有较大抖动声 连续弯道摆不过去会冲出赛道 缺乏动力 打角行32
+    void Direction_PID_Init(){
+    Image.Kp = 10;
+    Image.Ki = 0;
+    Image.Kd = Image.Kp*0.3;
+    Image.Kd_feedback = 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 2;
+    Dis_1.Kp = 1.5*Dis_1.Ki * Image.Kp;//
+
+    Dis_1.Kd =Dis_1.Kp*0.001;
+    Dis_1.MAX_OutPut = 10000;
+
+    PID_Init(&Velocity,60,2,0,0,10000,0,0,0);//增量式速度环
+    
+}
+    开环测试  小车起步后在直道时速度越来越快 没有抖动 小车过第二个弯时 拐不过来 打角行32 波形中小车过弯时严重抖动 过第二个弯时小车速度名名猛降至-600左右
+    PWM_L = 1500 + Dis_Out;
+    PWM_R = 1500 - Dis_Out;
+
+    Dis_1.Kd =0; 去掉转向环KD 闭环速度环 小车转弯时速度猛增 有抖动 速度环波形在过弯时上下严重抖动
+
+    加入Dis_1.Kd 过弯时速度抖动的变小
+
+    把陀螺仪转换成原始数据 小车基本丧失巡线能力 KI=2时 小车原地打转 KI=0.01 抖动严重 转不过来
+    Dis_Out = Dis_PID_Calculate(&Dis_1,-Image_out,-icm_data.gyro_z)
+    Dis_1.Ki = 2;
+    Dis_1.Kp = 1.5*Dis_1.Ki * Image.Kp;//
+    Dis_1.Kd =Dis_1.Kp*0.001;//
+
+    把陀螺仪转换成原始数据 齿轮抖动声明显
+    Dis_1.Ki = 0.01;
+    Dis_1.Kp = 0.15*Dis_1.Ki * Image.Kp;//
+
+    把陀螺仪转换成原始数据 齿轮抖动声依旧明显
+    Dis_1.Ki = 0.01;
+    Dis_1.Kp = 0;//0.15*Dis_1.Ki * Image.Kp;
+
+
+
+
+    位置式速度环 图像环加入陀螺仪作为阻尼项 弯道加速的情况有减轻 
+    Image.Kp = 2;
+    Image.Ki = 0;
+    Image.Kd = Image.Kp*0.3;
+    Image.Kd_feedback =Image.Kp * 0.05;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 0.8;
+    Dis_1.Kp = Dis_1.Ki * 90;//5*Dis_1.Ki * Image.Kp;
+
+    Dis_1.Kd =Dis_1.Kp*0.001;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 10000;
+
+    // PID_Init(&Velocity,60,2,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,0,40,0,80,3000,10000,100); //位置式速度环
+
+
+
+    蓝智勇(单环差速){
+    Image.Kp = 350*0.01;//*0.05
+    Image.Ki = 0;
+    Image.Kd = Image.Kp*0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 30;
+    Dis_1.Kp = 30*0.3;// ;5*Dis_1.Ki
+
+    Dis_1.Kd =0;//Dis_1.Kp*0.001;Dis_1.Kp*0.001
+
+    Dis_1.MAX_OutPut = 10000;
+
+    // PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+     Speed_PID_Init(&Velocity,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+     
+     Speed_PID_Init(&Velocity_L,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+     Speed_PID_Init(&Velocity_R,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+    }
+ 
+
+
+
+
+刘润红(速度限幅){
+    void Direction_PID_Init(){
+    Image.Kp = 7;//*0.05
+    Image.Ki = 0;
+    Image.Kd = 0;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 240;
+
+    //1500
+    Dis_1.Ki = 2.5;
+    Dis_1.Kp = 45;// ;5*Dis_1.Ki
+
+    Dis_1.Kd =0;//Dis_1.Kp*0.001;Dis_1.Kp*0.001
+
+    Dis_1.MAX_OutPut = 10000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,5,30,0,0,3000,10000,100); //位置式速度环
+     
+    //  Speed_PID_Init(&Velocity_L,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+    //  Speed_PID_Init(&Velocity_R,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+
+    speed_goal=350;
+    //float K = 100;
+
+    //陀螺仪右转是负 左转是正
+    //DIS OUT 左正 右负
+    //Dis_Speed 左负 右正
+    //图像误差 左正 右负
+    //外环 （把图像 角速度 输出 输入到差速环 差速环再并上速度环)
+    Image_out =Image_PID_Calculate(&Image,Dir_err,0);//-icm_data.gyro_z
+    //-Image_outW
+    //负值 左转 正值 右转 //-2000
+    Dis_Out = Dis_PID_Calculate(&Dis_1,-Image_out,Dis_Speed); //- 100*(Image.Error - Image.Last_Error);//角速度环icm_data.gyro_z * K+ 400*(Image->Error - Image->Last_Error
+    Dis_Out = LIMIT(Dis_Out,-3500,3500);
+    //printf("DIS_OUT:%f\n",Dis_Out);
+    //V_out = 1000;//
+    V_out=Speed_PID_Cal(&Velocity,speed_goal,Now_Speed);
+    // //speed_now = (encoder_L.count_now + encoder_R.count_now)/2;
+    // V_out = Inc_Cal(&Velocity,speed_goal,Now_Speed);
+    V_out = LIMIT(V_out,-1800,1800);
+    //  PWM_L = V_out ; //
+    //  PWM_R = V_out ;//V_out
+    // if(Image_out>=0)
+    //  PWM_R = V_out - Dis_Out;//V_out
+    // if(Image_out<=0)
+    //  PWM_L = V_out + Dis_Out;
+
+      PWM_L = V_out + Dis_Out;
+      PWM_R = V_out - Dis_Out;
+    
+}
+3.22{ 速度环和转向环打架 速度环软了会降低速度 转向环软了 转弯会软 起步翘头 弯道冲出赛道 咬不住赛道
+    float K = 0.015;
+    Image.Kp = 420*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp * 0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 15;
+    Dis_1.Kp = 70;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,1.5,60,0,30,3000,8000,100); //位置式速度环
+}
+}
+
+3.22{
+    两串一并 单环差速 最多400的速度
+    void Direction_PID_Init(){
+
+
+    Image_out =-Image_PID_Calculate(&Image,Dir_err,0);//-icm_data.gyro_z
+    //-Image_out
+    //负值 左转 正值 右转 //-2000
+    Dis_Out = Dis_PID_Calculate(&Dis_1,Image_out,Dis_Speed); //- 100*(Image.Error - Image.Last_Error);//角速度环icm_data.gyro_z * K+ 400*(Image->Error - Image->Last_Error
+    Dis_Out = LIMIT(Dis_Out,-8000,8000);
+    //printf("DIS_OUT:%f\n",Dis_Out);
+    //V_out = 1500;//
+    V_out=Speed_PID_Cal(&Velocity,speed_goal,Now_Speed);
+    // //speed_now = (encoder_L.count_now + encoder_R.count_now)/2;
+    // V_out = Inc_Cal(&Velocity,speed_goal,Now_Speed);
+    // V_out = LIMIT(V_out,-1800,1800);
+      PWM_L = V_out; 
+      PWM_R = V_out;
+      
+    if(Dis_Out>0){
+        PWM_R = V_out - Dis_Out;
+    }
+     //V_out
+    if(Dis_Out<=0){
+        PWM_L = V_out + Dis_Out;
+    }
+      
+    float K = 0.015;
+    Image.Kp = 450*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp * 0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 20;
+    Dis_1.Kp = 60;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,1.5,30,0,9,3000,8000,100); //位置式速度环
+     
+    //  Speed_PID_Init(&Velocity_L,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+    //  Speed_PID_Init(&Velocity_R,2.5,50,0,50*0.3,3000,10000,100); //位置式速度环
+    
+}
+}
+
+3.22{实际也就350的速度 能咬住赛道 但有轻微抖动
+
+
+    speed_goal=420;
+    //float K = 100;
+
+    //陀螺仪右转是负 左转是正
+    //DIS OUT 左正 右负
+    //Dis_Speed 左负 右正
+    //图像误差 左正 右负
+    //外环 把图像 角速度 输出 输入到差速环 差速环再并上速度环
+    Image_out =-Image_PID_Calculate(&Image,Dir_err,0);//-icm_data.gyro_z
+    //-Image_out
+    //负值 左转 正值 右转 //-2000
+    Dis_Out = Dis_PID_Calculate(&Dis_1,Image_out,Dis_Speed); //- 100*(Image.Error - Image.Last_Error);//角速度环icm_data.gyro_z * K+ 400*(Image->Error - Image->Last_Error
+    Dis_Out = LIMIT(Dis_Out,-8000,8000);
+    //printf("DIS_OUT:%f\n",Dis_Out);
+    //V_out = 1500;//
+    V_out=Speed_PID_Cal(&Velocity,speed_goal,Now_Speed);
+    // //speed_now = (encoder_L.count_now + encoder_R.count_now)/2;
+    // V_out = Inc_Cal(&Velocity,speed_goal,Now_Speed);
+    // V_out = LIMIT(V_out,-1800,1800);
+    void Direction_PID_Init(){
+    float K = 0.015;
+    Image.Kp = 420*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp * 0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 15;
+    Dis_1.Kp = 70;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,1.5,30,0,10,3000,8000,100); //位置式速度环
+    
+}
+}
+3.23{
+    尝试速度环改为修改左右轮目标速度 现在是纯图像环450的速度 转向环很软
+
+    v_right_target = speed_goal;
+    v_left_target = speed_goal;
+
+   
+    if(Image_out>0){
+        v_right_target=speed_goal-Image_out;
+    }
+    
+    if(Image_out<=0){
+        v_left_target=speed_goal+Image_out;
+    }
+    
+    V_out=Speed_PID_Cal(&Velocity_L,v_left_target,encoder_L.speed);
+    V_out1=Speed_PID_Cal(&Velocity_R,v_right_target,encoder_R.speed);
+    PWM_L = V_out; //V_out
+    PWM_R = V_out1;//V_out
+    set_pwm(PWM_L,PWM_R);
+
+
+    void Direction_PID_Init(){
+    float K = 0.035;
+    Image.Kp = 350*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp * 0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 15;
+    Dis_1.Kp = 70;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,1.5,20,0,6,3000,8000,100); //位置式速度环.
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+}
+3.24{
+    速度环去掉I项 + 目标速度限幅 速度环波形在转弯的时候没有上下摆动的类正弦波
+    void Direction_PID_Init(){
+    float K = 0.035;
+    Image.Kp = 350*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp * 0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 15;
+    Dis_1.Kp = 70;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,1.5,20,0,6,3000,8000,100); //位置式速度环.
+    
+    Speed_PID_Init(&Velocity_L,2,35,0,18,2000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0,18,2000,8000,100);
+    
+}
+
+{
+    引入滤波 对目标速度进行滤波 弯道响应慢 转向环软了
+    开始加入转向环 不能限幅
+
+
+        speed_goal=450;
+    //float K = 100;
+
+    //陀螺仪右转是负 左转是正
+    //DIS OUT 左正 右负
+    //Dis_Speed 左负 右正
+    //图像误差 左正 右负
+    //外环 （把图像 角速度 输出 输入到差速环 差速环再并上速度环)
+    Image_out =-Image_PID_Calculate(&Image,Dir_err,0);//-icm_data.gyro_z
+    //-Image_out
+    //负值 左转 正值 右转 //-2000
+    Dis_Out = Dis_PID_Calculate(&Dis_1,Image_out,Dis_Speed); //-100*(Image.Error - Image.Last_Error);//角速度环icm_data.gyro_z * K+ 400*(Image->Error - Image->Last_Error
+    //Dis_Out = LIMIT(Dis_Out,-8000,8000);
+    //printf("DIS_OUT:%f\n",Dis_Out);
+    //V_out = 1500;
+    //V_out=Speed_PID_Cal(&Velocity,speed_goal,Now_Speed);
+    // //speed_now = (encoder_L.count_now + encoder_R.count_now)/2;
+    // V_out = Inc_Cal(&Velocity,speed_goal,Now_Speed);
+    // V_out = LIMIT(V_out,-1800,1800);
+
+    //   PWM_L = V_out; 
+    //   PWM_R = V_out;
+      
+    // if(Dis_Out>0){
+    //     PWM_R = V_out - Dis_Out;
+    // }
+    //  //V_out
+    // if(Dis_Out<=0){
+    //     PWM_L = V_out + Dis_Out;
+    // }
+     
+
+    //    PWM_L = V_out + Dis_Out;
+    //    PWM_R = V_out - Dis_Out;
+
+
+    v_right_target = speed_goal;
+    v_left_target = speed_goal;
+
+   
+    if(Dis_Out>0){
+        v_right_target=speed_goal-Dis_Out;
+       // v_right_target = LIMIT(v_right_target,-450,450);
+        
+    }
+    
+    if(Dis_Out<=0){
+        v_left_target=speed_goal+Dis_Out;
+        //v_left_target = LIMIT(v_left_target,-450,450);
+    }
+    v_right_target_f = alpha * v_right_target + (1 - alpha) * v_right_target_f;
+    v_left_target_f = alpha * v_left_target + (1 - alpha) * v_left_target_f;
+
+    
+    V_out=Speed_PID_Cal(&Velocity_L,v_left_target_f,encoder_L.speed);
+    V_out1=Speed_PID_Cal(&Velocity_R,v_right_target_f,encoder_R.speed);
+    PWM_L = V_out; //V_out
+    PWM_R = V_out1;//V_out
+    set_pwm(PWM_L,PWM_R);
+    
+}
+void Direction_PID_Init(){
+    float K = 0.015;
+    float K1 = 0.02;
+    Image.Kp = 350*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp * 0.3;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 1.2;//40 * K1
+    Dis_1.Kp = 5;//Dis_1.Ki*4 5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    Speed_PID_Init(&Velocity,1.5,20,0,6,3000,8000,100); //位置式速度环.
+
+    Speed_PID_Init(&Velocity_L,2,35,0,18,2000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0,18,2000,8000,100);
+    
+}
+
+
+}
+
+3.27{//不找色块 140帧左右
+    //只找下半部分的红块 帧数102 103
+    void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();//先清元素
+    red_area = 0;
+    if(src.empty()) return;
+    //改为只搜索下半部分 
+    const int roi_y = src.rows/2;
+    cv::Rect search_roi(0,roi_y,src.cols,src.rows-roi_y);
+    cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat hsv,mask1,mask2,mask;
+    cv::Rect roi;
+
+    static std::vector<std::vector<cv::Point>> contours;//存储每个色块的质心坐标的动态数组
+    contours.clear();
+
+    cv::cvtColor(src_roi,hsv,cv::COLOR_BGR2HSV);
+
+    cv::inRange(hsv, cv::Scalar(0, 120, 70), cv::Scalar(10, 255, 255), mask1);//红色阈值
+    cv::inRange(hsv, cv::Scalar(160, 120, 70), cv::Scalar(179, 255, 255), mask2);//红色阈值
+
+    mask = mask1 | mask2;
+
+    //cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3,3));
+
+    // cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+    // cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel);
+
+    
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);//找色块 (外轮廓)
+
+    //int maxArea = 0;
+    int bottom_y = 0;
+    cv::Point bestCenter;//存储轮廓的质心坐标
+    cv::Rect bestRect;//存储最小外接矩形
+
+    // for(auto &c : contours)//遍历每一个色块 寻找出最大色块
+    // {
+    //     int area = cv::contourArea(c);//计算最大红色联通区域的面积
+
+    //     if(area < MIN_RED_AREA) continue;//
+
+    //     cv::Moments m = cv::moments(c);//m00->轮廓的面积 （m10 m01->用于计算轮廓的质心坐标)
+    //     if(m.m00 == 0) continue;
+
+    //     int cx = static_cast<int>(m.m10 / m.m00);//计算质心坐标
+    //     int cy = static_cast<int>(m.m01 / m.m00);//计算质心坐标
+
+    //     if(area > maxArea)
+    //     {
+    //         maxArea = area;
+
+    //         bestCenter = cv::Point(cx, cy);//存储轮廓的质心坐标
+
+    //         bestRect = cv::boundingRect(c);//计算色块最小外接矩形
+    //     }
+    // }
+
+    //改为寻找最靠近的红色矩形块
+    for(auto &c : contours){
+        cv::Rect rect = cv::boundingRect(c);
+
+        int area = rect.area();
+        if(area < MIN_RED_AREA) continue;//排除红色噪点 （后续可以用于排除一些红色色块在远端的情况)
+        cv::Moments m = cv::moments(c);
+        if(m.m00 == 0) continue;
+        
+        int cx = rect.x + rect.width/2;
+        int cy = rect.y + rect.height/2;
+
+        if(cy > bottom_y){
+
+            bottom_y =  cy;
+
+            bestCenter = cv::Point(cx,cy);
+
+            bestRect = rect;
+        }
+    }
+
+
+    // if(maxArea > 0)
+    // {
+    //     red_objects.push_back({bestCenter, maxArea});//存储最大红色色块的中心坐标和面积
+    //     // if(GenerateROI(red_objects[0].center,roi,src)){
+    //     //     cv::rectangle(src, roi, cv::Scalar(255, 0, 0), 1);
+    //     // }
+    //     cv::rectangle(src, bestRect, cv::Scalar(0, 255, 0), 1);//绘制最小外接矩形
+        
+    // }
+    if(bottom_y > 0){
+        bestCenter.y += roi_y;
+        bestRect.y += roi_y;
+        red_area = bestRect.area();
+    //    red_area = cv::countNonZero(mask(bestRect));//计算红色矩形块的最小外接矩形内的红色像素点数 存储到red_area变量中
+
+        red_objects.push_back({bestCenter,red_area});//存储最近红色矩形块的坐标和面积
+
+    //    cv::rectangle(src, bestRect, cv::Scalar(0, 255, 0), 1);//绘制最小外接矩形
+
+    //    printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenter.x,bestCenter.y,bestRect.width,bestRect.height,red_area);
+    }
+    // //中间变量
+    // if(!red_objects.empty()){
+    //     red_area = cv::countNonZero(mask(bestRect));//计算红色矩形块的最小外接矩形内的红色像素点数 存储到red_area变量中
+    //     //printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenter.x,bestCenter.y,bestRect.width,bestRect.height,red_area);
+    // }
+    // else{
+    //     red_area = 0;
+    // }
+
+
+}
+
+
+
+{   //不使用findcontours()函数 改用从下往上扫行处理 104帧左右
+    void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();//先清元素
+    red_area = 0;
+    if(src.empty()) return;
+    //改为只搜索下半部分 
+    const int roi_y = src.rows/2;
+    cv::Rect search_roi(0,roi_y,src.cols,src.rows-roi_y);
+    cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat hsv,mask1,mask2,mask;
+    cv::Rect roi;
+
+    static std::vector<std::vector<cv::Point>> contours;//存储每个色块的质心坐标的动态数组
+    contours.clear();
+
+    cv::cvtColor(src_roi,hsv,cv::COLOR_BGR2HSV);
+
+    cv::inRange(hsv, cv::Scalar(0, 120, 70), cv::Scalar(10, 255, 255), mask1);//红色阈值
+    cv::inRange(hsv, cv::Scalar(160, 120, 70), cv::Scalar(179, 255, 255), mask2);//红色阈值
+    cv::bitwise_or(mask1,mask2,mask);
+
+    //if(cv::countNonZero(mask)<4) return;
+
+    int best_row = -1;
+    int best_left = 0;
+    int best_right = 0;
+    
+    //cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);//找色块 (外轮廓)
+    for(int y = mask.rows-1;y>=0;y--)
+    {
+        const uchar* ptr = mask.ptr<uchar>(y);
+        int left = -1;
+        int right = -1;
+        int cnt = 0;
+        for(int x = 0; x< mask.cols;++x)
+        {
+            if(ptr[x])
+            {
+                if(left < 0) left = x;
+                right = x;
+                cnt++; 
+            }
+        }
+        if(cnt >= 4)
+        {
+            best_row = y;
+            best_left = left;
+            best_right = right;
+            break;
+        }
+    }
+    if(best_row < 0) return;
+
+    int top = best_row;
+    for(int y = best_row-1;y>=0;--y)
+    {
+        const uchar* ptr = mask.ptr<uchar>(y);
+        int cnt=0;
+        for(int x = best_left;x<=best_right;++x)
+        {
+            if(ptr[x]) cnt++;
+
+        }
+        if(cnt < 2) break;
+        top = y;
+    }
+
+    int width = best_right - best_left + 1;
+    int height = best_row - top + 1;
+    int area = width * height;
+
+    if(area < MIN_RED_AREA) return;
+
+    //int maxArea = 0;
+    int bottom_y = 0;
+    cv::Point bestCenter;//存储轮廓的质心坐标
+    bestCenter.x = (best_left + best_right)/2;
+    bestCenter.y = (top + best_row)/2 + roi_y;
+    red_area = area;
+    red_objects.push_back({bestCenter,red_area});
+
+   // cv::Rect bestRect;//存储最小外接矩形
+
+    //改为寻找最靠近的红色矩形块
+    // for(auto &c : contours){
+    //     cv::Rect rect = cv::boundingRect(c);
+
+    //     int area = rect.area();
+    //     //排除红色噪点 （后续可以用于排除一些红色色块在远端的情况)
+        
+    //     int cx = rect.x + rect.width/2;
+    //     int cy = rect.y + rect.height/2;
+
+    //     if(cy > bottom_y){
+
+    //         bottom_y =  cy;
+
+    //         bestCenter = cv::Point(cx,cy);
+
+    //         bestRect = rect;
+    //     }
+    // }
+
+
+    // if(bottom_y > 0){
+    //     bestCenter.y += roi_y;
+    //     bestRect.y += roi_y;
+    //     red_area = bestRect.area();
+    // //    red_area = cv::countNonZero(mask(bestRect));//计算红色矩形块的最小外接矩形内的红色像素点数 存储到red_area变量中
+
+    //     red_objects.push_back({bestCenter,red_area});//存储最近红色矩形块的坐标和面积
+
+    // //    cv::rectangle(src, bestRect, cv::Scalar(0, 255, 0), 1);//绘制最小外接矩形
+
+    // //    printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenter.x,bestCenter.y,bestRect.width,bestRect.height,red_area);
+    // }
+
+}
+}
+
+
+//改为使用BGR原图像进行输出 帧数为130左右 半个屏幕距离车头大概22cm
+void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();
+    red_area = 0;
+    if (src.empty()) return;
+
+    // 只搜索下半部分，可根据实际改成 src.rows * 2 / 3
+    const int roi_y = src.rows / 2;
+    cv::Rect search_roi(0, roi_y, src.cols, src.rows - roi_y);
+    cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat mask;
+    static std::vector<std::vector<cv::Point>> contours;
+    contours.clear();
+
+    // 分配二值图
+    mask.create(src_roi.rows, src_roi.cols, CV_8UC1);
+
+    // 直接在 BGR 上判红
+    for (int y = 0; y < src_roi.rows; ++y)
+    {
+        const cv::Vec3b* src_ptr = src_roi.ptr<cv::Vec3b>(y);
+        uchar* mask_ptr = mask.ptr<uchar>(y);
+
+        for (int x = 0; x < src_roi.cols; ++x)
+        {
+            int b = src_ptr[x][0];
+            int g = src_ptr[x][1];
+            int r = src_ptr[x][2];
+
+            if (r > 120 && (r - g) > 35 && (r - b) > 35)
+                mask_ptr[x] = 255;
+            else
+                mask_ptr[x] = 0;
+        }
+    }
+
+    // 如果噪声比较多，可以尝试开一下，但先别急着加
+    // static cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    // cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    int bottom_y = -1;
+    cv::Point bestCenter;
+    cv::Rect bestRect;
+
+    for (auto &c : contours)
+    {
+        cv::Rect rect = cv::boundingRect(c);
+        int area = rect.area();
+
+        if (area < MIN_RED_AREA) continue;
+
+        int cx = rect.x + rect.width / 2;
+        int cy = rect.y + rect.height / 2;
+
+        if (cy > bottom_y)
+        {
+            bottom_y = cy;
+            bestCenter = cv::Point(cx, cy);
+            bestRect = rect;
+        }
+    }
+
+    if (bottom_y >= 0)
+    {
+        bestCenter.y += roi_y;
+        bestRect.y += roi_y;
+
+        red_area = bestRect.area();
+        red_objects.push_back({bestCenter, red_area});
+    }
+}
+
+
+    160*120分辨率下 半屏幕检测
+横着放 左障碍：x<60 y>60 右障碍： x>106   area_min > 600
+竖着放 左：x<50 y>69 area_min 520 右:x>110 y>68 area_min>500
+
+图片的面积最大不会超过500 而能检测到图片的最远距离大概是32cm
+
+}
+
+3.28{
+    红色障碍 差不多1m 就能看到
+    红色图片50cm左右能检测到
+
+    检测到红块在中央 -> 进入图片检测 -> 减速 改误差 当编码器计值结束 -> 结束绕行
+    障碍 和 红色图片的误判问题 只要小车偏向一边 位置判断就实效了
+    红色色块面积有问题
+}
+3.29{
+    (r > 150 && (r - g) > 60 && (r - b) > 60) 要离图片20～30cm左右 才检测的到 但不会识别手的肤色等
+
+    (r > 150 && (r - g) > 40 && (r - b) > 40) 大概四十厘米 能看到图片
+
+
+    路障和图片的误判 车摄像头不在中线位置 -> 坐标判断失效
+    BGR面积检测不准 ->面积检测失效
+
+
+
+    在rgb图像上使用质心算坐标 统计红色像素点数量等 效果和之前相差不大 面积检测失效 即使很近也只有30 到 40 左右
+    void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();
+    red_area = 0;
+    if (src.empty()) return;
+
+    // 只搜索下半部分
+    // const int roi_y = 0;//src.rows / 4
+    // cv::Rect search_roi(0, roi_y, src.cols, src.rows - roi_y);
+    // cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat mask;
+    static cv::Mat mask_morph;
+    static std::vector<std::vector<cv::Point>> contours;
+    contours.clear();
+
+    // 分配二值图
+    mask.create(src.rows, src.cols, CV_8UC1);
+
+    // 直接在 BGR 上判红
+    for (int y = 0; y < src.rows; ++y)
+    {
+        const cv::Vec3b* src_ptr = src.ptr<cv::Vec3b>(y);
+        uchar* mask_ptr = mask.ptr<uchar>(y);
+
+        for (int x = 0; x < src.cols; ++x)
+        {
+            int b = src_ptr[x][0];
+            int g = src_ptr[x][1];
+            int r = src_ptr[x][2];
+
+            if (r > 150 && (r - g) > 40 && (r - b) > 40)
+                mask_ptr[x] = 255;
+            else
+                mask_ptr[x] = 0;
+        }
+    }
+    //形态学开闭运算
+    // static cv::Mat kernel_open  = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    // static cv::Mat kernel_close = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+
+    // cv::morphologyEx(mask, mask_morph, cv::MORPH_OPEN, kernel_open);
+    // cv::morphologyEx(mask_morph, mask_morph, cv::MORPH_CLOSE, kernel_close);
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    int bottom_y = -1;
+    cv::Point bestCenter;
+    cv::Rect bestRect;
+    double bestArea;
+
+    for (auto &c : contours)
+    {
+
+        double cx;
+        double cy;
+    //    cv::Rect rect = cv::boundingRect(c);//获取外接矩形 用来估计红色色块中心点的坐标位置
+        double area = cv::contourArea(c); //直接统计像素点的个数
+
+        if (area < MIN_RED_AREA) continue;
+        cv::Moments mu = cv::moments(c, false);
+        if(mu.m00 != 0)//改为质心法 算坐标
+        {
+            cx = mu.m10 / mu.m00;
+            cy = mu.m01 / mu.m00;
+        }
+        else
+        {
+            continue;
+        }
+
+        // int cx = rect.x + rect.width / 2;
+        // int cy = rect.y + rect.height / 2;
+
+        if (cy > bottom_y)
+        {
+            bottom_y = cy;
+            bestCenter = cv::Point((int)cx, (int)cy);
+            //bestRect = rect;
+            bestArea = area;
+        }
+    }
+
+    if (bottom_y >= 0)
+    {
+        // bestCenter.y += roi_y;
+        // bestRect.y += roi_y;
+
+        //red_area = bestRect.area();
+        red_area = (int)bestArea;
+        red_objects.push_back({bestCenter, red_area});
+        printf("x:%d,y:%d,area:%d\n",red_objects[0].center.x,red_objects[0].center.y,red_objects[0].area);
+        //cv::rectangle(src, roi, cv::Scalar(255, 0, 0), 1); 
+    }
+}
+
+解决小物块和图片的误识别问题：在RGB颜色通道下 色块面积失效 位置也不准确（位置主要受到摄像头位置的影响） 如果车贴边走 位置判断就实效了
+采用 开闭运算 与   质心法测坐标 统计像素点数量 效果基本一致
+在保证帧数的情况下 把物块写进巡线？ 不可行 无法排除颜色的影响
+
+检测到 红色就进行减速 然后 当红色Y坐标 大于一定值时(面积稳定时) 再进入图片 和 物块的判断:判断依据：
+
+
+当前的:void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();
+    red_area = 0;
+    if (src.empty()) return;
+
+    // 只搜索下半部分
+    // const int roi_y = 0;//src.rows / 4
+    // cv::Rect search_roi(0, roi_y, src.cols, src.rows - roi_y);
+    // cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat mask;
+    static cv::Mat mask_morph;
+    static std::vector<std::vector<cv::Point>> contours;
+    contours.clear();
+
+    // 分配二值图
+    mask.create(src.rows, src.cols, CV_8UC1);
+
+    // 直接在 BGR 上判红
+    for (int y = 0; y < src.rows; ++y)
+    {
+        const cv::Vec3b* src_ptr = src.ptr<cv::Vec3b>(y);
+        uchar* mask_ptr = mask.ptr<uchar>(y);
+
+        for (int x = 0; x < src.cols; ++x)
+        {
+            int b = src_ptr[x][0];
+            int g = src_ptr[x][1];
+            int r = src_ptr[x][2];
+
+            if (r > 120 && (r - g) > 35 && (r - b) > 35)
+                mask_ptr[x] = 255;
+            else
+                mask_ptr[x] = 0;
+        }
+    }
+    //形态学开闭运算
+    static cv::Mat kernel_open  = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    static cv::Mat kernel_close = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5, 5));
+
+    cv::morphologyEx(mask, mask_morph, cv::MORPH_OPEN, kernel_open);
+    cv::morphologyEx(mask_morph, mask_morph, cv::MORPH_CLOSE, kernel_close);
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    int bottom_y = -1;
+    cv::Point bestCenter;
+    cv::Rect bestRect;
+    double bestArea;
+
+    for (auto &c : contours)
+    {
+
+        double cx;
+        double cy;
+    //    cv::Rect rect = cv::boundingRect(c);//获取外接矩形 用来估计红色色块中心点的坐标位置
+        double area = cv::contourArea(c); //直接统计像素点的个数
+
+        if (area < MIN_RED_AREA) continue;
+        cv::Moments mu = cv::moments(c, false);
+        if(mu.m00 != 0)//改为质心法 算坐标
+        {
+            cx = mu.m10 / mu.m00;
+            cy = mu.m01 / mu.m00;
+        }
+        else
+        {
+            continue;
+        }
+
+        // int cx = rect.x + rect.width / 2;
+        // int cy = rect.y + rect.height / 2;
+
+        if (cy > bottom_y)
+        {
+            bottom_y = cy;
+            bestCenter = cv::Point((int)cx, (int)cy);
+            //bestRect = rect;
+            bestArea = area;
+        }
+    }
+
+    if (bottom_y >= 0)
+    {
+        // bestCenter.y += roi_y;
+        // bestRect.y += roi_y;
+
+        //red_area = bestRect.area();
+        red_area = (int)bestArea;
+        red_objects.push_back({bestCenter, red_area});
+        //printf("x:%d,y:%d,area:%d\n",red_objects[0].center.x,red_objects[0].center.y,red_objects[0].area);
+        //cv::rectangle(src, roi, cv::Scalar(255, 0, 0), 1); 
+    }
+}
+
+
+
+这是之前的全图检测色块 + HSV 70帧
+
+ void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();//先清元素
+    red_area = 0;
+    if(src.empty()) return;
+    //改为只搜索下半部分 
+    const int roi_y = 0;
+    cv::Rect search_roi(0,roi_y,src.cols,src.rows-roi_y);
+    cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat hsv,mask1,mask2,mask;
+    cv::Rect roi;
+
+    static std::vector<std::vector<cv::Point>> contours;//存储每个色块的质心坐标的动态数组
+    contours.clear();
+
+    cv::cvtColor(src_roi,hsv,cv::COLOR_BGR2HSV);
+
+    cv::inRange(hsv, cv::Scalar(0, 120, 70), cv::Scalar(10, 255, 255), mask1);//红色阈值
+    cv::inRange(hsv, cv::Scalar(160, 120, 70), cv::Scalar(179, 255, 255), mask2);//红色阈值
+
+    mask = mask1 | mask2;
+
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);//找色块 (外轮廓)
+
+    //int maxArea = 0;
+    int bottom_y = 0;
+    cv::Point bestCenter;//存储轮廓的质心坐标
+    cv::Rect bestRect;//存储最小外接矩形
+
+
+    //改为寻找最靠近的红色矩形块
+    for(auto &c : contours){
+        cv::Rect rect = cv::boundingRect(c);
+
+        int area = rect.area();
+        if(area < MIN_RED_AREA) continue;//排除红色噪点 （后续可以用于排除一些红色色块在远端的情况)
+        cv::Moments m = cv::moments(c);
+        if(m.m00 == 0) continue;
+        
+        int cx = rect.x + rect.width/2;
+        int cy = rect.y + rect.height/2;
+
+        if(cy > bottom_y){
+
+            bottom_y =  cy;
+
+            bestCenter = cv::Point(cx,cy);
+
+            bestRect = rect;
+        }
+    }
+
+    if(bottom_y > 0){
+        bestCenter.y += roi_y;
+        bestRect.y += roi_y;
+        red_area = bestRect.area();
+    //    red_area = cv::countNonZero(mask(bestRect));//计算红色矩形块的最小外接矩形内的红色像素点数 存储到red_area变量中
+
+        red_objects.push_back({bestCenter,red_area});//存储最近红色矩形块的坐标和面积
+
+    //    cv::rectangle(src, bestRect, cv::Scalar(0, 255, 0), 1);//绘制最小外接矩形
+
+    //    printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenter.x,bestCenter.y,bestRect.width,bestRect.height,red_area);
+    }
+
+}
+
+图像端修改rgb 图像的红色筛选目标，效果提升
+void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();
+    red_area = 0;
+    if (src.empty()) return;
+
+    // 只搜索下半部分，可根据实际改成 src.rows * 2 / 3
+    const int roi_y = 0;
+    cv::Rect search_roi(0, roi_y, src.cols, src.rows - roi_y);
+    cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat mask;
+    static std::vector<std::vector<cv::Point>> contours;
+    contours.clear();
+
+    // 分配二值图
+    mask.create(src_roi.rows, src_roi.cols, CV_8UC1);
+
+    // 直接在 BGR 上判红
+    for (int y = 0; y < src_roi.rows; ++y)
+    {
+        const cv::Vec3b* src_ptr = src_roi.ptr<cv::Vec3b>(y);
+        uchar* mask_ptr = mask.ptr<uchar>(y);
+
+        for (int x = 0; x < src_roi.cols; ++x)
+        {
+            int b = src_ptr[x][0];
+            int g = src_ptr[x][1];
+            int r = src_ptr[x][2];
+            int sum_gb = g+b;
+            if (r > 90 && (r > 25+g) && r > (b+25)&&r*2>g+b+80)
+                mask_ptr[x] = 255;
+            else
+                mask_ptr[x] = 0;
+        }
+    }
+
+    // 如果噪声比较多，可以尝试开一下，但先别急着加
+    // static cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
+    // cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+    int bottom_y = -1;
+    cv::Point bestCenter;
+    cv::Rect bestRect;
+
+    for (auto &c : contours)
+    {
+        cv::Rect rect = cv::boundingRect(c);
+        int area = rect.area();
+
+        if (area < MIN_RED_AREA) continue;
+
+        int cx = rect.x + rect.width / 2;
+        int cy = rect.y + rect.height / 2;
+
+        if (cy > bottom_y)
+        {
+            bottom_y = cy;
+            bestCenter = cv::Point(cx, cy);
+            bestRect = rect;
+        }
+    }
+
+    if (bottom_y >= 0)
+    {
+        bestCenter.y += roi_y;
+        bestRect.y += roi_y;
+
+        red_area = bestRect.area();
+        red_objects.push_back({bestCenter, red_area});
+        //printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenter.x,bestCenter.y,bestRect.width,bestRect.height,red_area);
+    }
+}
+}
+
+
+4.11{
+        void Direction_PID_Init()
+    {
+    //forward = 28;//打角行
+    float K = 0.025;
+    Image.Kp = 350*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0 ;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 1;
+    Dis_1.Kp = 30;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=1.5;
+    Speed_PID_Init(&Velocity,1.5,20*K_v,0,6*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+}
+4.12陀螺仪解算{
+    原来的:
+    void imu660ra_get_acc(void)
+{
+        imu660ra_acc_x = imu_dev.get_acc_x()*2;
+        imu660ra_acc_y = imu_dev.get_acc_y()*2;
+        imu660ra_acc_z = imu_dev.get_acc_z()*2;
+}
+
+void imu660ra_get_gyro(void)
+{
+        imu660ra_gyro_x = imu_dev.get_gyro_x()*2;
+        imu660ra_gyro_y = imu_dev.get_gyro_y()*2;
+        imu660ra_gyro_z = imu_dev.get_gyro_z()*2;
+}
+
+
+    void gyroOffset_init(void)
+{   
+    GyroOffset.Xdata = 0;
+    GyroOffset.Ydata = 0;
+    GyroOffset.Zdata = 0;
+    for (uint16 i = 0; i < 50; ++i)
+    {
+         imu660ra_get_acc();                                     // 获取 IMU660RA 加速度计数据
+         imu660ra_get_gyro();
+
+        GyroOffset.Xdata += imu660ra_gyro_x;
+        GyroOffset.Ydata += imu660ra_gyro_y;
+        GyroOffset.Zdata += imu660ra_gyro_z;
+
+
+    }
+
+    GyroOffset.Xdata /= 50;
+    GyroOffset.Ydata /= 50;
+    GyroOffset.Zdata /= 50;
+    GyroOffset.AXdata /= 50;
+    GyroOffset.AYdata /= 50;
+    GyroOffset.AZdata /= 50;
+
+    GyroOffset_init = 1;
+}
+
+#define alpha         0.3f
+
+
+void ICM_getValues()
+{
+    icm_data.acc_x = ((float) imu660ra_acc_x* alpha) * 8 / 4096 + icm_data.acc_x * (1 - alpha);
+    icm_data.acc_y = ((float) imu660ra_acc_y * alpha) * 8 / 4096 + icm_data.acc_y * (1 - alpha);
+    icm_data.acc_z = ((float) imu660ra_acc_z* alpha) * 8 / 4096 + icm_data.acc_z * (1 - alpha);
+
+
+
+
+
+    icm_data.gyro_x = ((float) imu660ra_gyro_x - GyroOffset.Xdata) * M_PI / 180 / 16.4f;
+    icm_data.gyro_y = ((float) imu660ra_gyro_y - GyroOffset.Ydata) * M_PI / 180 / 16.4f;
+    icm_data.gyro_z = ((float) imu660ra_gyro_z - GyroOffset.Zdata) * M_PI / 180 / 16.4f;//弧度每秒
+
+//    icm_ay=icm_data.acc_y ;
+//    icm_sy=icm_data.gyro_y;
+}
+
+
+
+void ICM_AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az) {
+    float halfT = 0.5 * delta_T;
+    float vx, vy, vz;
+    float ex, ey, ez;
+    float q0 = Q_info.q0;
+    float q1 = Q_info.q1;
+    float q2 = Q_info.q2;
+    float q3 = Q_info.q3;
+    float q0q0 = q0 * q0;
+    float q0q1 = q0 * q1;
+    float q0q2 = q0 * q2;
+//    float q0q3 = q0 * q3;
+    float q1q1 = q1 * q1;
+//    float q1q2 = q1 * q2;
+    float q1q3 = q1 * q3;
+    float q2q2 = q2 * q2;
+    float q2q3 = q2 * q3;
+    float q3q3 = q3 * q3;
+    // float delta_2 = 0;
+
+    float norm = fast_sqrt(ax * ax + ay * ay + az * az);
+    ax = ax * norm;
+    ay = ay * norm;
+    az = az * norm;
+
+    vx = 2 * (q1q3 - q0q2);
+    vy = 2 * (q0q1 + q2q3);
+    vz = q0q0 - q1q1 - q2q2 + q3q3;
+    //vz = (q0*q0-0.5f+q3 * q3) * 2;
+
+
+    ex = ay * vz - az * vy;
+    ey = az * vx - ax * vz;
+    ez = ax * vy - ay * vx;
+
+
+    I_ex += halfT * ex;   // integral error scaled by Ki
+    I_ey += halfT * ey;
+    I_ez += halfT * ez;
+
+    gx = gx + param_Kp * ex + param_Ki * I_ex;
+    gy = gy + param_Kp * ey + param_Ki * I_ey;
+    gz = gz + param_Kp * ez + param_Ki * I_ez;
+
+
+
+    q0 = q0 + (-q1 * gx - q2 * gy - q3 * gz) * halfT;
+    q1 = q1 + (q0 * gx + q2 * gz - q3 * gy) * halfT;
+    q2 = q2 + (q0 * gy - q1 * gz + q3 * gx) * halfT;
+    q3 = q3 + (q0 * gz + q1 * gy - q2 * gx) * halfT;
+
+
+
+    // normalise quaternion
+    norm = fast_sqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+    Q_info.q0 = q0 * norm;
+    Q_info.q1 = q1 * norm;
+    Q_info.q2 = q2 * norm;
+    Q_info.q3 = q3 * norm;
+}
+
+
+
+void ICM_getEulerianAngles(void)
+{
+    imu660ra_get_gyro();
+    imu660ra_get_acc();                                     // 获取 IMU660RA 加速度计数据
+
+
+    ICM_getValues();
+    ICM_AHRSupdate(icm_data.gyro_x, icm_data.gyro_y, icm_data.gyro_z, icm_data.acc_x, icm_data.acc_y, icm_data.acc_z);
+    float q0 = Q_info.q0;
+    float q1 = Q_info.q1;
+    float q2 = Q_info.q2;
+    float q3 = Q_info.q3;
+
+
+    icm_data.pitch = asin(-2 * q1 * q3 + 2 * q0 * q2) * 180 / M_PI; // pitch
+    icm_data.roll = atan2(2 * q2 * q3 + 2 * q0 * q1, -2 * q1 * q1 - 2 * q2 * q2 + 1) * 180 / M_PI; // roll
+    icm_data.yaw = atan2(2 * q1 * q2 + 2 * q0 * q3, -2 * q2 * q2 - 2 * q3 * q3 + 1) * 180 / M_PI;//转向角
+}
+
+
+    void Direction_PID_Init()
+    {
+    //forward = 28;//打角行
+    float K = 0.012;
+    Image.Kp = 350*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0 ;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 3.8;
+    Dis_1.Kp = 60;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=5.0;
+    Speed_PID_Init(&Velocity,3.5,20*K_v,0,12*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+
+
+}
+
+4.14{
+        void Direction_PID_Init()
+    {
+    //forward = 28;//打角行
+    float K = 0.012;
+    Image.Kp = 350*K;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0 ;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 3.8;
+    Dis_1.Kp = 60;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=5.0;
+    Speed_PID_Init(&Velocity,2.5,15*K_v,0,9*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+
+300跳轮 250较稳
+
+    void Direction_PID_Init()
+    {
+    //forward = 28;//打角行
+    float K = 0.012;
+    Image.Kp = 350*K*0.8;//   //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0 ;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 3;
+    Dis_1.Kp = 60;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=2;
+    Speed_PID_Init(&Velocity,2,15*K_v,0,9*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+}
+
+4.14{
+        void Direction_PID_Init()
+    {
+    //forward = 28;//打角行
+    float K = 0.012;
+    Image.Kp = 350*K;//  0.8; //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0 ;
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 2.5;
+    Dis_1.Kp = 60;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =Dis_1.Kp*0.0005;//Dis_1.Kp*0.001;
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=1.0;
+    Speed_PID_Init(&Velocity,2.5,15*K_v,0,9*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+
+
+
+试试ImageE1 
+}
+4.16{
+        //roi_x_1 roi_y_1   ROI区域左上角的点
+    // int roi_resize_x = roi_x_1*94/120;
+    // int roi_resize_y = roi_y_1*60/160;
+    // int roi_y_2 = roi_resize_y + 10;
+    // int roi_x_2 = roi_resize_x + 10;
+    // if(roi_resize_x < 35) roi_resize_x = 35;//确保在赛道范围内 同时不要越界
+    // if(roi_x_2 > 65) roi_x_2 = 65;
+    // if(roi_y_2 > 60) roi_y_2 = 60;
+    // if(roi_y_2<0)   roi_y_2 = 0;
+}
+
+4.17{
+    void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();//先清元素
+    if(src.empty()) return;
+    cv::Mat hsv,mask1,mask2,mask;
+    cv::Rect roi;
+
+   //改为只搜索赛道中心区域 左上角坐标(60,20)
+    int roi_x = 45;
+    int roi_y = 30;
+    int roi_w = 90;
+    int roi_h = 90;
+
+    cv::Rect search_roi(roi_x,roi_y,roi_w,roi_h);//下半部分
+    cv::rectangle(src, search_roi, cv::Scalar(0, 255, 0), 1);
+    cv::Mat src_roi = src(search_roi);
+
+    cv::cvtColor(src_roi,hsv,cv::COLOR_BGR2HSV);
+    //在ROI区域内转化 后续坐标需要偏移
+    cv::inRange(hsv, cv::Scalar(0, 120, 70), cv::Scalar(10, 255, 255), mask1);//红色阈值
+    cv::inRange(hsv, cv::Scalar(160, 120, 70), cv::Scalar(179, 255, 255), mask2);//红色阈值
+
+    mask = mask1 | mask2;
+
+
+    std::vector<std::vector<cv::Point>> contours;//存储每个色块的质心坐标的动态数组
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);//找色块 (外轮廓)
+
+    //int maxArea = 0;
+    int bottom_y = 0;
+    cv::Point bestCenter;//存储轮廓的质心坐标
+    cv::Rect bestRect;//存储最小外接矩形
+
+
+    //改为寻找最靠近的红色矩形块
+    for(auto &c : contours){
+        int area = cv::contourArea(c);
+        if(area < MIN_RED_AREA) continue;//排除红色噪点 （后续可以用于排除一些红色色块在远端的情况)
+        cv::Moments m = cv::moments(c);
+        if(m.m00 == 0) continue;
+        
+        int cx = static_cast<int>(m.m10 / m.m00);
+        int cy = static_cast<int>(m.m01 / m.m00);
+
+        if(cy > bottom_y){
+
+            bottom_y =  cy;
+
+            bestCenter = cv::Point(cx,cy);
+
+            bestRect = cv::boundingRect(c);
+        }
+    }
+
+
+    if(bottom_y > 0){
+
+        // 全图坐标 = 局部坐标 + ROI 起始点偏移
+        cv::Point bestCenterGlobal(bestCenter.x + roi_x,bestCenter.y + roi_y);
+    //    cv::Rect bestRectGlobal(bestRect.x + roi_x, bestRect.y + roi_y, bestRect.width, bestRect.height);
+
+        red_area = cv::countNonZero(mask(bestRect));//计算红色矩形块的最小外接矩形内的红色像素点数 存储到red_area变量中
+
+        red_objects.push_back({bestCenterGlobal,red_area});//存储最近红色矩形块的坐标和面积
+
+    //    cv::rectangle(src, bestRectGlobal, cv::Scalar(0, 255, 0), 1);//绘制最小外接矩形
+
+    //    printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenterGlobal.x,bestCenterGlobal.y,bestRectGlobal.width,bestRectGlobal.height,red_area);
+    }
+
+
+}
+}
+
+//全图找色块 98 99 97帧
+//进入模型识别 37 38 帧左右
+
+
+4.23{
+        void Direction_PID_Init()   
+    {
+    // //forward = 28;//打角行
+    float K = 1.8;
+    Image.Kp = 350*0.012*0.8*K;//  0.8; //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0.03;//
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 5;
+    Dis_1.Kp = 30;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =0;//Dis_1.Kp*0.001;Dis_1.Kp*0.0005Dis_1.Kp*0.001
+
+    Dis_1.MAX_OutPut = 8000;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=1.0;
+    Speed_PID_Init(&Velocity,2,30*K_v,0,18*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    
+}
+
+
+}
+
+
+    float K = 2.3;
+    Image.Kp = 350*0.012*0.8*K;//  0.8; //250*0.015
+    Image.Ki = 0;
+    Image.Kd = Image.Kp *0.03;//
+    Image.Kd_feedback =Image.Kp * 0;
+    Image.Kp2 = 0;
+    Image.MAX_OutPut = 10000;
+
+    //1500
+    Dis_1.Ki = 5;
+    Dis_1.Kp = 50;// ;5*Dis_1.Ki 50
+
+    Dis_1.Kd =0;//Dis_1.Kp*0.001;Dis_1.Kp*0.0005Dis_1.Kp*0.001
+
+    Dis_1.MAX_OutPut = 9999;
+
+    //PID_Init(&Velocity,15,0.4,0,0,10000,0,0,0);//增量式速度环
+    float K_v=1.0;
+    Speed_PID_Init(&Velocity,2,30*K_v,0,18*K_v,3000,10000,2000); //位置式速度环.
+    //Speed_PID_Init(&Velocity,2.5,60,0,40,3000,10000,2000);
+
+    Speed_PID_Init(&Velocity_L,2,35,0.5,18,3000,8000,100);
+    Speed_PID_Init(&Velocity_R,2,35,0.5,18,3000,8000,100);
+    误差一直在跳变
+
+        if(Flag.picture==2){
+        //右行
+        // if(!picture_yaw_init)
+        // {
+        //     picture_yaw_init = true;
+        //     Yaw_picture = icm_data.yaw;//记录当前的yaw值
+        //     encoder_val = encoder_abs;//记录初始的编码器位置
+        //     printf("encoder_val:%f\n",encoder_val);
+        //     Yaw_picture_target = -25.0f;//目标偏差值
+        // }
+        //float current_distance = encoder_abs - encoder_val;
+        //转向阶段
+        // if(current_distance<=4000)
+        // {   //printf("开始转弯\n");
+        //     Yaw_picture_target = -25.0f;
+        // }
+        // //保持最大偏向角直行
+        // else if(current_distance>4000&&current_distance<=9000)
+        // {   //printf("开始直行\n");
+        //     Yaw_picture_target = -25.0f;
+        // }
+        // //回线阶段 回线阶段的误差不对
+        // else if(current_distance>9000&&current_distance<14000)
+        // {   //printf("开始回线\n");
+        //     Yaw_picture_target = -25.0f+25.0f*(current_distance-9000)/5000;
+        // }
+
+    //     Yaw_picture_diff = Yaw_correct(icm_data.yaw,Yaw_picture);//实际偏差值
+    //     Yaw_picture_err = Yaw_picture_target - Yaw_picture_diff;//陀螺仪的纠正值
+    //     Dir_err=Yaw_picture_err;
+    //     if(encode_l_total>10000){
+    //         //结束绕行
+    //         Flag.picture = 0;//清除标志位
+    //         Flag.infer = 1;//打开推理开关
+    //         encode_l_total = 0;
+    //         encode_r_total = 0;
+    //         picture_yaw_init = false;
+    //         encoder_abs = 0;
+    //         //current_distance = 0;
+    //         printf("右行结束\n");
+    //        return;
+    //    }
+    }
+
+
+    //void DetectRedBlock(cv::Mat &src)
+{
+    red_objects.clear();//先清元素
+    red_area = 0;
+    if(src.empty()) return;
+    //改为只搜索下半部分 
+    const int roi_y = 0;
+    cv::Rect search_roi(0,roi_y,src.cols,src.rows-roi_y);
+    cv::Mat src_roi = src(search_roi);
+
+    static cv::Mat hsv,mask1,mask2,mask;
+    cv::Rect roi;
+
+    static std::vector<std::vector<cv::Point>> contours;//存储每个色块的质心坐标的动态数组
+    contours.clear();
+
+    cv::cvtColor(src_roi,hsv,cv::COLOR_BGR2HSV);
+
+    cv::inRange(hsv, cv::Scalar(0, 120, 70), cv::Scalar(10, 255, 255), mask1);//红色阈值
+    cv::inRange(hsv, cv::Scalar(160, 120, 70), cv::Scalar(179, 255, 255), mask2);//红色阈值
+
+    mask = mask1 | mask2;    
+
+    cv::findContours(mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);//找色块 (外轮廓)
+
+    //int maxArea = 0;
+    int bottom_y = 0;
+    cv::Point bestCenter;//存储轮廓的质心坐标
+    cv::Rect bestRect;//存储最小外接矩形
+
+
+    //改为寻找最靠近的红色矩形块
+    for(auto &c : contours){
+        cv::Rect rect = cv::boundingRect(c);
+
+        int area = rect.area();
+        if(area < MIN_RED_AREA) continue;//排除红色噪点 （后续可以用于排除一些红色色块在远端的情况)
+        cv::Moments m = cv::moments(c);
+        if(m.m00 == 0) continue;
+        
+        int cx = rect.x + rect.width/2;
+        int cy = rect.y + rect.height/2;
+
+        if(cy > bottom_y){
+
+            bottom_y =  cy;
+
+            bestCenter = cv::Point(cx,cy);
+
+            bestRect = rect;
+        }
+    }
+
+    if(bottom_y > 0){
+        bestCenter.y += roi_y;
+        bestRect.y += roi_y;
+        red_area = bestRect.area();
+
+        red_objects.push_back({bestCenter,red_area});//存储最近红色矩形块的坐标和面积
+
+    //    cv::rectangle(src, bestRect, cv::Scalar(0, 255, 0), 1);//绘制最小外接矩形
+
+    //    printf("cx:%d,cy:%d,w:%d,h:%d,area:%d\n",bestCenter.x,bestCenter.y,bestRect.width,bestRect.height,red_area);
+    }
+
+}
