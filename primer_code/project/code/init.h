@@ -3,6 +3,7 @@
 
 #include "platform/device_platform.h"
 #include "runtime/lifecycle.h"
+#include "runtime/runtime_state.hpp"
 
 // Historically reachable through init.h even though estimation owns it.
 #include "estimation/imu_estimator.h"

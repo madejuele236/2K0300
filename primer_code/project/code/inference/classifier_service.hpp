@@ -1,5 +1,5 @@
 #pragma once
 
-#include "../../lq_ncnn.hpp"
+#include "inference/lq_ncnn.hpp"
 
 extern LQ_NCNN classifier;

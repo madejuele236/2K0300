@@ -1,6 +1,6 @@
 #include "internal/vision_stage_contracts.hpp"
-#include "internal/classifier_service.hpp"
-#include "../flash.h"
+#include "inference/classifier_service.hpp"
+#include "parameters/parameter_store.h"
 #include <chrono>
 #include <cmath>
 #include <iostream>

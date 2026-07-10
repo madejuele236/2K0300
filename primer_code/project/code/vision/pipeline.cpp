@@ -1,5 +1,5 @@
 #include "internal/vision_stage_contracts.hpp"
-#include "internal/camera_service.hpp"
+#include "platform/camera/camera_service.hpp"
 #include <opencv2/imgproc.hpp>
 /***************************************************图像处理******************************************************/
 void ImageDeal()

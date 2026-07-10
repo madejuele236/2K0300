@@ -1,7 +1,7 @@
 #include "internal/vision_stage_contracts.hpp"
-#include "internal/camera_service.hpp"
-#include "internal/classifier_service.hpp"
-#include "internal/transport_service.hpp"
+#include "platform/camera/camera_service.hpp"
+#include "inference/classifier_service.hpp"
+#include "transport/stream_service.hpp"
 #include <cstdio>
 #include <string>
 #include <vector>

@@ -39,9 +39,14 @@ against equivalent board, camera, model, parameter, and timing conditions.
 - Static function comparison: 102 baseline functions discovered; 102 are
   token-identical after relocation or mechanically delegated to one
   token-equivalent owner.
-- Architecture scan: 23 layered application sources exactly match the 23
-  explicit CMake entries; 43 active headers/sources satisfy the umbrella,
+- Architecture scan: 24 layered application sources exactly match the 24
+  explicit CMake entries; 49 active headers/sources satisfy the façade,
+  umbrella,
   private-header, pure-vision-facts, and unique-pipeline-owner rules.
+- Original `init.cpp` global construction block: all 263 tokens remain in one
+  composition translation unit with identical order and initializer
+  expressions; baseline and refactor block SHA-256 are both
+  `dc6729f465c4ed9673df4ea13f67efe2bac3f8994d7ccba7d4154e105f158c8c`.
 - Refactored configure/build/link: PASS with the same LoongArch GNU 8.3.0
   toolchain and OpenCV 4.10 installation used for the baseline.
 - Warning profile: the refactored build reproduces the baseline warnings listed
@@ -50,7 +55,7 @@ against equivalent board, camera, model, parameter, and timing conditions.
   refactored binary has 2,148 definitions, with the additions belonging to the
   new orchestration/core boundaries.
 - Refactored executable SHA-256:
-  `5e5762b7ea437603bfb834cf65fd778fede78c537581f2e9f90f36e56b318482`.
+  `e5ec7c1a582a35f4fe0613ce4fbcd8ae833dae13a5e014ac92745d582e83c78b`.
 - `git diff --check`: PASS.
 
 These checks establish source-level and link-level preservation.  Board,

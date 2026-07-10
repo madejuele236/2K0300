@@ -44,9 +44,14 @@ extern zf_driver_encoder encoder_dir_1;
 extern zf_driver_encoder encoder_dir_2;
 extern pwm_info drv8701e_pwm_1_info;
 extern pwm_info drv8701e_pwm_2_info;
+extern zf_driver_gpio drv8701e_dir_1;
+extern zf_driver_gpio drv8701e_dir_2;
 extern zf_driver_pwm drv8701e_pwm_1;
 extern zf_driver_pwm drv8701e_pwm_2;
+extern int32_t encoder_left, encoder_right;
 extern zf_driver_pit pit_timer;
+extern dl1x_device_type_enum dl1x_dev_type;
+extern zf_driver_pit dl1x_pit_timer;
 extern volatile int16 dl1x_distance_raw ;      // 定时采集的距离原始数据（volatile防止编译器优化）
 
 void set_pwm(int16_t pwm_l,int16_t pwm_r);

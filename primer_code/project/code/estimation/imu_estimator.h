@@ -50,7 +50,6 @@ extern icm_param_t icm_data;
 extern gyro_param_t GyroOffset;
 extern int16 imu660ra_gyro_x, imu660ra_gyro_y, imu660ra_gyro_z;
 float fast_sqrt(float x);
-void gyroOffset_init(void);
 void ICM_AHRSupdate(float gx, float gy, float gz, float ax, float ay, float az);
 void ICM_getValues();
 void LPF_1(float hz,float time,float in,float *out);

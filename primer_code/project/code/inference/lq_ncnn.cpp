@@ -1,4 +1,4 @@
-#include "lq_ncnn.hpp"
+#include "inference/lq_ncnn.hpp"
 
 #include <limits>
 #include <stdexcept>

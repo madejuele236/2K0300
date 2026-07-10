@@ -1,4 +1,4 @@
-#include "control.h"
+#include "runtime/control_adapter.hpp"
 #include "control/pid_controller_internal.hpp"
 #include "platform/device_platform.h"
 

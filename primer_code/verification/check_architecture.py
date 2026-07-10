@@ -132,6 +132,11 @@ def main() -> int:
                 failures.append(
                     f"presentation adapter leaks into {source.relative_to(ROOT)}"
                 )
+            if target.parent == CODE.resolve() and target.name in APPLICATION_HEADERS:
+                failures.append(
+                    f"active layer includes root compatibility facade: "
+                    f"{source.relative_to(ROOT)} -> {target.name}"
+                )
 
     forbidden_vision_umbrella = CODE / "vision" / "internal" / "vision_dependencies.hpp"
     if forbidden_vision_umbrella.exists():

@@ -1,23 +1,16 @@
 #include "runtime/lifecycle.h"
 
 #include "control/pid_controller.h"
-#include "filt.h"
-#include "image.h"
-#include "lq_camera_ex.hpp"
+#include "estimation/imu_estimator.h"
+#include "platform/camera/camera_service.hpp"
 #include "platform/device_platform.h"
+#include "runtime/estimation_adapter.hpp"
+#include "runtime/runtime_state.hpp"
 
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
 /*存放 定时器 电机 Flash 按键 编码器 蜂鸣器等外设的初始化*/
-float LPF_Speed = 0.0;
-int8_t run_flag;
-uint32_t fPS;
-int16_t encoder_abs;
-int32_t it_time,encode_l_total,encode_r_total;
-extern lq_camera_ex cam;
-
-
 void pid_init(void)
 {
     run_flag=0;

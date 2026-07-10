@@ -101,8 +101,9 @@ Current implementation coverage before the independent verifier gate:
 |---|---|---|
 | original definition ownership | complete | 102/102 function mapping and successful single link |
 | compatibility symbols | complete | all 2,143 baseline global definitions remain available |
-| explicit build ownership | complete | 23/23 layered application sources listed by CMake |
-| dependency boundaries | complete | 43 active files pass the architecture scan |
+| explicit build ownership | complete | 24/24 layered application sources listed by CMake |
+| dependency boundaries | complete | 49 active files pass the façade and private-header scan |
+| global construction order | complete | 263/263 baseline init tokens remain ordered in one composition TU |
 | formula/order preservation | complete (static) | token-equivalent bodies plus checked façade-to-core delegation |
 | hardware/runtime equivalence | not covered | no board, camera, model, or motion run was performed |
 | independent reviewer | pending | requires two consecutive context-free `PASS` verdicts |

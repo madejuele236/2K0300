@@ -1,5 +1,5 @@
 #include "internal/vision_stage_contracts.hpp"
-#include "../control.h"
+#include "../control/pid_controller.h"
 #include <cmath>
 
 /***************************************************动态前瞻********************************************************/

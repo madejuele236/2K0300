@@ -74,6 +74,7 @@ set(PRIMER_APP_SRCS
     ../user/main.cpp
 
     ../code/runtime/application.cpp
+    ../code/runtime/hardware_composition.cpp
     ../code/runtime/lifecycle.cpp
     ../code/runtime/control_adapter.cpp
     ../code/runtime/estimation_adapter.cpp
