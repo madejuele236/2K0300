@@ -98,17 +98,9 @@
 
 //===================================================TFLITE组件库===================================================
 
-//===================================================用户自定义文件===================================================
-#include "loong_cnn_model_simple.h"
-#include "init.h"
-#include "filt.h"
-#include "flash.h"
-#include "control.h"
-#include "image.h"
-#include "show.h"
-#include "lq_ncnn.hpp"
-#include "lq_camera_ex.hpp"
-//===================================================用户自定义文件===================================================
+// Application headers deliberately do not belong in this vendor umbrella.
+// Each application owner includes its own public contract explicitly; keeping
+// those headers here would make every layer depend on every other layer.
 
 
 

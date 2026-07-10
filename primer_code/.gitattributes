@@ -1,0 +1,3 @@
+# This file is a byte-preserving relocation of the baseline HTTP viewer.  Its
+# raw HTML literal contains inherited end-of-line spaces that are response data.
+project/code/transport/ww_transmission.cpp whitespace=-trailing-space

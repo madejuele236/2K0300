@@ -67,17 +67,69 @@ link_directories(
     ../../libraries/lq
 )
 
-# 业务源文件
-aux_source_directory(../user DIR_SRCS)
-aux_source_directory(../code DIR_SRCS)
-aux_source_directory(../model DIR_SRCS)
-aux_source_directory(../../libraries/zf_common DIR_SRCS)
-aux_source_directory(../../libraries/zf_device DIR_SRCS)
-aux_source_directory(../../libraries/zf_driver DIR_SRCS)
-aux_source_directory(../../libraries/zf_components/seekfree_assistant DIR_SRCS)
+# Explicit ownership list.  Application sources are intentionally not globbed:
+# adding a layer must be an architectural decision rather than an accidental
+# side effect of placing a .cpp file under project/code.
+set(PRIMER_APP_SRCS
+    ../user/main.cpp
+
+    ../code/runtime/application.cpp
+    ../code/runtime/lifecycle.cpp
+    ../code/runtime/control_adapter.cpp
+    ../code/runtime/estimation_adapter.cpp
+
+    ../code/platform/device_platform.cpp
+    ../code/control/pid_controller.cpp
+    ../code/estimation/imu_estimator.cpp
+    ../code/parameters/parameter_store.cpp
+
+    ../code/vision/facts.cpp
+    ../code/vision/preprocess.cpp
+    ../code/vision/track.cpp
+    ../code/vision/scenes/roundabout.cpp
+    ../code/vision/line_repair.cpp
+    ../code/vision/steering.cpp
+    ../code/vision/scenes/picture_scene.cpp
+    ../code/vision/scenes/element_scenes.cpp
+    ../code/vision/red_target.cpp
+    ../code/vision/pipeline_composition.cpp
+    ../code/vision/pipeline_init.cpp
+    ../code/vision/pipeline.cpp
+
+    ../code/presentation/show.cpp
+    ../code/inference/lq_ncnn.cpp
+    ../code/transport/ww_transmission.cpp
+)
+
+set(PRIMER_VENDOR_SRCS
+    ../../libraries/zf_common/zf_common_fifo.cpp
+    ../../libraries/zf_common/zf_common_font.cpp
+    ../../libraries/zf_common/zf_common_function.cpp
+
+    ../../libraries/zf_device/zf_device_dl1x.cpp
+    ../../libraries/zf_device/zf_device_imu.cpp
+    ../../libraries/zf_device/zf_device_ips200_fb.cpp
+    ../../libraries/zf_device/zf_device_tft180_fb.cpp
+    ../../libraries/zf_device/zf_device_uvc.cpp
+
+    ../../libraries/zf_driver/zf_driver_adc.cpp
+    ../../libraries/zf_driver/zf_driver_delay.cpp
+    ../../libraries/zf_driver/zf_driver_encoder.cpp
+    ../../libraries/zf_driver/zf_driver_file_buffer.cpp
+    ../../libraries/zf_driver/zf_driver_file_string.cpp
+    ../../libraries/zf_driver/zf_driver_gpio.cpp
+    ../../libraries/zf_driver/zf_driver_pit.cpp
+    ../../libraries/zf_driver/zf_driver_pit_fd.cpp
+    ../../libraries/zf_driver/zf_driver_pwm.cpp
+    ../../libraries/zf_driver/zf_driver_tcp_client.cpp
+    ../../libraries/zf_driver/zf_driver_udp.cpp
+
+    ../../libraries/zf_components/seekfree_assistant/seekfree_assistant.cpp
+    ../../libraries/zf_components/seekfree_assistant/seekfree_assistant_interface.cpp
+)
 
 # 生成可执行文件 & 配置属性
-add_executable(${PROJ_NAME} ${DIR_SRCS})
+add_executable(${PROJ_NAME} ${PRIMER_APP_SRCS} ${PRIMER_VENDOR_SRCS})
 set_target_properties(${PROJ_NAME} PROPERTIES
     INSTALL_RPATH "/opt/ls_2k0300_env/opencv_4_10_build/lib"
     BUILD_WITH_INSTALL_RPATH ON
