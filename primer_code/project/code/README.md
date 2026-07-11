@@ -14,16 +14,19 @@ checked by `primer_code/verification`.
   cross-owner object-construction flows.
 - Public owner headers expose query/command/service APIs and contain no legacy
   mutable `extern` declarations or generic legacy macros.
-- Layer-private legacy bindings may retain old identifier spellings only by
-  delegating to public owner or `port/` APIs; they are not reusable application
-  umbrellas.  Each active vision translation unit has exactly one private,
-  one-to-one dependency header.
+- Layer-private legacy bindings may retain old identifier spellings only inside
+  untouched vision algorithms and only by delegating to public owner or `port/`
+  APIs; they are not reusable application umbrellas.  Each active vision
+  translation unit has exactly one private, one-to-one dependency header.
 - A legacy binding is either a constant-initialized empty proxy or an
   expression-time private macro included after all library headers.  It may not
   cache another owner's view/reference before `main`.
 - Vision control uses one small const `ControlLiveView`; presentation uses
   fact-granular const-reference queries.  Both preserve the baseline's live,
   unsynchronised read timing while mutation stays behind explicit commands.
+- Runtime application stages and presentation input/page modules call typed
+  owner or port APIs directly.  Presentation owns no compatibility macro or
+  pre-main owner query.
 - `presentation/` and `transport/` are observers/IO owners; they do not derive
   control decisions.
 - Root-level `init.h`, `filt.h`, `flash.h`, `control.h`, `image.h`, `show.h`,

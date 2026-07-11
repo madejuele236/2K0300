@@ -88,7 +88,12 @@ set(PRIMER_APP_SRCS
 
     ../code/vision/facts.cpp
     ../code/vision/preprocess.cpp
-    ../code/vision/track.cpp
+    ../code/vision/track/image_top.cpp
+    ../code/vision/track/sidelines.cpp
+    ../code/vision/track/corners.cpp
+    ../code/vision/track/midline.cpp
+    ../code/vision/track/straightness.cpp
+    ../code/vision/track/geometry.cpp
     ../code/vision/scenes/roundabout.cpp
     ../code/vision/line_repair.cpp
     ../code/vision/steering.cpp
@@ -100,6 +105,14 @@ set(PRIMER_APP_SRCS
     ../code/vision/pipeline.cpp
 
     ../code/presentation/show.cpp
+    ../code/presentation/state.cpp
+    ../code/presentation/input/key_input.cpp
+    ../code/presentation/pages/oled_pages.cpp
+    ../code/presentation/pages/red_debug_page.cpp
+    ../code/presentation/pages/page3.cpp
+    ../code/presentation/pages/page2.cpp
+    ../code/presentation/pages/page1.cpp
+    ../code/presentation/pages/page0.cpp
     ../code/inference/lq_ncnn.cpp
     ../code/transport/ww_transmission.cpp
 )

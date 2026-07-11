@@ -38,20 +38,22 @@ against equivalent board, camera, model, parameter, and timing conditions.
 
 ## Integrated refactor result
 
-- Static function comparison: 102 baseline functions discovered; 102 are
-  token-identical after relocation or mechanically delegated to one
-  token-equivalent owner.
+- Static function comparison: 102 baseline functions discovered; 98 remain
+  token-identical after relocation and four orchestration entries are proven
+  by exact wrapper skeletons, allowlisted recursive stage expansion, fixed-use
+  owner-API canonicalization, and final token equality with their baseline
+  bodies.
 - Static-storage comparison: all 151 original file-scope definition/initializer
   statements remain token-identical, and all 47 application macro definitions
   referenced by original declarations or bodies retain an equivalent value.
   The parser counts are fixed baseline invariants, so a reduced parser surface
   fails rather than producing a vacuous pass.
-- Architecture scan: 26 layered application sources exactly match the 26
-  explicit CMake entries; 84 layered headers/sources, 29 public layer headers,
-  and 11 one-to-one vision dependency headers satisfy the façade,
+- Architecture scan: 39 layered application sources exactly match the 39
+  explicit CMake entries; 101 layered headers/sources, 29 public layer headers,
+  and 16 one-to-one vision dependency headers satisfy the façade,
   no-public-`extern`/generic-macro, mutually-unaware non-runtime owner,
   port-purity, no-pre-main owner-query, expression-macro include-order,
-  granular-presentation-observation, umbrella, private-header,
+  direct granular-presentation-observation, macro-free presentation, umbrella, private-header,
   vision-to-runtime, pure-vision-facts, singular-definition-owner,
   service-composition-order, and unique-pipeline-owner rules.
 - Original `init.cpp` global construction block: all 263 tokens remain in one
@@ -59,15 +61,15 @@ against equivalent board, camera, model, parameter, and timing conditions.
   expressions; baseline and refactor block SHA-256 are both
   `dc6729f465c4ed9673df4ea13f67efe2bac3f8994d7ccba7d4154e105f158c8c`.
 - Refactored clean configure/build/link: PASS from the previously nonexistent
-  `.codex-build/primer-final-review-2` directory, using the same LoongArch GNU
+  `.codex-build/primer-final-review-3` directory, using the same LoongArch GNU
   8.3.0 toolchain and OpenCV 4.10 installation as the baseline.
 - Warning profile: the refactored build reproduces the baseline warnings listed
   above at their new owner locations; it introduces no new compiler warning.
 - ABI surface: all 2,143 globally defined baseline symbols remain present; the
-  refactored binary has 2,257 definitions, with the additions belonging to the
-  new orchestration/core boundaries.
+  refactored binary has 2,264 definitions, with the additions belonging to the
+  new orchestration and private presentation-stage boundaries.
 - Refactored executable SHA-256:
-  `b13b1ec1b8bc92c06566fd32870c1d98aceea087a975da4d7dda326261a84994`.
+  `e28b004bdcce2e506d471ca787045f107c1d5bd3db534d7307580f9e7f58aeec`.
 - `git diff --check`: PASS.
 
 These checks establish source-level and link-level preservation.  Board,

@@ -7,7 +7,8 @@ import pathlib
 import re
 import sys
 
-from compare_function_bodies import function_bodies
+from compare_function_bodies import function_bodies, mask_non_code
+from compare_global_state import blank_ranges, function_ranges
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -55,8 +56,8 @@ EXPECTED_DEFINITION_OWNERS = {
     r"^LQ_NCNN\s+classifier\s*;": "runtime/service_composition.cpp",
     r"^TransmissionStreamServer\s+camera_server\s*;": "runtime/service_composition.cpp",
     r"^lq_camera_ex\s+cam\s*\(": "runtime/service_composition.cpp",
-    r"^unsigned\s+char\s+Image_IFS\s*\[": "presentation/show.cpp",
-    r"^char\s+txt\s*\[": "presentation/show.cpp",
+    r"^unsigned\s+char\s+Image_IFS\s*\[": "presentation/state.cpp",
+    r"^char\s+txt\s*\[": "presentation/state.cpp",
 }
 
 PRIVATE_WIRING_TUS = {
@@ -73,7 +74,12 @@ SERVICE_OBJECT_TYPES = {
 VISION_SOURCE_DEPENDENCIES = {
     "vision/facts.cpp": "vision/internal/dependencies/facts_dependencies.hpp",
     "vision/preprocess.cpp": "vision/internal/dependencies/preprocess_dependencies.hpp",
-    "vision/track.cpp": "vision/internal/dependencies/track_dependencies.hpp",
+    "vision/track/image_top.cpp": "vision/internal/dependencies/image_top_dependencies.hpp",
+    "vision/track/sidelines.cpp": "vision/internal/dependencies/sidelines_dependencies.hpp",
+    "vision/track/corners.cpp": "vision/internal/dependencies/corners_dependencies.hpp",
+    "vision/track/midline.cpp": "vision/internal/dependencies/midline_dependencies.hpp",
+    "vision/track/straightness.cpp": "vision/internal/dependencies/straightness_dependencies.hpp",
+    "vision/track/geometry.cpp": "vision/internal/dependencies/geometry_dependencies.hpp",
     "vision/line_repair.cpp": "vision/internal/dependencies/line_repair_dependencies.hpp",
     "vision/steering.cpp": "vision/internal/dependencies/steering_dependencies.hpp",
     "vision/pipeline.cpp": "vision/internal/dependencies/pipeline_dependencies.hpp",
@@ -111,6 +117,24 @@ PRESENTATION_VISION_OBSERVATIONS = {
     "ObservePictureBlack",
     "ObserveRedFindX",
     "ObserveRedFindY",
+}
+
+PRESENTATION_SOURCES = {
+    "presentation/show.cpp",
+    "presentation/state.cpp",
+    "presentation/input/key_input.cpp",
+    "presentation/pages/oled_pages.cpp",
+    "presentation/pages/red_debug_page.cpp",
+    "presentation/pages/page3.cpp",
+    "presentation/pages/page2.cpp",
+    "presentation/pages/page1.cpp",
+    "presentation/pages/page0.cpp",
+}
+
+RETIRED_PRESENTATION_HEADERS = {
+    "presentation/internal/legacy_presentation_bindings.hpp",
+    "presentation/internal/legacy_vision_constants.hpp",
+    "presentation/internal/presentation_dependencies.hpp",
 }
 
 INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
@@ -192,6 +216,21 @@ def main() -> int:
         for path in CODE.rglob("*.cpp")
         if layer_of(path) is not None
     }
+    actual_presentation_sources = {
+        str(path.relative_to(CODE))
+        for path in source_texts
+        if layer_of(path) == "presentation"
+    }
+    if actual_presentation_sources != PRESENTATION_SOURCES:
+        failures.append(
+            "presentation source inventory differs: "
+            f"expected {sorted(PRESENTATION_SOURCES)}, "
+            f"found {sorted(actual_presentation_sources)}"
+        )
+
+    for retired in sorted(RETIRED_PRESENTATION_HEADERS):
+        if (CODE / retired).exists():
+            failures.append(f"retired presentation compatibility header still exists: {retired}")
     for pattern, expected_owner in EXPECTED_DEFINITION_OWNERS.items():
         owners = [
             str(path.relative_to(CODE))
@@ -388,7 +427,6 @@ def main() -> int:
     lazy_binding_headers = (
         sorted((CODE / "runtime" / "internal").glob("*_bindings.hpp"))
         + sorted(dependency_root.glob("*.hpp"))
-        + [CODE / "presentation" / "internal" / "legacy_presentation_bindings.hpp"]
     )
     for header in lazy_binding_headers:
         text = header.read_text(encoding="utf-8")
@@ -464,21 +502,53 @@ def main() -> int:
             f"found {sorted(declared_observations)}"
         )
     vision_facts_owner = source_texts.get(CODE / "vision" / "facts.cpp", "")
-    presentation_binding = (
-        CODE / "presentation" / "internal" / "legacy_presentation_bindings.hpp"
-    ).read_text(encoding="utf-8")
+    presentation_files = [
+        path for path in layered_files if layer_of(path) == "presentation"
+    ]
+    presentation_source_code = "\n".join(
+        mask_non_code(source_texts[path])
+        for path in source_texts
+        if layer_of(path) == "presentation"
+    )
+    for path in presentation_files:
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"^\s*#\s*define\b", text, re.MULTILINE):
+            failures.append(
+                f"presentation implementation retains a compatibility macro: "
+                f"{path.relative_to(ROOT)}"
+            )
+        for retired in RETIRED_PRESENTATION_HEADERS:
+            if pathlib.PurePosixPath(retired).name in text:
+                failures.append(
+                    f"presentation implementation references retired compatibility "
+                    f"header {retired}: {path.relative_to(ROOT)}"
+                )
+        file_scope_text = blank_ranges(
+            text,
+            function_ranges(text, str(path.relative_to(ROOT))),
+        )
+        for match in OWNER_QUERY_INITIALIZER.finditer(file_scope_text):
+            line_start = file_scope_text.rfind("\n", 0, match.start()) + 1
+            line_end = file_scope_text.find("\n", match.start())
+            if line_end < 0:
+                line_end = len(file_scope_text)
+            if "constexpr" not in file_scope_text[line_start:line_end]:
+                failures.append(
+                    f"presentation performs a pre-main owner query: "
+                    f"{path.relative_to(ROOT)}:{text.count(chr(10), 0, match.start()) + 1}"
+                )
     for observation in sorted(PRESENTATION_VISION_OBSERVATIONS):
         owner_count = len(re.findall(rf"\b{re.escape(observation)}\s*\(", vision_facts_owner))
-        binding_count = len(
+        usage_count = len(
             re.findall(
                 rf"primer::port::vision::{re.escape(observation)}\s*\(",
-                presentation_binding,
+                presentation_source_code,
             )
         )
-        if owner_count != 1 or binding_count != 1:
+        if owner_count != 1 or usage_count < 1:
             failures.append(
-                f"granular observation {observation} must have one owner and one "
-                f"presentation binding; found owner={owner_count}, binding={binding_count}"
+                f"granular observation {observation} must have one owner and direct "
+                f"presentation use; found owner={owner_count}, uses={usage_count}"
             )
 
     for filename in sorted(COMPATIBILITY_TUS):

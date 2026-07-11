@@ -76,18 +76,26 @@ all owners -> port contracts / their own internal facts
   header, solely to preserve legacy symbols and construction order.  Runtime
   application/lifecycle/adapters and every non-runtime layer use public or
   `port/` contracts.
-- Token-identical legacy algorithms that still spell historical identifiers
-  bind those names in one translation-unit-specific private dependency header.
-  Vision has eleven such one-to-one headers; no shared vision state/binding
-  umbrella remains.  Those bindings call owner or port APIs and never publish
-  mutable state to another layer.
-- Compatibility aliases are expression-time private macros or
-  constant-initialized empty proxies, included only after library headers.
-  They cannot cache cross-TU views or references before `main`.
+- Token-identical vision algorithms that still spell historical identifiers
+  declare only the state actually consumed by their translation unit in one
+  private dependency header.  Vision has sixteen such one-to-one headers; no
+  shared vision state/binding umbrella remains.
+- Remaining legacy aliases inside untouched vision algorithms are
+  expression-time private macros or constant-initialized empty proxies,
+  included only after library headers.  They cannot cache cross-TU views or
+  references before `main`.
+- Runtime cadence is expressed as named sensor, active-drive, stopped-drive,
+  diagnostics, startup, beeper, timing, and presentation stages.  The public
+  callback and application entry only preserve their original orchestration
+  order and use typed owner APIs directly.
 - Vision control observations use a small process-life `ControlLiveView`.
   Presentation receives 26 fact-granular const-reference queries instead of a
   wide aggregate, retaining the original unsynchronised live timing without
   exposing a mutable owner representation.
+- Presentation owns its legacy state in one private state module, scans input
+  through typed commands, and renders each of the five pages in a separate
+  module.  It contains no compatibility macros, generic dependency umbrella,
+  or pre-main owner query.
 - Root-level legacy headers are compatibility facades only.  Active
   implementations must not use a common application umbrella header to learn
   unrelated owners.
@@ -130,11 +138,11 @@ Current implementation coverage before the independent verifier gate:
 | original definition ownership | complete | 102/102 function mapping and successful single link |
 | original static storage and macros | complete | 151/151 file-scope definitions/initializers and 47/47 referenced application macro values preserved |
 | compatibility symbols | complete | all 2,143 baseline global definitions remain available |
-| explicit build ownership | complete | 26/26 layered application sources listed by CMake |
-| dependency boundaries | complete | 84 layered files, 29 public headers, 11 one-to-one vision dependency headers, and 26 granular presentation observations pass façade, static-init, public-state/macro, cross-owner, private-header, and composition-owner scans |
+| explicit build ownership | complete | 39/39 layered application sources listed by CMake |
+| dependency boundaries | complete | 101 layered files, 29 public headers, 16 one-to-one vision dependency headers, and 26 directly consumed granular presentation observations pass façade, static-init, public-state/macro, cross-owner, private-header, and composition-owner scans |
 | global construction order | complete | 263/263 baseline init tokens remain ordered in one composition TU |
 | cross-owner service composition | complete | classifier, stream server, and camera remain singular and ordered under `runtime/service_composition.cpp` |
-| formula/order preservation | complete (static) | token-equivalent bodies plus checked façade-to-core delegation |
+| formula/order preservation | complete (static) | 98 token-identical bodies plus four allowlisted, skeleton-checked, recursively expanded orchestration bodies account for all 102 baseline functions |
 | hardware/runtime equivalence | not covered | no board, camera, model, or motion run was performed |
 | independent reviewer | pending | requires two consecutive context-free `PASS` verdicts |
 
