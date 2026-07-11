@@ -1,6 +1,7 @@
 #pragma once
 
-#include "../vision_facts.hpp"
+#include "legacy_vision_state.hpp"
+#include "legacy_owner_bindings.hpp"
 
 #define MODEL_INPUT_WIDTH 40
 #define MODEL_INPUT_HEIGHT 40

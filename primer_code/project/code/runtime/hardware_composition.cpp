@@ -1,5 +1,5 @@
-#include "platform/device_platform.h"
-#include "runtime/runtime_state.hpp"
+#include "platform/device_platform_internal.hpp"
+#include "runtime/runtime_state_internal.hpp"
 
 /* Preserve the baseline init.cpp static construction sequence in one TU. */
 #define KEY_1_PATH        ZF_GPIO_KEY_1
@@ -56,3 +56,15 @@ zf_device_dl1x dl1x_dev;                  // DL1X设备对象
 enum dl1x_device_type_enum dl1x_dev_type;  // DL1X设备类型
 zf_driver_pit dl1x_pit_timer;             // PIT定时器对象（用于100ms定时采集）
 volatile int16 dl1x_distance_raw = 0;      // 定时采集的距离原始数据（volatile防止编译器优化）
+
+namespace primer::runtime {
+int8_t RunFlag() { return run_flag; }
+void SetRunFlag(int8_t value) { run_flag = value; }
+int32_t LeftEncoderTotal() { return encode_l_total; }
+int32_t RightEncoderTotal() { return encode_r_total; }
+int16_t EncoderDistance() { return encoder_abs; }
+RuntimeTelemetry ObserveRuntimeTelemetry()
+{
+    return {encode_l_total, encode_r_total, encoder_abs};
+}
+}  // namespace primer::runtime

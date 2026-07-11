@@ -1,4 +1,5 @@
 #include "parameters/parameter_store.h"
+#include "parameters/parameter_store_internal.hpp"
 #include "zf_driver_file_string.hpp"
 
 #include <stdio.h>
@@ -22,6 +23,18 @@ FlashInformation Flash = {
     .debug_rgb_rb_diff = 35,
     .debug_rgb_rg_diff = 35
 };
+
+namespace primer::parameters {
+const FlashInformation &CurrentParameters()
+{
+    return Flash;
+}
+
+FlashInformation &MutableParameters()
+{
+    return Flash;
+}
+}  // namespace primer::parameters
 
 /**
  * @brief 解析配置文件中的单行数据，提取指定键值的浮点数

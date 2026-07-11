@@ -2,6 +2,18 @@
 #include "control/pid_controller_internal.hpp"
 #include "port/low_pass_filter.hpp"
 #include <math.h>
+
+namespace primer::control {
+Direction_PID &ImageController() { return Image; }
+Direction_PID &DistanceController() { return Dis_1; }
+PID &LeftVelocityController() { return Velocity_L; }
+PID &RightVelocityController() { return Velocity_R; }
+float MasterSpeed() { return Master_Speed; }
+float ImageOutput() { return Image_out; }
+float &MutableImageOutput() { return Image_out; }
+float CurrentSpeed() { return Now_Speed; }
+float DistanceOutput() { return Dis_Out; }
+}  // namespace primer::control
 int16_t speed_now_left,speed_now_right,speed_now,speed_last_left,speed_last_right,pos_goal,pos_now_left,pos_now_right,PWM_L,PWM_R,expect_angle;
 PID Velocity = {0};//速度环
 PID Velocity_L = {0};//速度环

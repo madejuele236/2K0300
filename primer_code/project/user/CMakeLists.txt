@@ -93,7 +93,7 @@ set(PRIMER_APP_SRCS
     ../code/vision/scenes/picture_scene.cpp
     ../code/vision/scenes/element_scenes.cpp
     ../code/vision/red_target.cpp
-    ../code/vision/pipeline_composition.cpp
+    ../code/runtime/service_composition.cpp
     ../code/vision/pipeline_init.cpp
     ../code/vision/pipeline.cpp
 

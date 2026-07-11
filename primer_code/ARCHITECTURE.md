@@ -60,6 +60,14 @@ all owners -> port contracts / their own internal facts
 - `presentation/` observes published facts and owns keys/display behavior; it
   does not produce control decisions.
 - `runtime/` is the only cross-owner orchestrator and owns lifecycle/cadence.
+- Public owner headers expose query/command/service functions, never legacy
+  mutable `extern` state.  Historical declarations are private to their owner.
+- Runtime composition translation units may include owner-private wiring
+  headers solely to preserve legacy symbols and construction order.  Ordinary
+  runtime algorithms and every non-runtime layer use public contracts.
+- Token-identical legacy algorithms that still spell historical identifiers
+  bind those names in one layer-private compatibility header.  Those bindings
+  call owner APIs and never publish state to another layer.
 - Root-level legacy headers are compatibility facades only.  Active
   implementations must not use a common application umbrella header to learn
   unrelated owners.
@@ -102,8 +110,9 @@ Current implementation coverage before the independent verifier gate:
 | original definition ownership | complete | 102/102 function mapping and successful single link |
 | compatibility symbols | complete | all 2,143 baseline global definitions remain available |
 | explicit build ownership | complete | 24/24 layered application sources listed by CMake |
-| dependency boundaries | complete | 49 active files pass the façade and private-header scan |
+| dependency boundaries | complete | 58 active files and 21 public headers pass façade, public-state, private-header, and composition-owner scans |
 | global construction order | complete | 263/263 baseline init tokens remain ordered in one composition TU |
+| cross-owner service composition | complete | classifier, stream server, and camera remain singular and ordered under `runtime/service_composition.cpp` |
 | formula/order preservation | complete (static) | token-equivalent bodies plus checked façade-to-core delegation |
 | hardware/runtime equivalence | not covered | no board, camera, model, or motion run was performed |
 | independent reviewer | pending | requires two consecutive context-free `PASS` verdicts |

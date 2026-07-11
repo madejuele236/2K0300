@@ -2,8 +2,17 @@
 
 #include <cstdint>
 
-extern float LPF_Speed;
-extern int8_t run_flag;
-extern uint32_t fPS;
-extern int32_t it_time, encode_l_total, encode_r_total;
-extern int16_t encoder_abs;
+namespace primer::runtime {
+struct RuntimeTelemetry {
+    const int32_t &left_encoder_total;
+    const int32_t &right_encoder_total;
+    const int16_t &encoder_distance;
+};
+
+int8_t RunFlag();
+void SetRunFlag(int8_t value);
+int32_t LeftEncoderTotal();
+int32_t RightEncoderTotal();
+int16_t EncoderDistance();
+RuntimeTelemetry ObserveRuntimeTelemetry();
+}  // namespace primer::runtime

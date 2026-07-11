@@ -2,6 +2,6 @@
 
 #include "platform/camera/lq_camera_ex.hpp"
 
-// Runtime-owned camera instance.  The composition root defines it in the same
-// translation unit and relative order as the original image.cpp globals.
-extern lq_camera_ex cam;
+namespace primer::platform {
+lq_camera_ex &Camera();
+}  // namespace primer::platform

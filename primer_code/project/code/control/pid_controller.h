@@ -47,17 +47,17 @@ typedef struct{
         float expect_last;
 
 }Direction_PID;
-extern Direction_PID Image, Rate,Dis_1,speed_difference;
-extern PID Dis,picture_distance;//差速转向环
-extern PID Velocity;//速度环
-extern PID Velocity_L;//速度环
-extern PID Velocity_R;//速度环
-extern PID Groy_turn;
-extern PID Image_turn;
-extern int16_t speed_now_left,speed_now_right,speed_now,speed_last_left,speed_last_right,pos_goal,pos_now_left,pos_now_right,PWM_L,PWM_R,expect_angle;
-extern float Image_E1, Image_E2, v_left_target,v_right_target,speed_goal,speed_goal1;
-extern float Now_Speed, Kal_Now_Speed, Dis_Speed, Tpm_Dis, G_dis,last_G_dis,Master_Speed;//当前速度
-extern float V_out,V_out1,Image_out,Dis_Out,distance2,distance1;
+namespace primer::control {
+Direction_PID &ImageController();
+Direction_PID &DistanceController();
+PID &LeftVelocityController();
+PID &RightVelocityController();
+float MasterSpeed();
+float ImageOutput();
+float &MutableImageOutput();
+float CurrentSpeed();
+float DistanceOutput();
+}  // namespace primer::control
 float Pos_Cal(PID*pid_t,float expect,float feedback);
 float Inc_Cal(PID *pid_t, float expect, float feedback);
 void PID_Init(PID *pid, float p, float i, float d, float maxI, float maxOut,float K,float q,float f);

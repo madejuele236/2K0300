@@ -2,4 +2,6 @@
 
 #include "transport/ww_transmission.h"
 
-extern TransmissionStreamServer camera_server;
+namespace primer::transport {
+TransmissionStreamServer &CameraStreamServer();
+}  // namespace primer::transport

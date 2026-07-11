@@ -1,4 +1,5 @@
 #include "internal/vision_stage_contracts.hpp"
+#include "vision_queries.hpp"
 #include "zf_device_uvc.hpp"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
@@ -25,7 +26,6 @@ zf_device_uvc uvc_dev;//初始化摄像头对象
 uint8_t Image_Zip[LCDH_1][LCDW_1] = {0}; //压缩后的图像数组
 uint8_t Image_Use[LCDH_1][LCDW_1] = {0};//(经过大津法，膨胀，腐蚀后的)二值化的图像
 cv::VideoCapture cap;
-unsigned char Image_IFS[LCDH_1][LCDW_1];
 uint8_t Threshold = 0;  //大津法求出的阈值
 struct imageInformation imgInfo;
 struct YuanSu Flag;
@@ -33,7 +33,6 @@ cv::Mat frame, grayFrame, binaryFrame,resizedFrame,flippedFrame,translatedFrame,
 int roi_x_1= 0;
 int roi_y_1 = 0;
 int ROI_SIZE = 60;
-char txt[80];
 bool zf_init_flag = false;
 bool first_frame_logged = false;
 #define ENABLE_FIRST_FRAME_DEBUG     true
@@ -135,6 +134,47 @@ int real_distance_to_row(float distance) {
 
     return nearest_index;
 }
+
+namespace primer::vision {
+
+VisionControlFacts ObserveVisionControlFacts()
+{
+    return {Flag, imgInfo, L_h_guai, R_h_guai, real_distance,
+            Dir_err, D_ERR, jump_point};
+}
+
+VisionPresentationFacts ObserveVisionPresentationFacts()
+{
+    return {Image_Use, Left_Sideline, Right_Sideline, Mid_Line,
+            Flag, imgInfo, L_l_guai, L_h_guai, R_l_guai, R_h_guai,
+            L_h_guai1, R_h_guai1, real_distance, resizedFrame,
+            Dir_err, distance, Yaw_Huandao_err, black_ratio, jump_point,
+            maxlong_colume, long_max, jump_point1, picture_white,
+            picture_black, red_find_x, red_find_y};
+}
+
+int VisionDynamicForward()
+{
+    return forward1;
+}
+
+void SetVisionDynamicForward(int value)
+{
+    forward1 = value;
+}
+
+float VisionRoundaboutYaw()
+{
+    return Yaw_Huandao;
+}
+
+void SetVisionRoundaboutYawCorrection(float corrected_yaw, float yaw_error)
+{
+    yaw_correct = corrected_yaw;
+    Yaw_Huandao_err = yaw_error;
+}
+
+}  // namespace primer::vision
 
 void imgInfoInit(void)
 {

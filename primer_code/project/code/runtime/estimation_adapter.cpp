@@ -1,8 +1,9 @@
 #include "runtime/estimation_adapter.hpp"
 
 #include "estimation/imu_estimator_internal.hpp"
-#include "platform/device_platform.h"
+#include "platform/device_platform_internal.hpp"
 #include "vision/vision_facts.hpp"
+#include "vision/internal/legacy_vision_state.hpp"
 #include "zf_driver_delay.hpp"
 
 namespace {

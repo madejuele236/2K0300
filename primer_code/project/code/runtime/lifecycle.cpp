@@ -1,11 +1,11 @@
 #include "runtime/lifecycle.h"
 
-#include "control/pid_controller.h"
-#include "estimation/imu_estimator.h"
-#include "platform/camera/camera_service.hpp"
-#include "platform/device_platform.h"
+#include "control/pid_controller_internal.hpp"
+#include "estimation/imu_estimator_internal.hpp"
+#include "platform/camera/camera_service_internal.hpp"
+#include "platform/device_platform_internal.hpp"
 #include "runtime/estimation_adapter.hpp"
-#include "runtime/runtime_state.hpp"
+#include "runtime/runtime_state_internal.hpp"
 
 #include <csignal>
 #include <cstdio>

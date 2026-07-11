@@ -49,7 +49,10 @@ struct FlashInformation
     int debug_rgb_rg_diff;
 
 };
-extern struct FlashInformation Flash;
+namespace primer::parameters {
+const FlashInformation &CurrentParameters();
+FlashInformation &MutableParameters();
+}  // namespace primer::parameters
 
 void Param_Init(void);
 void Param_SaveSingle(const char* key, float value); // 注意：这里统一用 float 接收，整数会自动转小数

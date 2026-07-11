@@ -51,7 +51,16 @@ APPLICATION_HEADERS = {
     "ww_transmission.h",
 }
 
+EXPECTED_DEFINITION_OWNERS = {
+    r"^LQ_NCNN\s+classifier\s*;": "runtime/service_composition.cpp",
+    r"^TransmissionStreamServer\s+camera_server\s*;": "runtime/service_composition.cpp",
+    r"^lq_camera_ex\s+cam\s*\(": "runtime/service_composition.cpp",
+    r"^unsigned\s+char\s+Image_IFS\s*\[": "presentation/show.cpp",
+    r"^char\s+txt\s*\[": "presentation/show.cpp",
+}
+
 INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
+EXTERN_DECLARATION = re.compile(r'^\s*extern\s+', re.MULTILINE)
 
 
 def layer_of(path: pathlib.Path) -> str | None:
@@ -70,6 +79,15 @@ def resolve_include(source: pathlib.Path, include: str) -> pathlib.Path | None:
     if rooted.exists():
         return rooted
     return None
+
+
+def is_private_header(path: pathlib.Path) -> bool:
+    relative = path.resolve().relative_to(CODE.resolve())
+    return "internal" in relative.parts or "_internal" in path.name
+
+
+def is_public_layer_header(path: pathlib.Path) -> bool:
+    return path.suffix in {".h", ".hpp"} and not is_private_header(path)
 
 
 def main() -> int:
@@ -98,6 +116,34 @@ def main() -> int:
         if f"../code/{compatibility}" in cmake:
             failures.append(f"compatibility TU is incorrectly active in CMake: {compatibility}")
 
+    source_texts = {
+        path: path.read_text(encoding="utf-8")
+        for path in CODE.rglob("*.cpp")
+        if layer_of(path) is not None
+    }
+    for pattern, expected_owner in EXPECTED_DEFINITION_OWNERS.items():
+        owners = [
+            str(path.relative_to(CODE))
+            for path, text in source_texts.items()
+            if re.search(pattern, text, re.MULTILINE)
+        ]
+        if owners != [expected_owner]:
+            failures.append(
+                f"definition owner mismatch for /{pattern}/: "
+                f"expected {[expected_owner]}, found {owners}"
+            )
+
+    service_composition = source_texts.get(CODE / "runtime" / "service_composition.cpp", "")
+    service_order = [
+        service_composition.find("LQ_NCNN classifier;"),
+        service_composition.find("TransmissionStreamServer camera_server;"),
+        service_composition.find("lq_camera_ex cam("),
+    ]
+    if any(index < 0 for index in service_order) or service_order != sorted(service_order):
+        failures.append(
+            "runtime service composition does not preserve classifier -> server -> camera order"
+        )
+
     umbrella = UMBRELLA.read_text(encoding="utf-8")
     for header in sorted(APPLICATION_HEADERS):
         if re.search(rf'#\s*include\s+"{re.escape(header)}"', umbrella):
@@ -108,6 +154,13 @@ def main() -> int:
         for path in CODE.rglob("*")
         if path.suffix in {".cpp", ".h", ".hpp"} and layer_of(path) is not None
     ]
+    public_layer_headers = [path for path in layered_files if is_public_layer_header(path)]
+    for header in public_layer_headers:
+        if EXTERN_DECLARATION.search(header.read_text(encoding="utf-8")):
+            failures.append(
+                f"public layer header exposes legacy extern state: {header.relative_to(ROOT)}"
+            )
+
     for source in layered_files:
         text = source.read_text(encoding="utf-8")
         if '"zf_common_headfile.hpp"' in text:
@@ -118,7 +171,15 @@ def main() -> int:
                 continue
             source_layer = layer_of(source)
             target_layer = layer_of(target)
-            target_is_private = "internal" in target.relative_to(CODE).parts or "_internal" in target.name
+            target_is_private = is_private_header(target)
+            if (
+                is_public_layer_header(source)
+                and target_is_private
+            ):
+                failures.append(
+                    f"public layer header reaches private implementation: "
+                    f"{source.relative_to(ROOT)} -> {target.relative_to(ROOT)}"
+                )
             if (
                 target_is_private
                 and target_layer is not None
@@ -191,12 +252,16 @@ def main() -> int:
     print(f"active layered sources: {len(active_sources)}")
     print(f"explicit CMake application sources: {len(cmake_sources)}")
     print(f"layered headers/sources scanned: {len(layered_files)}")
+    print(f"public layer headers scanned: {len(public_layer_headers)}")
     if failures:
         print("architecture failures:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("PASS: explicit source ownership, pure vision facts, private-header, and umbrella boundaries hold")
+    print(
+        "PASS: explicit source ownership, public API, pure vision facts, "
+        "private-header, and umbrella boundaries hold"
+    )
     return 0
 
 

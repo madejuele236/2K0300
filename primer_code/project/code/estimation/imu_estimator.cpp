@@ -161,6 +161,20 @@ float imu_gyro_z_val=0;
 float param_Kp = 0.17f;
 float param_Ki = 0.004f;//
 
+namespace primer::estimation {
+const icm_param_t &CurrentImuEstimate()
+{
+    return icm_data;
+}
+
+void SetRawGyroscope(int16 x, int16 y, int16 z)
+{
+    imu660ra_gyro_x = x;
+    imu660ra_gyro_y = y;
+    imu660ra_gyro_z = z;
+}
+}  // namespace primer::estimation
+
 
 float fast_sqrt(float x)
 {

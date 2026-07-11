@@ -2,4 +2,6 @@
 
 #include "inference/lq_ncnn.hpp"
 
-extern LQ_NCNN classifier;
+namespace primer::inference {
+LQ_NCNN &Classifier();
+}  // namespace primer::inference
