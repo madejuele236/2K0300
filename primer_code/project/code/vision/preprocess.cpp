@@ -174,12 +174,11 @@ void my_sobel(unsigned char imageIn[LCDH_1][LCDW_1], unsigned char imageOut[LCDH
 
 void my_sobel_dajin(unsigned char imageIn[LCDH_1][LCDW_1], unsigned char imageOut[LCDH_1][LCDW_1])
 {
-
-    //    if(run_flag==0){
-        Threshold = Threshold_deal(Image_Use, LCDW_1, LCDH_1);
-//    }
-  if (Threshold < Threshold_static)
-    Threshold = (uint8)Threshold_static;
+    Threshold = Threshold_deal(Image_Use, LCDW_1, LCDH_1);
+    if (Threshold < Threshold_static)
+    {
+        Threshold = (uint8)Threshold_static;
+    }
 
     short KERNEL_SIZE = 3;
     short xStart = KERNEL_SIZE / 2;
@@ -188,11 +187,9 @@ void my_sobel_dajin(unsigned char imageIn[LCDH_1][LCDW_1], unsigned char imageOu
     short yEnd = LCDH_1 - KERNEL_SIZE / 2;
     short i, j;
     short temp[2];
-    short temp1 ,temp2 ;
-    //for(i = 0; i < Compress_H; i++)//算的更慢不过对比了全局图像
+    short temp1;
     for (i = yStart; i < yEnd; i++)   //有点的跳跃
        {
-           //for(j = 0; j < Compress_W; j++)//算的更慢不过对比了全局图像
            for (j = xStart; j < xEnd; j++)  //有点的跳跃
            {
                /* 计算不同方向梯度幅值  */

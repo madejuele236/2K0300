@@ -27,26 +27,3 @@ extern int resize_cx, resize_cy;
 int real_distance_to_row(float distance);
 float xielv_sideline(int x1, int y1, int x2, int y2, char data);
 void DetectRedBlock(cv::Mat &src, int roi_x, int roi_y, int width, int height);
-
-struct LegacyEscBinding {
-    void set_duty(int duty) const { primer::port::SetVisionEscDuty(duty); }
-};
-
-struct LegacyRunFlagBinding {
-    LegacyRunFlagBinding &operator=(int8_t value)
-    {
-        primer::port::SetVisionRunMode(value);
-        return *this;
-    }
-};
-
-struct LegacyDistanceRawBinding {
-    operator int16_t() const { return primer::port::VisionDistanceRaw(); }
-};
-
-static constexpr LegacyEscBinding esc_pwm{};
-static LegacyRunFlagBinding run_flag{};
-static constexpr LegacyDistanceRawBinding dl1x_distance_raw{};
-
-#define encoder_L (primer::port::VisionLeftEncoder())
-#define encoder_R (primer::port::VisionRightEncoder())

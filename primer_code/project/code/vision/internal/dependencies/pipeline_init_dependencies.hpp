@@ -8,7 +8,3 @@ extern cv::Mat binaryFrame;
 extern cv::Mat resizedFrame;
 extern cv::Mat translatedFrame;
 extern cv::Mat translationMatrix;
-
-#define classifier (primer::port::VisionClassifier())
-#define camera_server (primer::port::VisionStream())
-#define cam (primer::port::VisionCamera())

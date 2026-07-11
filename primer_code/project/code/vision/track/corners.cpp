@@ -3,7 +3,9 @@
 struct Guaidian L_l_guai, L_h_guai, R_l_guai, R_h_guai;  //拐点信息结构体
 int Guai_row = 0;
 
-void Find_Guaidian(void)
+namespace {
+
+void ResetPrimaryCorners(void)
 {
     L_l_guai.flag = 0;
     L_h_guai.flag = 0;
@@ -15,7 +17,10 @@ void Find_Guaidian(void)
         L_l_guai.row = LCDH_1 - 1;
     if(R_l_guai.flag == 0)
         R_l_guai.row = LCDH_1 - 1;
+}
 
+void ScanPrimaryUpperCorners(void)
+{
     //找左上，右上拐点
     for(int i = imgInfo.top + 2; i <= imgInfo.bottom - 5; i++)
     {
@@ -127,10 +132,10 @@ void Find_Guaidian(void)
         }
 
     }
+}
 
-
-//    else if(Mode_1)
-//    {
+void ScanPrimaryLowerCorners(void)
+{
         //找左下，右下拐点
         for(int i = imgInfo.bottom - 3; i >= imgInfo.top + 3 && Flag.Huandao_L != 3 && Flag.Huandao_R != 3; i--)
         {
@@ -218,8 +223,10 @@ void Find_Guaidian(void)
 //                    break;
             }
         }
+}
 
-//    }
+void ApplyPrimaryRoundaboutOverrides(void)
+{
 int l_guai_max=0,r_guai_max=93;//,l_guai_line,r_guai_line
 if(Flag.Huandao_R == 4)
 {
@@ -249,16 +256,22 @@ if(Flag.Huandao_L == 4)
                 R_l_guai.column = (uint8)Right_Sideline[R_l_guai.row]-3;
                 R_l_guai.flag = 1;
 }
-        // for(int i = imgInfo.bottom - 3; i >= imgInfo.top + 3 && Flag.Huandao_L != 3 && Flag.Huandao_R != 3; i--)
-
-
-
 }
 
+}  // namespace
 
-void Find_Guaidian1(void)
+void Find_Guaidian(void)
 {
-                        // printf("Fla:%d\n", white_width[37 + 2] - white_width[37 - 0]);
+    ResetPrimaryCorners();
+    ScanPrimaryUpperCorners();
+    ScanPrimaryLowerCorners();
+    ApplyPrimaryRoundaboutOverrides();
+}
+
+namespace {
+
+void ResetSecondaryCorners(void)
+{
     L_l_guai.flag = 0;
     L_h_guai.flag = 0;
     R_l_guai.flag = 0;
@@ -269,7 +282,10 @@ void Find_Guaidian1(void)
         L_l_guai.row = LCDH_1 - 1;
     if(R_l_guai.flag == 0)
         R_l_guai.row = LCDH_1 - 1;
+}
 
+void ScanSecondaryUpperCorners(void)
+{
     //找左上，右上拐点
     for(int i = imgInfo.top + 2; i <= imgInfo.bottom - 5; i++)
     {
@@ -381,10 +397,10 @@ void Find_Guaidian1(void)
         }
 
     }
+}
 
-
-//    else if(Mode_1)
-//    {
+void ScanSecondaryLowerCorners(void)
+{
         //找左下，右下拐点
         for(int i = imgInfo.bottom - 3; i >= imgInfo.top + 3 && Flag.Huandao_L != 3 && Flag.Huandao_R != 3; i--)
         {
@@ -472,8 +488,10 @@ void Find_Guaidian1(void)
 //                    break;
             }
         }
+}
 
-//    }
+void ApplySecondaryRoundaboutOverrides(void)
+{
 int l_guai_max=0,r_guai_max=93;//,l_guai_line,r_guai_line
 if(Flag.Huandao_R == 4)
 {
@@ -503,12 +521,17 @@ if(Flag.Huandao_L == 4)
                 R_l_guai.column = (uint8)Right_Sideline[R_l_guai.row]-3;
                 R_l_guai.flag = 1;
 }
-        // for(int i = imgInfo.bottom - 3; i >= imgInfo.top + 3 && Flag.Huandao_L != 3 && Flag.Huandao_R != 3; i--)
-
-
-
 }
 
+}  // namespace
+
+void Find_Guaidian1(void)
+{
+    ResetSecondaryCorners();
+    ScanSecondaryUpperCorners();
+    ScanSecondaryLowerCorners();
+    ApplySecondaryRoundaboutOverrides();
+}
 
 struct Guaidian  L_h_guai1,  R_h_guai1;  //拐点信息结构体
 
@@ -629,4 +652,3 @@ void Find_r_h_Guaidian(void)
 
     }
 }
-

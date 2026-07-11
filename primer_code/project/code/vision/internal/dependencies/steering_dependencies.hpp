@@ -12,19 +12,3 @@ extern float curvature;
 extern float B;
 extern float A;
 extern uint16_t maxkuan_line;
-
-inline float Image_PID_Calculate(
-    primer::port::VisionDirectionControllerPort *controller, float expect,
-    float feedback)
-{
-    return primer::port::CalculateVisionDirection(controller, expect, feedback);
-}
-
-struct SteeringMasterSpeedBinding {
-    operator float() const { return primer::port::VisionMasterSpeed(); }
-};
-
-static constexpr SteeringMasterSpeedBinding Master_Speed{};
-
-#define Image (primer::port::VisionDirectionController())
-#define Image_out (primer::port::MutableVisionImageOutput())

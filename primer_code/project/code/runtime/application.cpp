@@ -43,97 +43,62 @@ static inline void SamplePeriodicInputs()
     distance_judge();
 }
 
+static inline void ConfigureActiveDriveGoal()
+{
+    primer::vision::SetVisionDynamicForward(41-primer::control::AccessRuntimeControlState().master_speed/20);
+    primer::vision::SetVisionDynamicForward(30-primer::control::AccessRuntimeControlState().master_speed/60);
+    primer::control::AccessRuntimeControlState().speed_goal=10*65;
+    if(primer::vision::ObserveVisionControlLiveView().elements.picture==2)
+    {
+        primer::control::AccessRuntimeControlState().speed_goal=100;
+    }
+    if(primer::vision::ObserveVisionControlLiveView().elements.ramp==2)
+    {
+        primer::control::AccessRuntimeControlState().speed_goal=150;
+    }
+}
+
+static inline void UpdateActiveDistanceOutput()
+{
+    primer::control::AccessRuntimeControlState().distance_output = Dis_PID_Calculate(&primer::control::AccessRuntimeControlState().distance_controller,-primer::control::AccessRuntimeControlState().image_output,primer::control::AccessRuntimeControlState().distance_speed);
+}
+
+static inline void UpdateActiveVelocityTargets()
+{
+    float K_turn=2.0;
+
+    if(primer::control::AccessRuntimeControlState().distance_output>0)
+    {
+        primer::control::AccessRuntimeControlState().right_velocity_target=primer::control::AccessRuntimeControlState().speed_goal-primer::control::AccessRuntimeControlState().distance_output*K_turn;
+        primer::control::AccessRuntimeControlState().left_velocity_target=primer::control::AccessRuntimeControlState().speed_goal+primer::control::AccessRuntimeControlState().distance_output*(2-K_turn);
+    }
+    if(primer::control::AccessRuntimeControlState().distance_output<=0)
+    {
+        primer::control::AccessRuntimeControlState().right_velocity_target=primer::control::AccessRuntimeControlState().speed_goal-primer::control::AccessRuntimeControlState().distance_output*(2-K_turn);
+        primer::control::AccessRuntimeControlState().left_velocity_target=primer::control::AccessRuntimeControlState().speed_goal+primer::control::AccessRuntimeControlState().distance_output*K_turn;
+    }
+}
+
+static inline void UpdateActiveWheelPwm()
+{
+    primer::control::AccessRuntimeControlState().right_pwm = Speed_PID_Cal(&primer::control::AccessRuntimeControlState().right_velocity_controller,primer::control::AccessRuntimeControlState().right_velocity_target,primer::platform::RightEncoder().speed)+primer::vision::ObserveVisionControlLiveView().steering_difference_error*0+0* (primer::platform::LeftEncoder().D_speed - primer::platform::RightEncoder().D_speed)+0*primer::control::AccessRuntimeControlState().distance_controller.Integral;
+    primer::control::AccessRuntimeControlState().left_pwm = Speed_PID_Cal(&primer::control::AccessRuntimeControlState().left_velocity_controller,primer::control::AccessRuntimeControlState().left_velocity_target,primer::platform::LeftEncoder().speed)-primer::vision::ObserveVisionControlLiveView().steering_difference_error*0-0* (primer::platform::LeftEncoder().D_speed - primer::platform::RightEncoder().D_speed)-0*primer::control::AccessRuntimeControlState().distance_controller.Integral;
+}
+
+static inline void ApplyActiveWheelPwm()
+{
+    set_pwm(primer::control::AccessRuntimeControlState().left_pwm,primer::control::AccessRuntimeControlState().right_pwm);
+}
+
 static inline void ApplyActiveDriveCycle()
 {
-    // run_flag=1;
     if(primer::runtime::RunFlag()==1)
-    {   //33100/2 16550         15*35
-        // forward1 = 39-Now_Speed/20;//23
-        // forward1 = 34-Master_Speed/40;//23
-        primer::vision::SetVisionDynamicForward(41-primer::control::AccessRuntimeControlState().master_speed/20);//23
-        primer::vision::SetVisionDynamicForward(30-primer::control::AccessRuntimeControlState().master_speed/60);//23
-        // forward1 = 35;//23
-    //    forward1 = 32;
-        primer::control::AccessRuntimeControlState().speed_goal=10*65;
-    //      Image.Kp=3.5*(0.2143*imgInfo.top+0.4286);
-    //  if(Image.Kp<=1.3)Image.Kp=1.3;
-    //  if(Image.Kp>=3.5)Image.Kp=3.5;
-    //   //  speed_goal=10*30;
-        // if(Flag.picture==2)speed_goal=50;
-    //   if(Flag.picture==2&&real_distance[MAX(R_h_guai.row,L_h_guai.row)]>50)speed_goal=(real_distance[MAX(R_h_guai.row,L_h_guai.row)]-25)*9;
-      if(primer::vision::ObserveVisionControlLiveView().elements.picture==2)
-      {
-             primer::control::AccessRuntimeControlState().speed_goal=100;
-    //     if(real_distance[MAX(R_h_guai.row,L_h_guai.row)]<recognize_distance2)
-    //     {
-    //   Pos_Cal(&picture_distance,recognize_distance2,real_distance[MAX(R_h_guai.row,L_h_guai.row)]);
-    //   speed_goal=picture_distance.output;
-    //     }
-
-      }
-
-
-        if(primer::vision::ObserveVisionControlLiveView().elements.ramp==2)
-        primer::control::AccessRuntimeControlState().speed_goal=150;
-
-
-
-
-       int speed_add;
-
-    //     //printf("pit!\n");
-        // if(imgInfo.top<=12&&Flag.Huandao_L==0&&Flag.Huandao_R==0)
-        // {
-        //     speed_add=(real_distance[imgInfo.top]-100)*0.6;
-
-        //     if(speed_add>=0)
-        //     speed_goal+=speed_add;
-
-        // }
-
-
-
-       primer::control::AccessRuntimeControlState().distance_output = Dis_PID_Calculate(&primer::control::AccessRuntimeControlState().distance_controller,-primer::control::AccessRuntimeControlState().image_output,primer::control::AccessRuntimeControlState().distance_speed); //- 100*(Image.Error - Image.Last_Error);//角速度环icm_data.gyro_z * K+ 400*(Image->Error - Image->Last_Error
-
-
-
-    //    float K_turn=2;
-    //     V_out=Speed_PID_Cal(&Velocity,speed_goal,MAX(encoder_L.speed,encoder_R.speed));
-
-    //    if(Dis_Out>0)
-    //  {
-    //        PWM_R=V_out-Dis_Out*K_turn;//
-    //        PWM_L=V_out+Dis_Out*(2-K_turn);//
-    //  }
-    //    if(Dis_Out<=0)
-    //  {
-    //        PWM_R=V_out-Dis_Out*(2-K_turn);//
-    //        PWM_L=V_out+Dis_Out*K_turn;//
-    //  }
-
-       float K_turn=2.0;//
-
-       if(primer::control::AccessRuntimeControlState().distance_output>0)
-     {
-           primer::control::AccessRuntimeControlState().right_velocity_target=primer::control::AccessRuntimeControlState().speed_goal-primer::control::AccessRuntimeControlState().distance_output*K_turn;//
-           primer::control::AccessRuntimeControlState().left_velocity_target=primer::control::AccessRuntimeControlState().speed_goal+primer::control::AccessRuntimeControlState().distance_output*(2-K_turn);//
-     }
-       if(primer::control::AccessRuntimeControlState().distance_output<=0)
-     {
-           primer::control::AccessRuntimeControlState().right_velocity_target=primer::control::AccessRuntimeControlState().speed_goal-primer::control::AccessRuntimeControlState().distance_output*(2-K_turn);//
-           primer::control::AccessRuntimeControlState().left_velocity_target=primer::control::AccessRuntimeControlState().speed_goal+primer::control::AccessRuntimeControlState().distance_output*K_turn;//S
-     }
-        primer::control::AccessRuntimeControlState().right_pwm = Speed_PID_Cal(&primer::control::AccessRuntimeControlState().right_velocity_controller,primer::control::AccessRuntimeControlState().right_velocity_target,primer::platform::RightEncoder().speed)+primer::vision::ObserveVisionControlLiveView().steering_difference_error*0+0* (primer::platform::LeftEncoder().D_speed - primer::platform::RightEncoder().D_speed)+0*primer::control::AccessRuntimeControlState().distance_controller.Integral;//
-        primer::control::AccessRuntimeControlState().left_pwm = Speed_PID_Cal(&primer::control::AccessRuntimeControlState().left_velocity_controller,primer::control::AccessRuntimeControlState().left_velocity_target,primer::platform::LeftEncoder().speed)-primer::vision::ObserveVisionControlLiveView().steering_difference_error*0-0* (primer::platform::LeftEncoder().D_speed - primer::platform::RightEncoder().D_speed)-0*primer::control::AccessRuntimeControlState().distance_controller.Integral;//
-
-
-        set_pwm(primer::control::AccessRuntimeControlState().left_pwm,primer::control::AccessRuntimeControlState().right_pwm);
-        //printf("Yaw:%f\n",icm_data.yaw);
-    //set_pwm(1000,1000);
-    //    sprintf((char*)Tcp_buffer,"%d,%f,%f,%f\n",(encoder_L.count_now - encoder_R.count_now),Tpm_Dis,G_dis,Dis_Speed);
-    //   sprintf((char*)Tcp_buffer,"%f,%.1f,%f,%f,%f,%f,%f,%f\n",speed_goal,Now_Speed,Dir_err,-Image_out,Dis_Out,Dis_Speed,Tpm_Dis,G_dis);
-    //    sprintf((char*)Tcp_buffer,"%f,%f,%f,%f,%f,%f\n",Image_out,Dis_Out,v_right_target,encoder_R.speed,v_left_target,encoder_L.speed);
-    //  tcp_client_dev.send_data(Tcp_buffer,strlen((char*)Tcp_buffer));
+    {
+        ConfigureActiveDriveGoal();
+        UpdateActiveDistanceOutput();
+        UpdateActiveVelocityTargets();
+        UpdateActiveWheelPwm();
+        ApplyActiveWheelPwm();
     }
 }
 

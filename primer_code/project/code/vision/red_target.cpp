@@ -15,6 +15,124 @@ int red_points_num;
 int alpha = 0.1;
 cv::Point center(-1,-1);
 cv::Point last_center(-1,-1);
+
+namespace {
+
+static inline void CollectRedThresholdPoints(cv::Mat &roi_src, cv::Mat &mask,
+                                             long long &sum_x, long long &sum_y)
+{
+    for (int y = 0; y < roi_src.rows; ++y)
+    {
+        const cv::Vec3b* src_ptr = roi_src.ptr<cv::Vec3b>(y);
+        uchar* mask_ptr = mask.ptr<uchar>(y);
+        for (int x = 0; x < roi_src.cols; ++x)
+        {
+            int b = src_ptr[x][0];
+            int g = src_ptr[x][1];
+            int r = src_ptr[x][2];
+            if (r > primer::port::VisionParameters().debug_rgb_r_min && (r - g) > primer::port::VisionParameters().debug_rgb_rg_diff && (r - b) > primer::port::VisionParameters().debug_rgb_rb_diff){
+                red_points_num++;
+                sum_x += x;
+                sum_y += y;
+                mask_ptr[x] = 255;
+            }
+            else{
+                mask_ptr[x] = 0;
+            }
+        }
+    }
+}
+
+static inline bool UpdateRedCenter(long long sum_x, long long sum_y, int roi_x, int roi_y)
+{
+    if (red_points_num >= 5)
+    {
+        int cx = sum_x / red_points_num;
+        int cy = sum_y / red_points_num;
+        resize_cx = cx + roi_x;
+        resize_cy = cy + roi_y;
+        if(resize_cx*3.4>320) return false;
+        if(resize_cy*4>240) return false;
+        center= cv::Point((resize_cx)*3.4, (resize_cy)*4);
+        if(last_center != cv::Point(-1, -1))
+        {
+            int dx = center.x - last_center.x;
+            int dy = center.y - last_center.y;
+            double dist = sqrt(dx * dx + dy * dy);
+            if(dist<16)
+            {
+                center = last_center;
+            }
+        }
+        last_center = center;
+        red_area = red_points_num;
+        red_objects.push_back({center,red_area});
+    }
+    else{
+        center = cv::Point(-1,-1);
+        last_center = cv::Point(-1,-1);
+        resize_cx = 0;
+        resize_cy = 0;
+    }
+    return true;
+}
+
+static inline void InferRedObjectClass(cv::Rect &roi_rect)
+{
+    if(!red_objects.empty()&&Flag.infer ==1)
+    {
+        auto &obj = red_objects[0];
+        if (obj.center.x < 0 || obj.center.y < 0 ||
+            obj.center.x >= lq_frame.cols || obj.center.y >= lq_frame.rows||obj.center.y < 0||obj.center.x < 0)
+        {
+            return;
+        }
+        if(!GenerateROI(obj.center, roi_rect, lq_frame)){
+            return;
+        }
+        if (roi_rect.x < 0 || roi_rect.y < 0 || roi_rect.width <= 0 || roi_rect.height <= 0 ||
+            roi_rect.x + roi_rect.width > lq_frame.cols || roi_rect.y + roi_rect.height > lq_frame.rows)
+        {
+            std::cout << "BAD ROI: " << roi_rect << " | img: "
+                      << lq_frame.cols << "x" << lq_frame.rows << std::endl;
+            return;
+        }
+        cv::Mat roi_img = lq_frame(roi_rect);
+        if(roi_img.empty()||roi_img.rows<=0||roi_img.cols<=0)
+        {
+            return;
+        }
+        float confidence;
+        auto start_time = std::chrono::high_resolution_clock::now();
+        real_picture_distance=real_distance[MAX(L_h_guai.row,R_h_guai.row)];
+        printf("real_picture_distance:%f\n",real_picture_distance);
+        std::string result = primer::port::VisionClassifier().Infer(roi_img,confidence);
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> elapsed_ms = end_time - start_time;
+        printf("检测结果:%s, 置信度: %.1f,推理耗时: %.2f ms\n",result.c_str(),confidence,elapsed_ms.count());
+        if(result == "supply" && confidence>40)
+        {
+            Flag.supply++;
+            Flag.weapon = 0;
+            Flag.vehicle = 0;
+        }
+        if(result == "weapon" && confidence>40)
+        {
+            Flag.supply = 0;
+            Flag.weapon++;
+            Flag.vehicle = 0;
+        }
+        if(result == "vehicle" && confidence>40)
+        {
+            Flag.supply = 0;
+            Flag.weapon = 0;
+            Flag.vehicle++;
+        }
+    }
+}
+
+}  // namespace
+
  void DetectRedBlock(cv::Mat &src,int roi_x,int roi_y,int width,int height)
 {
     red_objects.clear();//先清元素
@@ -38,134 +156,9 @@ cv::Point last_center(-1,-1);
     mask.create(roi_src.size(), CV_8UC1);
 
 
-    for (int y = 0; y < roi_src.rows; ++y)
-    {
-        const cv::Vec3b* src_ptr = roi_src.ptr<cv::Vec3b>(y);
-        uchar* mask_ptr = mask.ptr<uchar>(y);
-
-        for (int x = 0; x < roi_src.cols; ++x)
-        {
-            int b = src_ptr[x][0];
-            int g = src_ptr[x][1];
-            int r = src_ptr[x][2];
-
-            if (r > Flash.debug_rgb_r_min && (r - g) > Flash.debug_rgb_rg_diff && (r - b) > Flash.debug_rgb_rb_diff){
-                red_points_num++;
-                sum_x += x;
-                sum_y += y;
-                mask_ptr[x] = 255;
-            }
-            else{
-                mask_ptr[x] = 0;
-            }
-        }
-    }
-
-
-if (red_points_num >= 5)
-    {
-        int cx = sum_x / red_points_num;
-        int cy = sum_y / red_points_num;
-
-        resize_cx = cx + roi_x;
-        resize_cy = cy + roi_y;
-        // 映射到原图坐标
-        if(resize_cx*3.4>320) return;
-        if(resize_cy*4>240) return;
-        center= cv::Point((resize_cx)*3.4, (resize_cy)*4);//修改1
-
-        if(last_center != cv::Point(-1, -1))
-        {
-            int dx = center.x - last_center.x;
-            int dy = center.y - last_center.y;
-            double dist = sqrt(dx * dx + dy * dy);
-            // if(dist>80){
-            //     printf("本帧无效\n");
-            //     return;
-            // }
-            if(dist<16)
-            {
-                center = last_center;
-            }
-        }
-        last_center = center;
-        red_area = red_points_num;
-        red_objects.push_back({center,red_area});
-
-        // 可选：画点
-        //cv::circle(lq_frame, center, 3, cv::Scalar(0, 255, 0), -1);
-        //printf("检测到红色块\n");
-       // printf("Red Center: (%d, %d), Area: %d,red_points_num: %d, sum_x:%d\n",center.x, center.y, red_area,red_points_num,sum_x);
-    }
-    else{
-        center = cv::Point(-1,-1);
-        last_center = cv::Point(-1,-1);
-        resize_cx = 0;
-        resize_cy = 0;
-    }
-
-    if(!red_objects.empty()&&Flag.infer ==1)
-    {
-   auto &obj = red_objects[0];
-
-        if (obj.center.x < 0 || obj.center.y < 0 ||
-        obj.center.x >= lq_frame.cols || obj.center.y >= lq_frame.rows||obj.center.y < 0||obj.center.x < 0)
-        {
-        return;
-        }
-
-        if(!GenerateROI(obj.center, roi_rect, lq_frame)){
-            return;
-        }
-        if (roi_rect.x < 0 || roi_rect.y < 0 ||
-            roi_rect.width <= 0 || roi_rect.height <= 0 ||
-            roi_rect.x + roi_rect.width > lq_frame.cols ||
-            roi_rect.y + roi_rect.height > lq_frame.rows)
-        {
-                std::cout << "BAD ROI: "
-              << roi_rect << " | img: "
-              << lq_frame.cols << "x"
-              << lq_frame.rows << std::endl;
-                return;
-        }
-            cv::Mat roi_img = lq_frame(roi_rect);//截图送入模型
-              if(roi_img.empty()||roi_img.rows<=0||roi_img.cols<=0)
-                 {
-                    return;
-                 }
-                // cv::rectangle(lq_frame, roi_rect, cv::Scalar(255, 0, 0), 1);
-                 float confidence;
-                 auto start_time = std::chrono::high_resolution_clock::now();
-
-                 real_picture_distance=real_distance[MAX(L_h_guai.row,R_h_guai.row)];
-                 printf("real_picture_distance:%f\n",real_picture_distance);
-
-                 std::string result = classifier.Infer(roi_img,confidence);
-                auto end_time = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double, std::milli> elapsed_ms = end_time - start_time;
-                 printf("检测结果:%s, 置信度: %.1f,推理耗时: %.2f ms\n",result.c_str(),confidence,elapsed_ms.count());
-
-
-                if(result == "supply" && confidence>40)
-                {
-                    Flag.supply++;
-                    Flag.weapon = 0;
-                    Flag.vehicle = 0;
-                }
-                if(result == "weapon" && confidence>40)
-                {
-                    Flag.supply = 0;
-                    Flag.weapon++;
-                    Flag.vehicle = 0;
-                }
-                if(result == "vehicle" && confidence>40)
-                {
-                    Flag.supply = 0;
-                    Flag.weapon = 0;
-                    Flag.vehicle++;
-                }
-
-    }
+    CollectRedThresholdPoints(roi_src, mask, sum_x, sum_y);
+    if(!UpdateRedCenter(sum_x, sum_y, roi_x, roi_y)) return;
+    InferRedObjectClass(roi_rect);
 
 }
 
@@ -216,6 +209,7 @@ ClassType GetClassID(const std::string &cls){
 ClassType id;
 
 #define SEARCH_BOTTOM_RATIO          1.0f   // 1.0=全图搜索；0.5=只搜下半部分
+#undef MIN_RED_AREA
 #define MIN_RED_AREA                 40     // 最小红块面积
 
 // HSV 红色阈值
@@ -277,11 +271,6 @@ static inline int clamp_int(int v, int low, int high)
 
     mask = mask1 | mask2;
 
-    // 开闭运算去噪         打开后会降低图像帧率 20帧左右
-    // static cv::Mat kernel = getStructuringElement(MORPH_RECT, Size(3, 3));
-    // cv::morphologyEx(mask, mask, MORPH_OPEN, kernel);
-    // cv::morphologyEx(mask, mask, MORPH_CLOSE, kernel);
-
     // 查找轮廓
     std::vector<std::vector<Point>> contours;
     cv::findContours(mask, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
@@ -317,8 +306,6 @@ static inline int clamp_int(int v, int low, int high)
     int cx = red_cx + ROI_OFFSET_X;
     int cy = red_cy + ROI_OFFSET_Y;
     roi_center = Point(cx, cy);// ROI中心点
-    //printf("cx:%d,cy:%d\n",cx,cy);
-
     roix1 = cx - MODEL_INPUT_WIDTH / 2;
     roiy1 = cy - MODEL_INPUT_HEIGHT / 2;
 
@@ -338,47 +325,3 @@ static inline int clamp_int(int v, int low, int high)
 
     return true;
 }
-
-
-
-//绕行阶段 转角 直行 回线
-// void avoid_process()
-// {
-//     if(Flag.picture == 0||Flag.picture == 4)
-//     {
-//         Flag.picture = 0;
-//         return;
-//     }
-//     //右行
-//     if(Flag.picture == 2)
-//     {
-//         //encoder_abs 已经开始累加
-//         if(!picture_yaw_init)
-//         {
-//             picture_yaw_init = true;
-//             Yaw_picture = icm_data.yaw;//记录当前的yaw值
-//             encoder_val = encoder_abs;//记录初始的编码器位置
-//             Yaw_picture_target = -25.0f;//目标偏差值
-//         }
-//         float current_distance = encoder_abs - encoder_val;
-//         //转向阶段
-//         if(current_distance<=4000)
-//         {   //printf("开始转弯\n");
-//             Yaw_picture_target = -25.0f*(current_distance/4000);
-//         }
-//         //保持最大偏向角直行
-//         else if(4000<current_distance<=6000)
-//         {  // printf("开始直行\n");
-//             Yaw_picture_target = -25.0f;
-//         }
-//         //回线阶段 回线阶段的误差不对
-//         else if(6000<current_distance<=9000)
-//         {   //printf("开始回线\n");
-//             Yaw_picture_target = -25.0f+25.0f*(current_distance-6000)/3000;
-//         }
-//         Yaw_picture_diff = Yaw_correct(icm_data.yaw,Yaw_picture);//实际偏差值
-//         Yaw_picture_err = Yaw_picture_target - Yaw_picture_diff;//陀螺仪的纠正值
-//         Dir_err=Yaw_picture_err;
-
-//     }
-// }

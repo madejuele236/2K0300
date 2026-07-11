@@ -9,5 +9,3 @@ extern imageInformation imgInfo;
 extern cv::Mat lq_frame;
 extern cv::Mat grayFrame;
 extern cv::Mat resizedFrame;
-
-#define cam (primer::port::VisionCamera())

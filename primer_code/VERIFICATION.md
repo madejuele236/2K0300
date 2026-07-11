@@ -38,8 +38,8 @@ against equivalent board, camera, model, parameter, and timing conditions.
 
 ## Integrated refactor result
 
-- Static function comparison: 102 baseline functions discovered; 98 remain
-  token-identical after relocation and four orchestration entries are proven
+- Static function comparison: 102 baseline functions discovered; 87 remain
+  token-identical after relocation and 15 orchestration entries are proven
   by exact wrapper skeletons, allowlisted recursive stage expansion, fixed-use
   owner-API canonicalization, and final token equality with their baseline
   bodies.
@@ -49,7 +49,7 @@ against equivalent board, camera, model, parameter, and timing conditions.
   The parser counts are fixed baseline invariants, so a reduced parser surface
   fails rather than producing a vacuous pass.
 - Architecture scan: 39 layered application sources exactly match the 39
-  explicit CMake entries; 101 layered headers/sources, 29 public layer headers,
+  explicit CMake entries; 102 layered headers/sources, 29 public layer headers,
   and 16 one-to-one vision dependency headers satisfy the façade,
   no-public-`extern`/generic-macro, mutually-unaware non-runtime owner,
   port-purity, no-pre-main owner-query, expression-macro include-order,
@@ -61,15 +61,18 @@ against equivalent board, camera, model, parameter, and timing conditions.
   expressions; baseline and refactor block SHA-256 are both
   `dc6729f465c4ed9673df4ea13f67efe2bac3f8994d7ccba7d4154e105f158c8c`.
 - Refactored clean configure/build/link: PASS from the previously nonexistent
-  `.codex-build/primer-final-review-3` directory, using the same LoongArch GNU
+  `.codex-build/primer-final-review-5` directory, using the same LoongArch GNU
   8.3.0 toolchain and OpenCV 4.10 installation as the baseline.
-- Warning profile: the refactored build reproduces the baseline warnings listed
-  above at their new owner locations; it introduces no new compiler warning.
+- Warning profile: the clean refactored build emits only the two baseline
+  mutually-exclusive `small_rock` predicate warnings.  Explicit `#undef`,
+  single-statement braces, and removal of the inert `speed_add`/`temp2`
+  declarations eliminate the other baseline diagnostics without changing an
+  active formula, branch, call, or side effect.
 - ABI surface: all 2,143 globally defined baseline symbols remain present; the
   refactored binary has 2,264 definitions, with the additions belonging to the
   new orchestration and private presentation-stage boundaries.
 - Refactored executable SHA-256:
-  `e28b004bdcce2e506d471ca787045f107c1d5bd3db534d7307580f9e7f58aeec`.
+  `37735a74775a4d42b2f69c3df2e978871818bb006c82786a9c30affd00406255`.
 - `git diff --check`: PASS.
 
 These checks establish source-level and link-level preservation.  Board,

@@ -1,13 +1,19 @@
 #include "../internal/dependencies/roundabout_dependencies.hpp"
 #include <cstdlib>
-float Yaw_Huandao,Yaw_Huandao_err,yaw_correct,distance_HUAN1;//1m=35000
+float Yaw_Huandao,Yaw_Huandao_err,yaw_correct,distance_HUAN1;
 
-void Huandao_L_imu()
+namespace {
+
+static inline void CorrectLeftRoundaboutYaw()
 {
     if(Flag.Huandao_L >1)
     {
-    huandao_yaw_correct();
+    primer::port::CorrectRoundaboutYaw();
     }
+}
+
+static inline void DetectLeftRoundabout()
+{
     if(Flag.Huandao_L == 0 && Flag.Huandao_R == 0&&Flag.picture!=2&&Flag.picture!=3&&Flag.picture!=4&&Flag.picture!=5)
     {
 
@@ -18,11 +24,10 @@ void Huandao_L_imu()
 
     }
     }
-    /*左环岛*/
-    /* 进入条件 左环岛标志位为0 右环岛标志位为0 左下拐点存在 右边丢线行数小于10行 左边丢线行数大于0行 右边没有拐点 截止行在图像较上面（前面不在弯道）*/
-    /*此处受图像影响 待图像畸变较小时可以加上左上拐点的上面两行没有边线，便于识别*/
+}
 
-
+static inline void RunLeftRoundaboutPhase1()
+{
     if(Flag.Huandao_L == 1)
        {
            //进入左环岛判定后进行第二次左环岛判定，左边上下两个拐点都存在
@@ -104,13 +109,16 @@ void Huandao_L_imu()
            if((Left_Sideline_flag[LCDH_1 - 4] == 0 && Left_Sideline_flag[LCDH_1 - 5] == 0) && imgInfo.L_loselineSum > 10&&distance>distance_HUAN1)
            {
                Flag.Huandao_L = 2;
-               Yaw_Huandao=icm_data.yaw;
+               Yaw_Huandao=primer::port::CurrentYaw();
                distance=0;
                distance_HUAN1=0;
            }
 
        }
+}
 
+static inline void RunLeftRoundaboutPhase2()
+{
          if(Flag.Huandao_L == 2)
         {
               float k ;
@@ -211,7 +219,10 @@ void Huandao_L_imu()
             Get_ImageTop();
             Find_Sideline(imgInfo.bottom - 1, imgInfo.top + 1);
         }
+}
 
+static inline void RunLeftRoundaboutPhase3()
+{
          if(Flag.Huandao_L == 3)
             {
              if( L_h_guai.flag == 1)//L_h_guai.flag == 1 &&
@@ -298,7 +309,10 @@ void Huandao_L_imu()
 //                    distance=0;
                 }
             }
+}
 
+static inline void RunLeftRoundaboutPhase4()
+{
              if(Flag.Huandao_L == 4)
             {
                 //找到右下拐点，即说明已经到了快要出弯的地方
@@ -396,8 +410,10 @@ void Huandao_L_imu()
                 Find_Sideline(imgInfo.bottom - 1, imgInfo.top + 1);
                 imgInfo.R_loselineSum = 0;
             }
+}
 
-
+static inline void RunLeftRoundaboutPhase5()
+{
               if(Flag.Huandao_L == 5)
                  {
                      uint8 temp = 0;
@@ -445,7 +461,10 @@ void Huandao_L_imu()
                      Get_ImageTop();
                      Find_Sideline(imgInfo.bottom - 1, imgInfo.top + 1);
                  }
+}
 
+static inline void RunLeftRoundaboutPhase6()
+{
                   if(Flag.Huandao_L == 6)
                  {
                      if(L_h_guai.flag == 1)
@@ -491,58 +510,18 @@ void Huandao_L_imu()
                   {
                                                Flag.Huandao_L = 0;
                   }
-//                 if(Flag.Huandao_L && imgInfo.L_loselineSum < 10 && imgInfo.R_loselineSum < 10)
-//                 {
-//                     for(int i = imgInfo.bottom - 1; i > imgInfo.top + 1; i--)
-//                     {
-//                         if(i > imgInfo.top)
-//                         {
-//                             //右边界不发生突变且呈直线状态
-//                             if(Right_Sideline[i] - Right_Sideline[i - 1] < 3 && Right_Sideline[i] >= Right_Sideline[i - 1])
-//                             {
-//                                 right_num ++;
-//                             }
-//                             //左边界不发生突变且呈直线状态
-//                             if(Left_Sideline[i] - Left_Sideline[i - 1] < 3 && Left_Sideline[i] >= Left_Sideline[i - 1])
-//                             {
-//                                 left_num ++;
-//                             }
-//                         }
-//                     }
-//
-//                     if(right_num > 50 && left_num > 50)
-//                     {
-//                         Flag.Huandao_L = 0;
-//                         left_num = 0;
-//                         right_num = 0;
-//
-//                     }
-//                     else
-//                     {
-//                         left_num = 0;
-//                         right_num = 0;
-//                     }
-//                 }
-
-
 }
 
-
-
-
-
-
-
-
-
-
-void Huandao_R_imu()
+static inline void CorrectRightRoundaboutYaw()
 {
-
     if(Flag.Huandao_R >1)
     {
-        huandao_yaw_correct();
+        primer::port::CorrectRoundaboutYaw();
     }
+}
+
+static inline void DetectRightRoundabout()
+{
     if(Flag.Huandao_R == 0 && Flag.Huandao_L == 0&&Flag.picture!=2&&Flag.picture!=3&&Flag.picture!=4&&Flag.picture!=5)
     {
 
@@ -553,11 +532,10 @@ void Huandao_R_imu()
 
     }
     }
-    /*右环岛*/
-    /* 进入条件 左环岛标志位为0 右环岛标志位为0 左下拐点存在 右边丢线行数小于10行 左边丢线行数大于0行 右边没有拐点 截止行在图像较上面（前面不在弯道）*/
-    /*此处受图像影响 待图像畸变较小时可以加上左上拐点的上面两行没有边线，便于识别*/
+}
 
-
+static inline void RunRightRoundaboutPhase1()
+{
     if(Flag.Huandao_R == 1)
        {
            //进入左环岛判定后进行第二次左环岛判定，左边上下两个拐点都存在
@@ -641,10 +619,13 @@ void Huandao_R_imu()
                distance=0;
                distance_HUAN1=0;
                Flag.Huandao_R = 2;
-               Yaw_Huandao=icm_data.yaw;
+               Yaw_Huandao=primer::port::CurrentYaw();
            }
        }
+}
 
+static inline void RunRightRoundaboutPhase2()
+{
          if(Flag.Huandao_R == 2)
         {
                 float k ;
@@ -747,7 +728,10 @@ void Huandao_R_imu()
             Find_Sideline(imgInfo.bottom - 1, imgInfo.top + 1);
 
         }
+}
 
+static inline void RunRightRoundaboutPhase3()
+{
          if(Flag.Huandao_R == 3)
             {
 
@@ -838,7 +822,10 @@ void Huandao_R_imu()
 //                    distance=0;
                 }
             }
+}
 
+static inline void RunRightRoundaboutPhase4()
+{
              if(Flag.Huandao_R == 4)
             {
                 //找到右下拐点，即说明已经到了快要出弯的地方
@@ -924,8 +911,10 @@ void Huandao_R_imu()
                 Find_Sideline(imgInfo.bottom - 1, imgInfo.top + 1);
                 imgInfo.L_loselineSum = 0;
             }
+}
 
-
+static inline void RunRightRoundaboutPhase5()
+{
               if(Flag.Huandao_R == 5)
                  {
                      uint8 temp = 0;
@@ -973,7 +962,10 @@ void Huandao_R_imu()
                      Get_ImageTop();
                      Find_Sideline(imgInfo.bottom - 1, imgInfo.top + 1);
                  }
+}
 
+static inline void RunRightRoundaboutPhase6()
+{
                   if(Flag.Huandao_R == 6)
                  {
                      if(R_h_guai.flag == 1)
@@ -1019,38 +1011,30 @@ void Huandao_R_imu()
                   {
                                                Flag.Huandao_R = 0;
                   }
-//                 if(Flag.Huandao_R && imgInfo.R_loselineSum < 10 && imgInfo.L_loselineSum < 10)
-//                 {
-//                     for(int i = imgInfo.bottom - 1; i > imgInfo.top + 1; i--)
-//                     {
-//                         if(i > imgInfo.top)
-//                         {
-//                             //右边界不发生突变且呈直线状态
-//                             if(Left_Sideline[i] - Left_Sideline[i - 1] < 3 && Left_Sideline[i] >= Left_Sideline[i - 1])
-//                             {
-//                                 right_num ++;
-//                             }
-//                             //左边界不发生突变且呈直线状态
-//                             if(Right_Sideline[i] - Right_Sideline[i - 1] < 3 && Right_Sideline[i] >= Right_Sideline[i - 1])
-//                             {
-//                                 right_num ++;
-//                             }
-//                         }
-//                     }
-//
-//                     if(left_num > 50 && right_num > 50)
-//                     {
-//                         Flag.Huandao_R = 0;
-//                         left_num = 0;
-//                         right_num = 0;
-//
-//                     }
-//                     else
-//                     {
-//                         left_num = 0;
-//                         right_num = 0;
-//                     }
-//                 }
+}
 
+}  // namespace
 
+void Huandao_L_imu()
+{
+    CorrectLeftRoundaboutYaw();
+    DetectLeftRoundabout();
+    RunLeftRoundaboutPhase1();
+    RunLeftRoundaboutPhase2();
+    RunLeftRoundaboutPhase3();
+    RunLeftRoundaboutPhase4();
+    RunLeftRoundaboutPhase5();
+    RunLeftRoundaboutPhase6();
+}
+
+void Huandao_R_imu()
+{
+    CorrectRightRoundaboutYaw();
+    DetectRightRoundabout();
+    RunRightRoundaboutPhase1();
+    RunRightRoundaboutPhase2();
+    RunRightRoundaboutPhase3();
+    RunRightRoundaboutPhase4();
+    RunRightRoundaboutPhase5();
+    RunRightRoundaboutPhase6();
 }

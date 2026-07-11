@@ -42,7 +42,9 @@ if (curvature > 0.12f || fabsf(B_near) > 0.8f) {
 
 /***************************************************误差计算********************************************************/
 float Dir_err = 0, Last_Dir_err = 0,Dir_Err[60],D_ERR;  //图像误差
-void Err_Sum(void)
+namespace {
+
+void BuildDirectionErrorProfile(void)
 {
 
 
@@ -66,7 +68,10 @@ for(int i=imgInfo.top + 1;i<imgInfo.bottom - 1;i++)
 
      if(forward<imgInfo.top+1)forward=imgInfo.top+1;
      if(forward>50)forward=50;
+}
 
+void SelectAndClampDirectionError(void)
+{
         Dir_err=Dir_Err[forward];
 
     // if(Flag.small_rock==1)Dir_err-=10;
@@ -87,9 +92,10 @@ for(int i=imgInfo.top + 1;i<imgInfo.bottom - 1;i++)
     if(!(Dir_err<100&&Dir_err>-100))Dir_err=0;
     if(Dir_err>47)Dir_err=47;
     if(Dir_err<-47)Dir_err=-47;
+}
 
-
-
+void ApplySmallRockDirectionOverride(void)
+{
             if(Flag.small_rock ==1)
     {
         Dir_err-=10;
@@ -99,10 +105,13 @@ for(int i=imgInfo.top + 1;i<imgInfo.bottom - 1;i++)
     {
         Dir_err+=10;
     }
+}
     // if(Dir_err<-47)Dir_err=-47;
     // if(Dir_err>47)Dir_err=47;
 
 
+void UpdateDirectionErrorHistory(void)
+{
                     D_ERR=Dir_err-Last_Dir_err;
 
                 // if(Flag.picture==2||Flag.picture==3)
@@ -125,42 +134,25 @@ for(int i=imgInfo.top + 1;i<imgInfo.bottom - 1;i++)
             //     // }
             //     // }
             Last_Dir_err = Dir_err;
+}
 
-        // Image.Kp = 3.5*3.0;//  0.8; //250*0.015
-        // if(Image.Kp>4)Image.Kp=4;
+void ScheduleDirectionGainAndWriteOutput(void)
+{
+        primer::port::VisionDirectionController().Kp=3.5*primer::port::VisionMasterSpeed()/400*3.0;
+        if(real_distance[imgInfo.top]>150)primer::port::VisionDirectionController().Kp=3.5*primer::port::VisionMasterSpeed()/400*2.75;
+        if(real_distance[imgInfo.top]>200)primer::port::VisionDirectionController().Kp=3.5*primer::port::VisionMasterSpeed()/400*2.5;
+        if(real_distance[imgInfo.top]>250)primer::port::VisionDirectionController().Kp=3.5*primer::port::VisionMasterSpeed()/400*2.0;
+        if(real_distance[imgInfo.top]>300)primer::port::VisionDirectionController().Kp=3.5*primer::port::VisionMasterSpeed()/400*1.5;
+        primer::port::MutableVisionImageOutput() = primer::port::CalculateVisionDirection(&primer::port::VisionDirectionController(),Dir_err,0);
+}
 
-        // if(Now_Speed<200)Image.Kp=3.5*2;
-        // if(Now_Speed<150)Image.Kp=3.5*Now_Speed*0.007;
-        // if(fabs(Dir_err)<10)Image.Kp=3.5*fabs(Dir_err)*0.3;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/1)
-        // {
-        Image.Kp=3.5*Master_Speed/400*3.0;
-        // if(Image.Kp<3.5*0.5)Image.Kp=3.5*0.5;
-        // Image.Kd=Image.Kp*0.3;
-        // Dis_1.Kp=Image.Kp/3.5/3;
-        //  Dis_1.Kp = Master_Speed/400*60;//
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/1.5)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/400*2.5;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/2)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/400*1.5;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/3)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/400*1;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/4)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/400*0.5;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/5)Image.Kp=0;
-        // if(fabs(Dir_err)<15)Image.Kp*=0.75;
-        // else if(fabs(Dir_err)<5)Image.Kp*=0.5;
-        // else if(fabs(Dir_err)<5)Image.Kp*=0.25;
-        // }
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/2)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/speed_goal*3;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/3)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/speed_goal*2;
-        // if(MAX(encoder_L.speed,encoder_R.speed)<speed_goal/4)Image.Kp=3.5*MAX(encoder_L.speed,encoder_R.speed)/speed_goal*1;
+}  // namespace
 
-
-        if(real_distance[imgInfo.top]>150)Image.Kp=3.5*Master_Speed/400*2.75;
-        // // if(Now_Speed<0)Image.Kp=0;
-        if(real_distance[imgInfo.top]>200)Image.Kp=3.5*Master_Speed/400*2.5;
-        if(real_distance[imgInfo.top]>250)Image.Kp=3.5*Master_Speed/400*2.0;
-        if(real_distance[imgInfo.top]>300)Image.Kp=3.5*Master_Speed/400*1.5;
-        // if(Flag.picture==2)Image.Kp=3.5*1.5;
-        // if(Flag.picture==3)Image.Kp=3.5*1.5;
-        // if(Flag.picture==4)Image.Kp=3.5*1.5;
-
-        Image_out =Image_PID_Calculate(&Image,Dir_err,0);//-icm_data.gyro_z//Image_E2
+void Err_Sum(void)
+{
+    BuildDirectionErrorProfile();
+    SelectAndClampDirectionError();
+    ApplySmallRockDirectionOverride();
+    UpdateDirectionErrorHistory();
+    ScheduleDirectionGainAndWriteOutput();
 }

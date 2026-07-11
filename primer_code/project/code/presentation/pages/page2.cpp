@@ -1,5 +1,6 @@
 #include "presentation/internal/presentation_pages.hpp"
 #include "presentation/internal/presentation_state.hpp"
+#include "presentation/internal/page_common.hpp"
 #include "port/presentation_ports.hpp"
 #include "port/vision_observation.hpp"
 
@@ -60,11 +61,7 @@ if(oled_flag == 2)
         sprintf(txt,"dis:%.2f",primer::port::vision::ObserveDistance());
         primer::port::presentation::OperatorDisplay().show_string(150,260,txt);
 
-        sprintf(txt,"Parameter:%d",Parameter_flag);
-        primer::port::presentation::OperatorDisplay().show_string(0,300,txt);
-
-        sprintf(txt,"oled_page:%d",oled_flag);
-        primer::port::presentation::OperatorDisplay().show_string(130,300,txt);
+        internal::RenderPageFooter();
 }
 }
 

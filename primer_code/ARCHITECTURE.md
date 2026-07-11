@@ -76,14 +76,13 @@ all owners -> port contracts / their own internal facts
   header, solely to preserve legacy symbols and construction order.  Runtime
   application/lifecycle/adapters and every non-runtime layer use public or
   `port/` contracts.
-- Token-identical vision algorithms that still spell historical identifiers
-  declare only the state actually consumed by their translation unit in one
-  private dependency header.  Vision has sixteen such one-to-one headers; no
-  shared vision state/binding umbrella remains.
-- Remaining legacy aliases inside untouched vision algorithms are
-  expression-time private macros or constant-initialized empty proxies,
-  included only after library headers.  They cannot cache cross-TU views or
-  references before `main`.
+- Vision algorithms declare only the state actually consumed by their
+  translation unit in one private dependency header.  Vision has sixteen such
+  one-to-one headers; no shared vision state/binding umbrella remains.
+- Owner, device, classifier, stream, sensor, and control interactions use
+  direct typed `port/` calls at every original occurrence.  Private legacy
+  macros remain only for compile-time geometry/color values and `MIN`/`MAX`
+  expressions whose multiple-evaluation semantics are part of the baseline.
 - Runtime cadence is expressed as named sensor, active-drive, stopped-drive,
   diagnostics, startup, beeper, timing, and presentation stages.  The public
   callback and application entry only preserve their original orchestration
@@ -96,6 +95,12 @@ all owners -> port contracts / their own internal facts
   through typed commands, and renders each of the five pages in a separate
   module.  It contains no compatibility macros, generic dependency umbrella,
   or pre-main owner query.
+- Large inherited procedures are short orchestrators over responsibility-named
+  stages: drive control, input scanning, page rendering, frame processing,
+  line repair, corner/straightness analysis, roundabout and picture state
+  phases, red detection, and steering.  The static gate recursively expands
+  each allowlisted stage and rejects any token, guard, short-circuit, early
+  return, query-count, or ordering drift.
 - Root-level legacy headers are compatibility facades only.  Active
   implementations must not use a common application umbrella header to learn
   unrelated owners.
@@ -109,7 +114,7 @@ all owners -> port contracts / their own internal facts
 | `project/code/filt.*` | `estimation/` | Move owner | Preserve calibration count, signs, constants, in-place quaternion update, and yaw wrap behavior |
 | `project/code/control.*` | `control/` | Move owner | Preserve every formula, clamp, conversion, and state update |
 | `project/code/flash.*` | `parameters/` | Move owner | Preserve defaults, permissive parsing, partial-load semantics, and file format |
-| `project/code/image.*` | `vision/` pipeline and stages | Split owner | Preserve function bodies, mutable facts, stage order, and all scene state codes |
+| `project/code/image.*` | `vision/` pipeline and stages | Split owner | Preserve every algorithm token through exact stage composition, mutable facts, stage order, and all scene state codes |
 | `project/code/lq_ncnn.*` | `inference/` | Move owner | Preserve model paths, blob names, preprocessing, exceptions, and softmax |
 | `project/code/show.*` | `presentation/` | Move owner | Preserve key/page behavior and side effects |
 | `project/code/ww_transmission.*` | `transport/` | Move owner | Preserve routes, status-line behavior, frame publication, and threading |
@@ -139,10 +144,10 @@ Current implementation coverage before the independent verifier gate:
 | original static storage and macros | complete | 151/151 file-scope definitions/initializers and 47/47 referenced application macro values preserved |
 | compatibility symbols | complete | all 2,143 baseline global definitions remain available |
 | explicit build ownership | complete | 39/39 layered application sources listed by CMake |
-| dependency boundaries | complete | 101 layered files, 29 public headers, 16 one-to-one vision dependency headers, and 26 directly consumed granular presentation observations pass façade, static-init, public-state/macro, cross-owner, private-header, and composition-owner scans |
+| dependency boundaries | complete | 102 layered files, 29 public headers, 16 one-to-one vision dependency headers, and 26 directly consumed granular presentation observations pass façade, static-init, public-state/macro, cross-owner, private-header, and composition-owner scans |
 | global construction order | complete | 263/263 baseline init tokens remain ordered in one composition TU |
 | cross-owner service composition | complete | classifier, stream server, and camera remain singular and ordered under `runtime/service_composition.cpp` |
-| formula/order preservation | complete (static) | 98 token-identical bodies plus four allowlisted, skeleton-checked, recursively expanded orchestration bodies account for all 102 baseline functions |
+| formula/order preservation | complete (static) | 87 token-identical bodies plus 15 allowlisted, skeleton-checked, recursively expanded orchestration bodies account for all 102 baseline functions |
 | hardware/runtime equivalence | not covered | no board, camera, model, or motion run was performed |
 | independent reviewer | pending | requires two consecutive context-free `PASS` verdicts |
 

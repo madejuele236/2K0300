@@ -6,14 +6,14 @@
 int red_find_x,red_find_y,red_find_y1;
 int picture_first_num,picture_second_num,picture_third_num,maxlong_colume,colume_long[94], long_max,picture_white=0,picture_black=0,jump_point1;
 float black_ratio;
-// int red_find_x,red_find_y,red_find_y1;
-// int picture_first_num,picture_second_num,picture_third_num,maxlong_colume,colume_long[94], long_max,picture_white=0,picture_black=0,jump_point1;
-// float black_ratio;
 int red_x_mid,red_y_mid,x_err_red;
 float err_picture;
 int red_left,red_right;
 float real_picture_distance,recognize_distance,recognize_distance2;
-void picture(void)
+
+namespace {
+
+static inline void ResetPictureObservations()
 {
         picture_white=0;
         picture_black=0;
@@ -21,9 +21,10 @@ void picture(void)
         black_ratio=0;
         err_picture=100;
         x_err_red=200;
+}
 
-
-
+static inline void UpdatePictureGeometry()
+{
                    float K1 = xielv_sideline(55, Left_Sideline[55], 45, Left_Sideline[45], 'k');
                    float B1 = xielv_sideline(55, Left_Sideline[55], 45, Left_Sideline[45], 'b');
                     float K2 = xielv_sideline(55, Right_Sideline[55], 45, Right_Sideline[45], 'k');
@@ -31,14 +32,13 @@ void picture(void)
                    red_left=K1*MAX(R_h_guai.row,L_h_guai.row)+B1;
                    red_right=K2*MAX(R_h_guai.row,L_h_guai.row)+B2;
 
-                // recognize_distance=Now_Speed*0.10+40;
-
-                recognize_distance=Now_Speed*0.1+40;
+                recognize_distance=primer::port::VisionCurrentSpeed()*0.1+40;
                 recognize_distance2=30;
-    if(Flag.picture==0)
-{
+}
 
-      if(R_h_guai.flag==1&&L_h_guai.flag==1)//&&(real_distance[imgInfo.top]-real_distance[R_h_guai.row])>25&&imgInfo.Both_lose==0
+static inline bool TryPictureState0BothCorners()
+{
+      if(R_h_guai.flag==1&&L_h_guai.flag==1)
 {
 
  //           &&(real_distance[imgInfo.top]-real_distance[MAX(R_h_guai.row,L_h_guai.row)])>60&&real_distance[imgInfo.top]>100&&MAX(R_h_guai.row,L_h_guai.row)<real_distance_to_row(40)
@@ -67,13 +67,14 @@ void picture(void)
             }
 
 
-
+      return true;
+}
+      return false;
 }
 
-
-
-
-     else if(R_h_guai.flag==1){
+static inline bool TryPictureState0RightCorner()
+{
+     if(R_h_guai.flag==1){
         //&&(real_distance[imgInfo.top]-real_distance[R_h_guai.row])>60&&real_distance[imgInfo.top]>100&&R_h_guai.row<real_distance_to_row(40)
       if(R_h_guai.row>real_distance_to_row(recognize_distance)
       )
@@ -104,9 +105,14 @@ void picture(void)
 
 
 }
+      return true;
+}
+      return false;
 }
 
-      else if(L_h_guai.flag==1){
+static inline bool TryPictureState0LeftCorner()
+{
+      if(L_h_guai.flag==1){
         //&&(real_distance[imgInfo.top]-real_distance[L_h_guai.row])>60&&real_distance[imgInfo.top]>100&&L_h_guai.row<real_distance_to_row(40)
        if(L_h_guai.row>real_distance_to_row(recognize_distance)
       )
@@ -135,49 +141,40 @@ void picture(void)
                 Flag.Redblock=1;
                }
 
-}}
+}
+      return true;
+}
+      return false;
+}
 
-
-
-
-
-
+static inline void RunPictureState0()
+{
+    if(Flag.picture==0)
+    {
+               if(!TryPictureState0BothCorners())
+               {
+                   if(!TryPictureState0RightCorner())
+                   {
+                       TryPictureState0LeftCorner();
+                   }
+               }
                if(Flag.Redblock==1){Flag.picture=2;}
-    //         if(x_err_red>5&&imgInfo.R_straight_flag==0&&imgInfo.R_straight_flag==1)
-    //         {
-    //            Flag.small_rock =1;
-    //         }
-
-    //         if(x_err_red>5&&imgInfo.R_straight_flag==1&&imgInfo.R_straight_flag==0)
-    //         {
-    //            Flag.small_rock =2;
-    //         }
-
-    // if(Flag.small_rock ==1||Flag.small_rock ==2)
-    // {
-    //     if(distance>10)
-    //     {
-    //         distance=0;
-    //         Flag.small_rock =0;
-    //     }
-    // }
-
+    }
 }
 
 
 
 
 
+static inline void RunPictureState1()
+{
     if(Flag.picture==1){
-
     }
-    if(Flag.picture==2){
+}
 
-        Flag.infer = 1;
-        if((L_h_guai.flag==1&&real_distance[MAX(R_h_guai.row,L_h_guai.row)]<30)||(R_h_guai.flag==1&&abs(recognize_distance2-real_distance[MAX(R_h_guai.row,L_h_guai.row)])<2))//&&fabs(Now_Speed)<10
-        {
-    //    Image.Kp/=2.5;
-           if(R_h_guai.flag==1&&L_h_guai.flag==1)//&&(real_distance[imgInfo.top]-real_distance[R_h_guai.row])>25&&imgInfo.Both_lose==0
+static inline bool TryPictureState2BothCorners()
+{
+           if(R_h_guai.flag==1&&L_h_guai.flag==1)
             {
 
             // if(MAX(R_h_guai.row,L_h_guai.row)>real_distance_to_row(80)&&(real_distance[imgInfo.top]-real_distance[MAX(R_h_guai.row,L_h_guai.row)])>60&&real_distance[imgInfo.top]>100)
@@ -205,14 +202,14 @@ void picture(void)
             // }
 
 
-
+      return true;
+}
+      return false;
 }
 
-
-
-
-
-      else if(R_h_guai.flag==1&&abs(recognize_distance2-real_distance[R_h_guai.row])<2)//&&fabs(Now_Speed)<10&&R_h_guai.row>real_distance_to_row(80)&&(real_distance[imgInfo.top]-real_distance[R_h_guai.row])>60&&real_distance[imgInfo.top]>100
+static inline bool TryPictureState2RightCorner()
+{
+      if(R_h_guai.flag==1&&abs(recognize_distance2-real_distance[R_h_guai.row])<2)
 {
 
 
@@ -238,10 +235,14 @@ void picture(void)
                 // Flag.Redblock=1;
                }
 
-
+      return true;
+}
+      return false;
 }
 
-      else if(L_h_guai.flag==1&&abs(recognize_distance2-real_distance[L_h_guai.row])<2)//&&fabs(Now_Speed)<10&&L_h_guai.row>real_distance_to_row(80)&&(real_distance[imgInfo.top]-real_distance[L_h_guai.row])>60&&real_distance[imgInfo.top]>100
+static inline bool TryPictureState2LeftCorner()
+{
+      if(L_h_guai.flag==1&&abs(recognize_distance2-real_distance[L_h_guai.row])<2)
 {
 
 
@@ -266,8 +267,13 @@ void picture(void)
                 // if(err_picture<15)//&&abs(center.x-L_h_guai.column)<20
                 // Flag.Redblock=1;
                }
+      return true;
+}
+      return false;
 }
 
+static inline void UpdatePictureClassification()
+{
                 if(Flag.weapon>=1)
                 {
                     printf("检测到 weapon\n");//左绕
@@ -300,12 +306,29 @@ void picture(void)
 
 
                 }
+}
 
-
-
+static inline void RunPictureState2()
+{
+    if(Flag.picture==2)
+    {
+        Flag.infer = 1;
+        if((L_h_guai.flag==1&&real_distance[MAX(R_h_guai.row,L_h_guai.row)]<30)||(R_h_guai.flag==1&&abs(recognize_distance2-real_distance[MAX(R_h_guai.row,L_h_guai.row)])<2))
+        {
+            if(!TryPictureState2BothCorners())
+            {
+                if(!TryPictureState2RightCorner())
+                {
+                    TryPictureState2LeftCorner();
+                }
+            }
+            UpdatePictureClassification();
         }
     }
+}
 
+static inline void RunPictureState3()
+{
     if(Flag.picture==3){
 
         if(distance_picture>30)
@@ -320,7 +343,10 @@ void picture(void)
 
         }
     }
+}
 
+static inline void RunPictureState4()
+{
     if(Flag.picture==4){
 
         if(distance_picture>30)
@@ -334,7 +360,10 @@ void picture(void)
 
         }
     }
+}
 
+static inline void RunPictureState5()
+{
         if(Flag.picture==5){
 
         if(distance_picture>30)
@@ -348,7 +377,10 @@ void picture(void)
 
         }
     }
+}
 
+static inline void RunPictureState6()
+{
             if(Flag.picture==6){
         if(distance_picture>40)
         {
@@ -361,21 +393,25 @@ void picture(void)
 
         }
             }
+}
 
+}  // namespace
+
+void picture(void)
+{
+    ResetPictureObservations();
+    UpdatePictureGeometry();
+    RunPictureState0();
+    RunPictureState1();
+    RunPictureState2();
+    RunPictureState3();
+    RunPictureState4();
+    RunPictureState5();
+    RunPictureState6();
 }
 
 
 
 void protect(void)
 {
-// if(Flag.Zebra_cross != 1&&Flag.Zebra_cross != 4&&run_flag==1)//&&Flash.mtv_exposure_time>=100
-// {
-//     if(imgInfo.top >=57||fabs(icm_data.gyro_z)>30)//&&Flag.Zhangai != 1
-//     {
-//         run_flag =2;
-//         printf("异常触发保护\r\n");
-//     }//||Speed_Encoder_l>2000||Speed_Encoder_r>2000||Speed_now>1500
-
-
-// }
 }

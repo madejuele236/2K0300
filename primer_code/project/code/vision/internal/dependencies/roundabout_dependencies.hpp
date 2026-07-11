@@ -20,18 +20,3 @@ float xielv_sideline(int x1, int y1, int x2, int y2, char data);
 void Get_ImageTop(void);
 void Find_Sideline(uint8 Start_row, uint8 End_row);
 void Buxian(void);
-
-struct LegacyYawBinding {
-    operator float() const { return primer::port::CurrentYaw(); }
-};
-
-struct LegacyRoundaboutImuBinding {
-    LegacyYawBinding yaw;
-};
-
-static constexpr LegacyRoundaboutImuBinding icm_data{};
-
-static void huandao_yaw_correct()
-{
-    primer::port::CorrectRoundaboutYaw();
-}

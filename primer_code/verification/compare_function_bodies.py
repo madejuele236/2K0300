@@ -49,6 +49,31 @@ CONTROL_WORDS = {"if", "for", "while", "switch", "catch"}
 # token rewrites compare that implementation with the original body while
 # accounting only for explicit input/callback names introduced at the boundary.
 BODY_REWRITES: dict[str, dict[str, tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]]] = {
+    "my_sobel_dajin": {
+        "original": (
+            (("short", "temp1", ",", "temp2", ";"), ("short", "temp1", ";")),
+        ),
+        "current": (
+            (("if", "(", "Threshold", "<", "Threshold_static", ")", "{", "Threshold", "=", "(", "uint8", ")", "Threshold_static", ";", "}"),
+             ("if", "(", "Threshold", "<", "Threshold_static", ")", "Threshold", "=", "(", "uint8", ")", "Threshold_static", ";")),
+        ),
+    },
+    "image_init": {"current": (
+        (("primer", "::", "port", "::", "VisionClassifier", "(", ")"), ("classifier",)),
+        (("primer", "::", "port", "::", "VisionCamera", "(", ")"), ("cam",)),
+        (("primer", "::", "port", "::", "VisionStream", "(", ")"), ("camera_server",)),
+    )},
+    "distance_judge": {"current": (
+        (("primer", "::", "port", "::", "VisionLeftEncoder", "(", ")"), ("encoder_L",)),
+        (("primer", "::", "port", "::", "VisionRightEncoder", "(", ")"), ("encoder_R",)),
+    )},
+    "zebra_corssing": {"current": (
+        (("primer", "::", "port", "::", "SetVisionRunMode", "(", "2", ")"), ("run_flag", "=", "2")),
+        (("primer", "::", "port", "::", "SetVisionEscDuty", "(", "500", ")"), ("esc_pwm", ".", "set_duty", "(", "500", ")")),
+    )},
+    "ramp": {"current": (
+        (("primer", "::", "port", "::", "VisionDistanceRaw", "(", ")"), ("dl1x_distance_raw",)),
+    )},
     "Speed_PID_Cal": {
         "original": ((('LPF_1',), ('LOW_PASS',)),),
         "current": ((('primer', '::', 'port', '::', 'ApplyLowPass'), ('LOW_PASS',)),),
@@ -124,6 +149,8 @@ RUNTIME_HELPERS = frozenset({
     "SamplePeriodicInputs", "ApplyActiveDriveCycle", "ApplyStoppedDriveCycle",
     "CompletePeriodicCycle", "InitializeApplication", "UpdateForegroundBeeper",
     "UpdateForegroundFrameTiming", "RunForegroundPresentation", "RunForegroundCycle",
+    "ConfigureActiveDriveGoal", "UpdateActiveDistanceOutput", "UpdateActiveVelocityTargets",
+    "UpdateActiveWheelPwm", "ApplyActiveWheelPwm",
 })
 
 
@@ -143,6 +170,7 @@ RUNTIME_OWNER_RULES = (
     owner_rule("primer::platform::SetBeeper(true)", "beep.set_level(1)", 1),
     owner_rule("primer::platform::SetBeeper(false)", "beep.set_level(0)", 1),
     owner_rule("primer::estimation::CurrentImuEstimate().yaw", "icm_data.yaw", 1),
+    owner_rule("if(primer::vision::ObserveVisionControlLiveView().elements.ramp==2){primer::control::AccessRuntimeControlState().speed_goal=150;}", "if(Flag.ramp==2)speed_goal=150;", 1),
     owner_rule("primer::vision::SetVisionDynamicForward(41-primer::control::AccessRuntimeControlState().master_speed/20)", "forward1=41-Master_Speed/20", 1),
     owner_rule("primer::vision::SetVisionDynamicForward(30-primer::control::AccessRuntimeControlState().master_speed/60)", "forward1=30-Master_Speed/60", 1),
     *(owner_rule(f"primer::control::AccessRuntimeControlState().{field}", legacy, count) for field, legacy, count in (
@@ -151,12 +179,12 @@ RUNTIME_OWNER_RULES = (
         ("left_pwm", "PWM_L", 2), ("left_velocity_controller", "Velocity_L", 1),
         ("left_velocity_target", "v_left_target", 3), ("master_speed", "Master_Speed", 1),
         ("right_pwm", "PWM_R", 2), ("right_velocity_controller", "Velocity_R", 1),
-        ("right_velocity_target", "v_right_target", 3), ("speed_goal", "speed_goal", 8),
+        ("right_velocity_target", "v_right_target", 3), ("speed_goal", "speed_goal", 7),
     )),
     *(owner_rule(f"primer::vision::ObserveVisionControlLiveView().{field}", legacy, count) for field, legacy, count in (
         ("direction_error", "Dir_err", 1), ("elements.Huandao_L", "Flag.Huandao_L", 1),
         ("elements.Huandao_R", "Flag.Huandao_R", 1), ("elements.Zebra_cross", "Flag.Zebra_cross", 3),
-        ("elements.picture", "Flag.picture", 3), ("elements.ramp", "Flag.ramp", 3),
+        ("elements.picture", "Flag.picture", 3), ("elements.ramp", "Flag.ramp", 2),
         ("elements.small_rock", "Flag.small_rock", 1), ("image.top", "imgInfo.top", 1),
         ("jump_point", "jump_point", 1), ("left_high_corner.row", "L_h_guai.row", 1),
         ("right_high_corner.row", "R_h_guai.row", 1), ("row_distance", "real_distance", 1),
@@ -182,6 +210,21 @@ PRESENTATION_HELPER_CALLS = {
     "primer::presentation::RenderPage2": "RenderPage2",
     "primer::presentation::RenderPage1": "RenderPage1",
     "primer::presentation::RenderPage0": "RenderPage0",
+    "SampleOperatorInputs": "SampleOperatorInputs",
+    "ApplyNavigationInputs": "ApplyNavigationInputs",
+    "ApplyRunCommandInputs": "ApplyRunCommandInputs",
+    "ApplyParameterAdjustmentInputs": "ApplyParameterAdjustmentInputs",
+    "LatchOperatorInputs": "LatchOperatorInputs",
+    "internal::RenderTrackedBinaryImage": "RenderTrackedBinaryImage",
+    "internal::RenderPageFooter": "RenderPageFooter",
+    "RenderPage0Status": "RenderPage0Status",
+    "RenderPage0BoundaryStatus": "RenderPage0BoundaryStatus",
+    "RenderPage0TrackingStatus": "RenderPage0TrackingStatus",
+    "RenderPage0CornerCoordinates": "RenderPage0CornerCoordinates",
+    "RenderPage1DetectionStatus": "RenderPage1DetectionStatus",
+    "RenderPage1BoundaryStatus": "RenderPage1BoundaryStatus",
+    "RenderPage1TrackingStatus": "RenderPage1TrackingStatus",
+    "RenderPage1CornerCoordinates": "RenderPage1CornerCoordinates",
 }
 
 PRESENTATION_OWNER_RULES = (
@@ -232,6 +275,63 @@ PRESENTATION_OWNER_RULES = (
         ("ObserveRoundaboutYawError()", "Yaw_Huandao_err", 1),
         ("ObserveRowDistance()", "real_distance", 3),
     )),
+)
+
+VISION_COMPOSED_NAMES = frozenset({
+    "Huandao_L_imu", "Huandao_R_imu", "Buxian", "Find_Guaidian", "Find_Guaidian1",
+    "straight_judge", "picture", "DetectRedBlock", "Err_Sum", "ImageDeal", "small_rock",
+})
+VISION_ZERO_HELPERS = frozenset({
+    "CorrectLeftRoundaboutYaw", "DetectLeftRoundabout", "RunLeftRoundaboutPhase1", "RunLeftRoundaboutPhase2",
+    "RunLeftRoundaboutPhase3", "RunLeftRoundaboutPhase4", "RunLeftRoundaboutPhase5", "RunLeftRoundaboutPhase6",
+    "CorrectRightRoundaboutYaw", "DetectRightRoundabout", "RunRightRoundaboutPhase1", "RunRightRoundaboutPhase2",
+    "RunRightRoundaboutPhase3", "RunRightRoundaboutPhase4", "RunRightRoundaboutPhase5", "RunRightRoundaboutPhase6",
+    "ResetPrimaryCorners", "ScanPrimaryUpperCorners", "ScanPrimaryLowerCorners", "ApplyPrimaryRoundaboutOverrides",
+    "ResetSecondaryCorners", "ScanSecondaryUpperCorners", "ScanSecondaryLowerCorners", "ApplySecondaryRoundaboutOverrides",
+    "RescanSidelinesForCorner", "MeasureWidthAndTopWhite", "MeasureLostLineExtents", "ClassifyStraightnessAndLoss",
+    "BuildDirectionErrorProfile", "SelectAndClampDirectionError", "ApplySmallRockDirectionOverride",
+    "UpdateDirectionErrorHistory", "ScheduleDirectionGainAndWriteOutput", "ResizeAndConvertFrame",
+    "CopyGrayFrameToImageUse", "BinarizeFrame", "ExtractTrackFacts", "DetectScenes", "RepairTrackLines",
+    "CompleteVisionPipeline", "ResetPictureObservations", "UpdatePictureGeometry", "RunPictureState0",
+    "RunPictureState1", "RunPictureState2", "RunPictureState3", "RunPictureState4", "RunPictureState5",
+    "RunPictureState6", "ComputeSmallRockSearchCorridor", "DetectSmallRockCandidates",
+    "UpdateSmallRockStateTransition", "RunSmallRockState0", "RunSmallRockTerminalState", "RepairFourCorners",
+})
+
+VISION_OWNER_RULES = (
+    owner_rule("primer::port::VisionCurrentSpeed()", "Now_Speed", 1),
+    owner_rule("primer::port::CorrectRoundaboutYaw()", "huandao_yaw_correct()", 2),
+    owner_rule("primer::port::CurrentYaw()", "icm_data.yaw", 2),
+    owner_rule("primer::port::CalculateVisionDirection(&primer::port::VisionDirectionController(),Dir_err,0)", "Image_PID_Calculate(&Image,Dir_err,0)", 1),
+    owner_rule("primer::port::VisionDirectionController()", "Image", 5),
+    owner_rule("primer::port::VisionMasterSpeed()", "Master_Speed", 5),
+    owner_rule("primer::port::MutableVisionImageOutput()", "Image_out", 1),
+    owner_rule("primer::port::VisionParameters()", "Flash", 3),
+    owner_rule("primer::port::VisionClassifier()", "classifier", 1),
+    owner_rule("primer::port::VisionCamera()", "cam", 1),
+)
+
+FUNCTION_CURRENT_REWRITE_COUNTS = {
+    "my_sobel_dajin": (1,),
+    "image_init": (5, 6, 1),
+    "distance_judge": (2, 2),
+    "zebra_corssing": (1, 1),
+    "ramp": (2,),
+}
+
+PIPELINE_COMPOUND_RULES = (
+    owner_rule(
+        "if(Flag.Huandao_L>0||Flag.Huandao_R>0){Find_Guaidian();}else{Find_Guaidian1();}",
+        "if(Flag.Huandao_L>0||Flag.Huandao_R>0)Find_Guaidian();else Find_Guaidian1();", 1,
+    ),
+    owner_rule(
+        "zebra_corssing();if(Flag.Zebra_cross==3){ramp();}picture();if(Flag.Huandao_L==0&&Flag.Huandao_R==0){small_rock();}",
+        "zebra_corssing();if(Flag.Zebra_cross==3){ramp();}picture();if(Flag.Huandao_L==0&&Flag.Huandao_R==0)small_rock();", 1,
+    ),
+    owner_rule(
+        "if(Flag.Huandao_L!=1&&Flag.Huandao_R!=1&&Flag.Huandao_L!=2&&Flag.Huandao_R!=2&&Flag.Huandao_L!=3&&Flag.Huandao_R!=3&&Flag.Huandao_L!=4&&Flag.Huandao_R!=4&&Flag.Huandao_L!=5&&Flag.Huandao_R!=5&&Flag.Huandao_L!=6&&Flag.Huandao_R!=6){Buxian();}",
+        "if(Flag.Huandao_L!=1&&Flag.Huandao_R!=1&&Flag.Huandao_L!=2&&Flag.Huandao_R!=2&&Flag.Huandao_L!=3&&Flag.Huandao_R!=3&&Flag.Huandao_L!=4&&Flag.Huandao_R!=4&&Flag.Huandao_L!=5&&Flag.Huandao_R!=5&&Flag.Huandao_L!=6&&Flag.Huandao_R!=6)Buxian();", 1,
+    ),
 )
 
 
@@ -476,6 +576,7 @@ def active_sources() -> Iterable[pathlib.Path]:
     for path in sorted((root / "code").rglob("*.cpp")):
         yield path
     yield root / "code" / "port" / "low_pass_filter.hpp"
+    yield root / "code" / "presentation" / "internal" / "page_common.hpp"
 
 
 def rewrite_tokens(
@@ -583,6 +684,95 @@ def canonicalize_presentation_tokens(
     return result, failures
 
 
+def expand_zero_argument_helpers(
+    tokens: tuple[str, ...], helpers: dict[str, FunctionBody],
+    allowlist: frozenset[str], stack: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    result: list[str] = []
+    index = 0
+    while index < len(tokens):
+        name = tokens[index]
+        if name in allowlist and tokens[index:index + 4] == (name, "(", ")", ";"):
+            if name in stack:
+                raise ValueError(f"helper recursion: {' -> '.join(stack + (name,))}")
+            helper = helpers.get(name)
+            if helper is None or helper.tokens[:1] != ("{",) or helper.tokens[-1:] != ("}",):
+                raise ValueError(f"helper has no unique braced active definition: {name}")
+            result.extend(expand_zero_argument_helpers(
+                helper.tokens[1:-1], helpers, allowlist, stack + (name,)
+            ))
+            index += 4
+            continue
+        result.append(tokens[index])
+        index += 1
+    return tuple(result)
+
+
+def matching_token(tokens: tuple[str, ...], start: int, opening: str, closing: str) -> int:
+    if tokens[start] != opening:
+        raise ValueError(f"expected {opening!r} at token {start}")
+    depth = 0
+    for index in range(start, len(tokens)):
+        if tokens[index] == opening:
+            depth += 1
+        elif tokens[index] == closing:
+            depth -= 1
+            if depth == 0:
+                return index
+    raise ValueError(f"unmatched {opening!r} at token {start}")
+
+
+def guarded_bool_parts(function: FunctionBody) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Validate `{ if(guard){ body; return true; } return false; }`."""
+    tokens = function.tokens
+    if tokens[:3] != ("{", "if", "(") or tokens[-4:] != ("return", "false", ";", "}"):
+        raise ValueError(f"{function.name}: unexpected guarded-bool outer shape")
+    guard_end = matching_token(tokens, 2, "(", ")")
+    body_start = guard_end + 1
+    body_end = matching_token(tokens, body_start, "{", "}")
+    if body_end != len(tokens) - 5 or tokens[body_end - 3:body_end] != ("return", "true", ";"):
+        raise ValueError(f"{function.name}: unexpected guarded-bool return scaffolding")
+    return tokens[3:guard_end], tokens[body_start + 1:body_end - 3]
+
+
+def replace_exact_once(
+    tokens: tuple[str, ...], old: tuple[str, ...], new: tuple[str, ...], label: str,
+) -> tuple[str, ...]:
+    positions = [i for i in range(len(tokens) - len(old) + 1) if tokens[i:i + len(old)] == old]
+    if len(positions) != 1:
+        raise ValueError(f"{label}: expected one exact scaffold, found {len(positions)}")
+    index = positions[0]
+    return tokens[:index] + new + tokens[index + len(old):]
+
+
+def first_token_divergence(expected: tuple[str, ...], actual: tuple[str, ...]) -> str:
+    index = next((i for i, pair in enumerate(zip(expected, actual)) if pair[0] != pair[1]), min(len(expected), len(actual)))
+    lo = max(0, index - 6)
+    hi = index + 7
+    return (
+        f"token={index} expected={' '.join(expected[lo:hi])!r} "
+        f"actual={' '.join(actual[lo:hi])!r} lengths={len(expected)}/{len(actual)}"
+    )
+
+
+def reconstruct_bool_chain(
+    helpers: list[FunctionBody], final_body: tuple[str, ...],
+) -> tuple[str, ...]:
+    result: list[str] = []
+    for index, helper in enumerate(helpers):
+        guard, body = guarded_bool_parts(helper)
+        if index:
+            result.append("else")
+        result.extend(("if", "("))
+        result.extend(guard)
+        result.extend((")", "{"))
+        result.extend(body)
+        result.append("}")
+    result.append("else")
+    result.extend(final_body)
+    return tuple(result)
+
+
 def main() -> int:
     originals: list[FunctionBody] = []
     for path in ORIGINAL_SOURCES:
@@ -606,6 +796,7 @@ def main() -> int:
     token_identical = 0
     mechanically_composed = 0
     presentation_composed = 0
+    vision_composed = 0
     runtime_originals = {function.name: function for function in originals if function.name in {"pit_callback", "main"}}
     runtime_entries: dict[str, FunctionBody] = {}
     for original_name, current_name in (("pit_callback", "pit_callback"), ("main", "RunApplication")):
@@ -636,7 +827,24 @@ def main() -> int:
         failures.extend(mapping_failures)
         for name, expanded in expanded_runtime.items():
             canonical, _ = canonicalize_runtime_tokens(expanded, validate_counts=False)
-            if canonical == runtime_originals[name].tokens:
+            baseline_runtime_tokens = runtime_originals[name].tokens
+            if name == "pit_callback":
+                inert = ("int", "speed_add", ";")
+                baseline_count = sum(
+                    baseline_runtime_tokens[i:i + len(inert)] == inert
+                    for i in range(len(baseline_runtime_tokens) - len(inert) + 1)
+                )
+                current_count = sum(
+                    canonical[i:i + len(inert)] == inert
+                    for i in range(len(canonical) - len(inert) + 1)
+                )
+                if baseline_count != 1 or current_count != 0:
+                    failures.append(
+                        f"pit_callback inert declaration: expected baseline=1/current=0, "
+                        f"found baseline={baseline_count}/current={current_count}"
+                    )
+                baseline_runtime_tokens = rewrite_tokens(baseline_runtime_tokens, ((inert, ()),))
+            if canonical == baseline_runtime_tokens:
                 mechanically_composed += 1
             else:
                 failures.append(
@@ -679,12 +887,191 @@ def main() -> int:
                     f"sha={presentation_originals[name].digest}"
                 )
 
+    vision_helpers: dict[str, FunctionBody] = {}
+    for name in VISION_ZERO_HELPERS:
+        candidates = by_name.get(name, [])
+        if len(candidates) == 1:
+            vision_helpers[name] = candidates[0]
+        else:
+            failures.append(f"vision helper {name}: expected one active definition, found {len(candidates)}")
+    vision_originals = {function.name: function for function in originals if function.name in VISION_COMPOSED_NAMES}
+    vision_owner_counts = [0] * len(VISION_OWNER_RULES)
+    if len(vision_originals) != len(VISION_COMPOSED_NAMES):
+        failures.append(
+            f"vision baseline coverage: expected {len(VISION_COMPOSED_NAMES)}, found {len(vision_originals)}"
+        )
+    for name in sorted(VISION_COMPOSED_NAMES):
+        candidates = by_name.get(name, [])
+        if len(candidates) != 1:
+            failures.append(f"vision entry {name}: expected one active definition, found {len(candidates)}")
+            continue
+        try:
+            expanded = expand_zero_argument_helpers(
+                candidates[0].tokens, vision_helpers, VISION_ZERO_HELPERS
+            )
+        except ValueError as error:
+            failures.append(str(error))
+            continue
+        if name == "straight_judge":
+            for helper_name in ("CountRightSlopeOutliers", "CountLeftSlopeOutliers"):
+                helper_candidates = by_name.get(helper_name, [])
+                if len(helper_candidates) != 1:
+                    failures.append(f"vision helper {helper_name}: expected one active definition, found {len(helper_candidates)}")
+                    continue
+                call = (helper_name, "(", "k", ",", "b", ")", ";")
+                positions = [i for i in range(len(expanded) - len(call) + 1) if expanded[i:i + len(call)] == call]
+                if len(positions) != 1:
+                    failures.append(f"{name}: expected one call to {helper_name}, found {len(positions)}")
+                    continue
+                i = positions[0]
+                expanded = expanded[:i] + helper_candidates[0].tokens[1:-1] + expanded[i + len(call):]
+        if name == "Buxian":
+            bool_names = (
+                "RepairLeftPairAndRightHigh", "RepairRightPairAndLeftHigh", "RepairBothHighCorners",
+                "RepairLeftCornerPair", "RepairRightCornerPair", "RepairLeftHighCorner", "RepairRightHighCorner",
+            )
+            bool_helpers = []
+            for helper_name in bool_names:
+                helper_candidates = by_name.get(helper_name, [])
+                if len(helper_candidates) != 1:
+                    raise RuntimeError(f"Buxian helper {helper_name}: expected one definition")
+                bool_helpers.append(helper_candidates[0])
+            old = cpp_tokens(
+                "if(!RepairLeftPairAndRightHigh()&&!RepairRightPairAndLeftHigh()"
+                "&&!RepairBothHighCorners()&&!RepairLeftCornerPair()&&!RepairRightCornerPair()"
+                "&&!RepairLeftHighCorner()&&!RepairRightHighCorner()){Flag.Buxian=0;}"
+            )
+            expanded = replace_exact_once(
+                expanded, old,
+                reconstruct_bool_chain(bool_helpers, cpp_tokens("Flag.Buxian=0;")),
+                "Buxian bool chain",
+            )
+        if name == "picture":
+            for prefix in ("State0", "State2"):
+                helper_names = (
+                    f"TryPicture{prefix}BothCorners", f"TryPicture{prefix}RightCorner",
+                    f"TryPicture{prefix}LeftCorner",
+                )
+                parts = []
+                for helper_name in helper_names:
+                    helper_candidates = by_name.get(helper_name, [])
+                    if len(helper_candidates) != 1:
+                        raise RuntimeError(f"picture helper {helper_name}: expected one definition")
+                    parts.append(guarded_bool_parts(helper_candidates[0]))
+                old = cpp_tokens(
+                    f"if(!{helper_names[0]}()){{if(!{helper_names[1]}()){{{helper_names[2]}();}}}}"
+                )
+                rebuilt: list[str] = []
+                for index, (guard, body) in enumerate(parts):
+                    if index:
+                        rebuilt.append("else")
+                    rebuilt.extend(("if", "(")); rebuilt.extend(guard); rebuilt.extend((")", "{"))
+                    rebuilt.extend(body); rebuilt.append("}")
+                expanded = replace_exact_once(expanded, old, tuple(rebuilt), f"picture {prefix} branch chain")
+            classification = by_name.get("UpdatePictureClassification", [])
+            if len(classification) != 1:
+                failures.append(f"picture helper UpdatePictureClassification: expected one definition, found {len(classification)}")
+            else:
+                expanded = replace_exact_once(
+                    expanded, cpp_tokens("UpdatePictureClassification();"),
+                    classification[0].tokens[1:-1], "picture classification",
+                )
+        if name == "DetectRedBlock":
+            for helper_name, call_text in (
+                ("CollectRedThresholdPoints", "CollectRedThresholdPoints(roi_src,mask,sum_x,sum_y);"),
+                ("InferRedObjectClass", "InferRedObjectClass(roi_rect);"),
+            ):
+                helper_candidates = by_name.get(helper_name, [])
+                if len(helper_candidates) != 1:
+                    raise RuntimeError(f"DetectRedBlock helper {helper_name}: expected one definition")
+                expanded = replace_exact_once(
+                    expanded, cpp_tokens(call_text), helper_candidates[0].tokens[1:-1],
+                    f"DetectRedBlock {helper_name}",
+                )
+            center_helpers = by_name.get("UpdateRedCenter", [])
+            if len(center_helpers) != 1:
+                raise RuntimeError("DetectRedBlock UpdateRedCenter: expected one definition")
+            center_body = center_helpers[0].tokens[1:-1]
+            if center_body[-3:] != ("return", "true", ";"):
+                raise RuntimeError("UpdateRedCenter: missing final return true scaffold")
+            center_body = rewrite_tokens(center_body[:-3], ((("return", "false", ";"), ("return", ";")),))
+            expanded = replace_exact_once(
+                expanded, cpp_tokens("if(!UpdateRedCenter(sum_x,sum_y,roi_x,roi_y))return;"),
+                center_body, "DetectRedBlock center adapter",
+            )
+        if name == "ImageDeal":
+            for current_text, baseline_text_value, expected_count in PIPELINE_COMPOUND_RULES:
+                current_tokens = cpp_tokens(current_text)
+                found = sum(
+                    expanded[i:i + len(current_tokens)] == current_tokens
+                    for i in range(len(expanded) - len(current_tokens) + 1)
+                )
+                if found != expected_count:
+                    failures.append(
+                        f"ImageDeal compound scaffold {current_text!r}: expected {expected_count}, found {found}"
+                    )
+                expanded = rewrite_tokens(
+                    expanded, ((current_tokens, cpp_tokens(baseline_text_value)),)
+                )
+        for rule_index, (current_text, baseline_text_value, _) in enumerate(VISION_OWNER_RULES):
+            current_tokens = cpp_tokens(current_text)
+            count = sum(
+                expanded[i:i + len(current_tokens)] == current_tokens
+                for i in range(len(expanded) - len(current_tokens) + 1)
+            )
+            vision_owner_counts[rule_index] += count
+            expanded = rewrite_tokens(expanded, ((current_tokens, cpp_tokens(baseline_text_value)),))
+        if expanded == vision_originals[name].tokens:
+            vision_composed += 1
+        else:
+            failures.append(
+                f"{name} vision composition differs from baseline sha={vision_originals[name].digest}; "
+                f"{first_token_divergence(vision_originals[name].tokens, expanded)}"
+            )
+    for found, (current_text, _, expected) in zip(vision_owner_counts, VISION_OWNER_RULES):
+        if found != expected:
+            failures.append(f"vision owner mapping {current_text!r}: expected {expected}, found {found}")
+
     for original in originals:
-        if original.name in {"pit_callback", "main", "key_scan", "oled_show"}:
+        if original.name in {"pit_callback", "main", "key_scan", "oled_show"} | VISION_COMPOSED_NAMES:
             continue
         target_name = RENAMED_FUNCTIONS.get(original.name, original.name)
         candidates = by_name.get(target_name, [])
         rules = BODY_REWRITES.get(original.name, {})
+        if original.name == "my_sobel_dajin" and len(candidates) == 1:
+            baseline_guard = cpp_tokens("if(Threshold<Threshold_static)Threshold=(uint8)Threshold_static;")
+            baseline_decl = ("short", "temp1", ",", "temp2", ";")
+            current_guard = cpp_tokens("if(Threshold<Threshold_static){Threshold=(uint8)Threshold_static;}")
+            current_decl = ("short", "temp1", ";")
+            contracts = (
+                ("baseline unbraced threshold guard", original.tokens, baseline_guard, 1),
+                ("baseline temp1,temp2 declaration", original.tokens, baseline_decl, 1),
+                ("current braced threshold guard", candidates[0].tokens, current_guard, 1),
+                ("current temp1 declaration", candidates[0].tokens, current_decl, 1),
+                ("current active temp2 token", candidates[0].tokens, ("temp2",), 0),
+            )
+            for label, haystack, needle, expected_count in contracts:
+                found = sum(
+                    haystack[i:i + len(needle)] == needle
+                    for i in range(len(haystack) - len(needle) + 1)
+                )
+                if found != expected_count:
+                    failures.append(f"my_sobel_dajin {label}: expected {expected_count}, found {found}")
+        expected_counts = FUNCTION_CURRENT_REWRITE_COUNTS.get(original.name)
+        if expected_counts is not None and len(candidates) == 1:
+            current_rules = rules.get("current", ())
+            if len(current_rules) != len(expected_counts):
+                failures.append(f"{original.name}: rewrite count contract length mismatch")
+            else:
+                for (old, _), expected_count in zip(current_rules, expected_counts):
+                    found = sum(
+                        candidates[0].tokens[i:i + len(old)] == old
+                        for i in range(len(candidates[0].tokens) - len(old) + 1)
+                    )
+                    if found != expected_count:
+                        failures.append(
+                            f"{original.name} mapping {' '.join(old)!r}: expected {expected_count}, found {found}"
+                        )
         expected_tokens = rewrite_tokens(original.tokens, rules.get("original", ()))
         exact = next(
             (
@@ -735,7 +1122,8 @@ def main() -> int:
     print(f"token-identical active bodies: {token_identical}")
     print(f"mechanically composed runtime bodies: {mechanically_composed}")
     print(f"mechanically composed presentation bodies: {presentation_composed}")
-    print(f"accounted baseline functions: {token_identical + mechanically_composed + presentation_composed}")
+    print(f"mechanically composed vision bodies: {vision_composed}")
+    print(f"accounted baseline functions: {token_identical + mechanically_composed + presentation_composed + vision_composed}")
     if failures:
         print("mismatches:")
         for failure in failures:

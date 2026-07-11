@@ -23,6 +23,3 @@ extern int resize_cx;
 extern int resize_cy;
 
 bool GenerateROI(const cv::Point &center, cv::Rect &roi, const cv::Mat &src);
-
-#define Flash (primer::port::VisionParameters())
-#define classifier (primer::port::VisionClassifier())
