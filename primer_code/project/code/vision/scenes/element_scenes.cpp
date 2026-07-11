@@ -1,5 +1,5 @@
-#include "../internal/dependencies/element_scenes_dependencies.hpp"
 #include <cmath>
+#include "../internal/dependencies/element_scenes_dependencies.hpp"
 
 uint16_t jump_point,finish_flag;
 float distance_cross,distance,distance_picture;

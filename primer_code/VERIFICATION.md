@@ -27,6 +27,7 @@ refactor defects to repair:
 | Gate | What it proves | What it does not prove |
 |---|---|---|
 | token-level original function comparison | formulas, literals, calls, branches, and ordering remain mechanically accounted for | hardware timing or data-race outcomes |
+| file-scope state and referenced-macro comparison | every original application global initializer remains token-identical and every used app macro keeps the same value | hardware-created state or scheduler timing |
 | dependency-boundary scan | active owners do not regain umbrella/private cross-layer knowledge | semantic quality inside a function |
 | same-toolchain configure/build/link | the integrated source list and ABI are buildable | board device availability |
 | baseline global-symbol subset check | original externally visible definitions remain link-visible | binary identity or runtime values |
@@ -40,28 +41,33 @@ against equivalent board, camera, model, parameter, and timing conditions.
 - Static function comparison: 102 baseline functions discovered; 102 are
   token-identical after relocation or mechanically delegated to one
   token-equivalent owner.
+- Static-storage comparison: all 151 original file-scope definition/initializer
+  statements remain token-identical, and all 47 application macro definitions
+  referenced by original declarations or bodies retain an equivalent value.
+  The parser counts are fixed baseline invariants, so a reduced parser surface
+  fails rather than producing a vacuous pass.
 - Architecture scan: 26 layered application sources exactly match the 26
-  explicit CMake entries; 83 layered headers/sources, 28 public layer headers,
+  explicit CMake entries; 84 layered headers/sources, 29 public layer headers,
   and 11 one-to-one vision dependency headers satisfy the façade,
   no-public-`extern`/generic-macro, mutually-unaware non-runtime owner,
-  port-purity, umbrella, private-header, vision-to-runtime,
-  pure-vision-facts, singular-definition-owner, service-composition-order, and
-  unique-pipeline-owner rules.
+  port-purity, no-pre-main owner-query, expression-macro include-order,
+  granular-presentation-observation, umbrella, private-header,
+  vision-to-runtime, pure-vision-facts, singular-definition-owner,
+  service-composition-order, and unique-pipeline-owner rules.
 - Original `init.cpp` global construction block: all 263 tokens remain in one
   composition translation unit with identical order and initializer
   expressions; baseline and refactor block SHA-256 are both
   `dc6729f465c4ed9673df4ea13f67efe2bac3f8994d7ccba7d4154e105f158c8c`.
 - Refactored clean configure/build/link: PASS from the previously nonexistent
-  `/tmp/2K0300-primer-refactored-build-final-20260711-2` directory, using the
-  same LoongArch GNU 8.3.0 toolchain and OpenCV 4.10 installation as the
-  baseline.
+  `.codex-build/primer-final-review-2` directory, using the same LoongArch GNU
+  8.3.0 toolchain and OpenCV 4.10 installation as the baseline.
 - Warning profile: the refactored build reproduces the baseline warnings listed
   above at their new owner locations; it introduces no new compiler warning.
 - ABI surface: all 2,143 globally defined baseline symbols remain present; the
-  refactored binary has 2,231 definitions, with the additions belonging to the
+  refactored binary has 2,257 definitions, with the additions belonging to the
   new orchestration/core boundaries.
 - Refactored executable SHA-256:
-  `a83d7aa6252570e33f1866d21657603e13c9489c65f82f1579bc9b537c03a1c0`.
+  `b13b1ec1b8bc92c06566fd32870c1d98aceea087a975da4d7dda326261a84994`.
 - `git diff --check`: PASS.
 
 These checks establish source-level and link-level preservation.  Board,

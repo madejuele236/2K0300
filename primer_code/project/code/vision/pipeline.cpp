@@ -1,5 +1,5 @@
-#include "internal/dependencies/pipeline_dependencies.hpp"
 #include <opencv2/imgproc.hpp>
+#include "internal/dependencies/pipeline_dependencies.hpp"
 /***************************************************图像处理******************************************************/
 void ImageDeal()
 {

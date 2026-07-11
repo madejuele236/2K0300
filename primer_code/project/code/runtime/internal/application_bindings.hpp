@@ -11,40 +11,6 @@
 // Every cross-owner name below resolves through a public query or command.
 namespace {
 
-const primer::control::RuntimeControlState application_control =
-    primer::control::AccessRuntimeControlState();
-const primer::vision::VisionControlLiveView application_vision =
-    primer::vision::ObserveVisionControlLiveView();
-
-static auto &Dis_1 = application_control.distance_controller;
-static auto &Velocity_L = application_control.left_velocity_controller;
-static auto &Velocity_R = application_control.right_velocity_controller;
-static auto &speed_goal = application_control.speed_goal;
-static auto &Dis_Out = application_control.distance_output;
-static auto &Dis_Speed = application_control.distance_speed;
-static auto &Image_out = application_control.image_output;
-static auto &v_left_target = application_control.left_velocity_target;
-static auto &v_right_target = application_control.right_velocity_target;
-static auto &PWM_L = application_control.left_pwm;
-static auto &PWM_R = application_control.right_pwm;
-static const auto &Master_Speed = application_control.master_speed;
-
-static auto &encoder_L = primer::platform::LeftEncoder();
-static auto &encoder_R = primer::platform::RightEncoder();
-static auto &it_time = primer::runtime::CycleCounter();
-static volatile int16 &dl1x_distance_raw =
-    primer::platform::MutableDistanceRawSignal();
-static const auto &icm_data = primer::estimation::CurrentImuEstimate();
-
-static const auto &Flag = application_vision.elements;
-static const auto &imgInfo = application_vision.image;
-static const auto &L_h_guai = application_vision.left_high_corner;
-static const auto &R_h_guai = application_vision.right_high_corner;
-static const auto &real_distance = application_vision.row_distance;
-static const auto &Dir_err = application_vision.direction_error;
-static const auto &D_ERR = application_vision.steering_difference_error;
-static const auto &jump_point = application_vision.jump_point;
-
 struct LegacyDistanceSensorBinding {
     int16 get_distance() const { return primer::platform::ReadDistanceSensor(); }
 };
@@ -90,3 +56,31 @@ static constexpr LegacyEscBinding esc_pwm{};
 static LegacyDynamicForwardBinding forward1{};
 
 }  // namespace
+
+#define PRIMER_APPLICATION_CONTROL() (primer::control::AccessRuntimeControlState())
+#define PRIMER_APPLICATION_VISION() (primer::vision::ObserveVisionControlLiveView())
+#define Dis_1 (PRIMER_APPLICATION_CONTROL().distance_controller)
+#define Velocity_L (PRIMER_APPLICATION_CONTROL().left_velocity_controller)
+#define Velocity_R (PRIMER_APPLICATION_CONTROL().right_velocity_controller)
+#define speed_goal (PRIMER_APPLICATION_CONTROL().speed_goal)
+#define Dis_Out (PRIMER_APPLICATION_CONTROL().distance_output)
+#define Dis_Speed (PRIMER_APPLICATION_CONTROL().distance_speed)
+#define Image_out (PRIMER_APPLICATION_CONTROL().image_output)
+#define v_left_target (PRIMER_APPLICATION_CONTROL().left_velocity_target)
+#define v_right_target (PRIMER_APPLICATION_CONTROL().right_velocity_target)
+#define PWM_L (PRIMER_APPLICATION_CONTROL().left_pwm)
+#define PWM_R (PRIMER_APPLICATION_CONTROL().right_pwm)
+#define Master_Speed (PRIMER_APPLICATION_CONTROL().master_speed)
+#define encoder_L (primer::platform::LeftEncoder())
+#define encoder_R (primer::platform::RightEncoder())
+#define it_time (primer::runtime::CycleCounter())
+#define dl1x_distance_raw (primer::platform::MutableDistanceRawSignal())
+#define icm_data (primer::estimation::CurrentImuEstimate())
+#define Flag (PRIMER_APPLICATION_VISION().elements)
+#define imgInfo (PRIMER_APPLICATION_VISION().image)
+#define L_h_guai (PRIMER_APPLICATION_VISION().left_high_corner)
+#define R_h_guai (PRIMER_APPLICATION_VISION().right_high_corner)
+#define real_distance (PRIMER_APPLICATION_VISION().row_distance)
+#define Dir_err (PRIMER_APPLICATION_VISION().direction_error)
+#define D_ERR (PRIMER_APPLICATION_VISION().steering_difference_error)
+#define jump_point (PRIMER_APPLICATION_VISION().jump_point)

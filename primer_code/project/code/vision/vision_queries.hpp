@@ -10,7 +10,6 @@ namespace primer::vision {
 // change the original unsynchronised observation timing.  Mutation stays behind
 // explicitly named vision commands below.
 using VisionControlLiveView = primer::port::vision::ControlLiveView;
-using VisionPresentationLiveView = primer::port::vision::PresentationLiveView;
 
 struct RoundaboutYawState {
     const float &initial_yaw;
@@ -19,7 +18,6 @@ struct RoundaboutYawState {
 };
 
 VisionControlLiveView ObserveVisionControlLiveView();
-VisionPresentationLiveView ObserveVisionPresentationLiveView();
 RoundaboutYawState AccessRoundaboutYawState();
 
 int VisionDynamicForward();

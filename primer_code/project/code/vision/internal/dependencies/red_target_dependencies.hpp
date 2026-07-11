@@ -24,7 +24,5 @@ extern int resize_cy;
 
 bool GenerateROI(const cv::Point &center, cv::Rect &roi, const cv::Mat &src);
 
-static const primer::port::VisionParametersPort &Flash =
-    primer::port::VisionParameters();
-static primer::port::VisionClassifierPort &classifier =
-    primer::port::VisionClassifier();
+#define Flash (primer::port::VisionParameters())
+#define classifier (primer::port::VisionClassifier())

@@ -13,10 +13,6 @@ extern float B;
 extern float A;
 extern uint16_t maxkuan_line;
 
-static primer::port::VisionDirectionControllerPort &Image =
-    primer::port::VisionDirectionController();
-static float &Image_out = primer::port::MutableVisionImageOutput();
-
 inline float Image_PID_Calculate(
     primer::port::VisionDirectionControllerPort *controller, float expect,
     float feedback)
@@ -29,3 +25,6 @@ struct SteeringMasterSpeedBinding {
 };
 
 static constexpr SteeringMasterSpeedBinding Master_Speed{};
+
+#define Image (primer::port::VisionDirectionController())
+#define Image_out (primer::port::MutableVisionImageOutput())

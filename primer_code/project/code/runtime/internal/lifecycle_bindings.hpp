@@ -10,25 +10,6 @@
 // Public-command adapters for the token-identical lifecycle routines.
 namespace {
 
-const primer::control::EncoderControlState encoder_control =
-    primer::control::AccessEncoderControlState();
-const primer::runtime::RuntimeCounters runtime_counters =
-    primer::runtime::AccessRuntimeCounters();
-
-static auto &encoder_L = primer::platform::LeftEncoder();
-static auto &encoder_R = primer::platform::RightEncoder();
-static auto &Master_Speed = encoder_control.master_speed;
-static auto &Now_Speed = encoder_control.current_speed;
-static auto &Tpm_Dis = encoder_control.encoder_speed_difference;
-static auto &G_dis = encoder_control.gyro_speed_difference;
-static auto &Dis_Speed = encoder_control.fused_speed_difference;
-static auto &last_G_dis = encoder_control.last_gyro_speed_difference;
-static auto &LPF_Speed = primer::runtime::SpeedFusionWeight();
-static auto &encode_l_total = runtime_counters.left_encoder_total;
-static auto &encode_r_total = runtime_counters.right_encoder_total;
-static auto &encoder_abs = runtime_counters.encoder_distance;
-static const auto &icm_data = primer::estimation::CurrentImuEstimate();
-
 struct LegacyMotorDriverBinding {
     unsigned index;
     void set_duty(int duty) const
@@ -97,3 +78,19 @@ static constexpr LegacyEncoderDeviceBinding encoder_dir_2{1};
 [[maybe_unused]] static LegacyRunFlagBinding run_flag{};
 
 }  // namespace
+
+#define PRIMER_ENCODER_CONTROL() (primer::control::AccessEncoderControlState())
+#define PRIMER_RUNTIME_COUNTERS() (primer::runtime::AccessRuntimeCounters())
+#define encoder_L (primer::platform::LeftEncoder())
+#define encoder_R (primer::platform::RightEncoder())
+#define Master_Speed (PRIMER_ENCODER_CONTROL().master_speed)
+#define Now_Speed (PRIMER_ENCODER_CONTROL().current_speed)
+#define Tpm_Dis (PRIMER_ENCODER_CONTROL().encoder_speed_difference)
+#define G_dis (PRIMER_ENCODER_CONTROL().gyro_speed_difference)
+#define Dis_Speed (PRIMER_ENCODER_CONTROL().fused_speed_difference)
+#define last_G_dis (PRIMER_ENCODER_CONTROL().last_gyro_speed_difference)
+#define LPF_Speed (primer::runtime::SpeedFusionWeight())
+#define encode_l_total (PRIMER_RUNTIME_COUNTERS().left_encoder_total)
+#define encode_r_total (PRIMER_RUNTIME_COUNTERS().right_encoder_total)
+#define encoder_abs (PRIMER_RUNTIME_COUNTERS().encoder_distance)
+#define icm_data (primer::estimation::CurrentImuEstimate())

@@ -1,4 +1,5 @@
 #include "internal/dependencies/facts_dependencies.hpp"
+#include "port/vision_observation.hpp"
 #include "vision_queries.hpp"
 #include "zf_device_uvc.hpp"
 #include "tensorflow/lite/core/c/common.h"
@@ -143,16 +144,6 @@ VisionControlLiveView ObserveVisionControlLiveView()
             Dir_err, D_ERR, jump_point};
 }
 
-VisionPresentationLiveView ObserveVisionPresentationLiveView()
-{
-    return {Image_Use, Left_Sideline, Right_Sideline, Mid_Line,
-            Flag, imgInfo, L_l_guai, L_h_guai, R_l_guai, R_h_guai,
-            L_h_guai1, R_h_guai1, real_distance, resizedFrame,
-            Dir_err, distance, Yaw_Huandao_err, black_ratio, jump_point,
-            maxlong_colume, long_max, jump_point1, picture_white,
-            picture_black, red_find_x, red_find_y};
-}
-
 RoundaboutYawState AccessRoundaboutYawState()
 {
     return {Yaw_Huandao, yaw_correct, Yaw_Huandao_err};
@@ -180,6 +171,37 @@ void SetVisionRoundaboutYawCorrection(float corrected_yaw, float yaw_error)
 }
 
 }  // namespace primer::vision
+
+namespace primer::port::vision {
+
+const BinaryImage &ObserveBinaryImage() { return Image_Use; }
+const SourceLine &ObserveLeftSideline() { return Left_Sideline; }
+const SourceLine &ObserveRightSideline() { return Right_Sideline; }
+const SourceLine &ObserveMidline() { return Mid_Line; }
+const ElementFacts &ObserveElementFacts() { return Flag; }
+const ImageInformation &ObserveImageInformation() { return imgInfo; }
+const CornerPoint &ObserveLeftLowCorner() { return L_l_guai; }
+const CornerPoint &ObserveLeftHighCorner() { return L_h_guai; }
+const CornerPoint &ObserveRightLowCorner() { return R_l_guai; }
+const CornerPoint &ObserveRightHighCorner() { return R_h_guai; }
+const CornerPoint &ObserveLeftHighCornerSecondary() { return L_h_guai1; }
+const CornerPoint &ObserveRightHighCornerSecondary() { return R_h_guai1; }
+const RowDistance &ObserveRowDistance() { return real_distance; }
+const cv::Mat &ObserveResizedFrame() { return resizedFrame; }
+const float &ObserveDirectionError() { return Dir_err; }
+const float &ObserveDistance() { return distance; }
+const float &ObserveRoundaboutYawError() { return Yaw_Huandao_err; }
+const float &ObserveBlackRatio() { return black_ratio; }
+const uint16_t &ObserveJumpPoint() { return jump_point; }
+const int &ObserveMaxlongColumn() { return maxlong_colume; }
+const int &ObserveLongMax() { return long_max; }
+const int &ObserveJumpPointSecondary() { return jump_point1; }
+const int &ObservePictureWhite() { return picture_white; }
+const int &ObservePictureBlack() { return picture_black; }
+const int &ObserveRedFindX() { return red_find_x; }
+const int &ObserveRedFindY() { return red_find_y; }
+
+}  // namespace primer::port::vision
 
 void imgInfoInit(void)
 {

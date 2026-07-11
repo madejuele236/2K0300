@@ -24,6 +24,10 @@ implementation is copied from it.
 - The original thread-sharing behavior remains unsynchronized.  Introducing a
   snapshot or lock could change timing and is outside this strictly equivalent
   change.
+- Original file-scope state remains definition-for-definition equivalent.  A
+  compatibility binding may query another owner only when the original
+  expression executes; it must not add a cross-TU query during static
+  initialization.
 
 ## Dependency rule
 
@@ -77,10 +81,13 @@ all owners -> port contracts / their own internal facts
   Vision has eleven such one-to-one headers; no shared vision state/binding
   umbrella remains.  Those bindings call owner or port APIs and never publish
   mutable state to another layer.
-- Vision control/presentation observations are explicitly named process-life
-  `LiveView` contracts.  Their members are const references so the original
-  unsynchronised observation timing is retained; mutation is available only
-  through explicitly named command/access APIs.
+- Compatibility aliases are expression-time private macros or
+  constant-initialized empty proxies, included only after library headers.
+  They cannot cache cross-TU views or references before `main`.
+- Vision control observations use a small process-life `ControlLiveView`.
+  Presentation receives 26 fact-granular const-reference queries instead of a
+  wide aggregate, retaining the original unsynchronised live timing without
+  exposing a mutable owner representation.
 - Root-level legacy headers are compatibility facades only.  Active
   implementations must not use a common application umbrella header to learn
   unrelated owners.
@@ -121,9 +128,10 @@ Current implementation coverage before the independent verifier gate:
 | Contract | Coverage | Evidence |
 |---|---|---|
 | original definition ownership | complete | 102/102 function mapping and successful single link |
+| original static storage and macros | complete | 151/151 file-scope definitions/initializers and 47/47 referenced application macro values preserved |
 | compatibility symbols | complete | all 2,143 baseline global definitions remain available |
 | explicit build ownership | complete | 26/26 layered application sources listed by CMake |
-| dependency boundaries | complete | 83 layered files, 28 public headers, and 11 one-to-one vision dependency headers pass façade, public-state/macro, cross-owner, private-header, vision-to-runtime, and composition-owner scans |
+| dependency boundaries | complete | 84 layered files, 29 public headers, 11 one-to-one vision dependency headers, and 26 granular presentation observations pass façade, static-init, public-state/macro, cross-owner, private-header, and composition-owner scans |
 | global construction order | complete | 263/263 baseline init tokens remain ordered in one composition TU |
 | cross-owner service composition | complete | classifier, stream server, and camera remain singular and ordered under `runtime/service_composition.cpp` |
 | formula/order preservation | complete (static) | token-equivalent bodies plus checked façade-to-core delegation |

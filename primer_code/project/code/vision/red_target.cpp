@@ -1,8 +1,8 @@
-#include "internal/dependencies/red_target_dependencies.hpp"
 #include <chrono>
 #include <cmath>
 #include <iostream>
 #include <opencv2/imgproc.hpp>
+#include "internal/dependencies/red_target_dependencies.hpp"
 using namespace cv;
  /***************************************************检测红色矩形块******************************************************/
 

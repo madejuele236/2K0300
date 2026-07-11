@@ -1,7 +1,7 @@
-#include "internal/dependencies/pipeline_init_dependencies.hpp"
 #include <cstdio>
 #include <string>
 #include <vector>
+#include "internal/dependencies/pipeline_init_dependencies.hpp"
 void image_init(void)
 {
 

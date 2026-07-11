@@ -23,6 +23,7 @@ from typing import Iterable
 
 
 BASELINE = "70f3c71ea"
+EXPECTED_BASELINE_FUNCTIONS = 102
 ORIGINAL_SOURCES = (
     "primer_code/project/user/main.cpp",
     "primer_code/project/code/init.cpp",
@@ -138,6 +139,27 @@ def baseline_text(path: str) -> str:
     return result.stdout
 
 
+def raw_string_end(text: str, start: int) -> int | None:
+    """Return the end offset of a C++ raw string literal starting at start."""
+    prefix = next(
+        (candidate for candidate in ("u8R\"", "uR\"", "UR\"", "LR\"", "R\"")
+         if text.startswith(candidate, start)),
+        None,
+    )
+    if prefix is None:
+        return None
+    delimiter_start = start + len(prefix)
+    open_paren = text.find("(", delimiter_start, delimiter_start + 17)
+    if open_paren < 0:
+        return None
+    delimiter = text[delimiter_start:open_paren]
+    if any(ch.isspace() or ch in "()\\" for ch in delimiter):
+        return None
+    marker = ")" + delimiter + '"'
+    close = text.find(marker, open_paren + 1)
+    return None if close < 0 else close + len(marker)
+
+
 def mask_non_code(text: str) -> str:
     """Replace comments and literal contents while preserving offsets/braces."""
     chars = list(text)
@@ -148,6 +170,13 @@ def mask_non_code(text: str) -> str:
         ch = chars[i]
         nxt = chars[i + 1] if i + 1 < len(chars) else ""
         if state == "code":
+            raw_end = raw_string_end(text, i)
+            if raw_end is not None:
+                for index in range(i, raw_end):
+                    if chars[index] != "\n":
+                        chars[index] = " "
+                i = raw_end
+                continue
             if ch == "/" and nxt == "/":
                 chars[i] = chars[i + 1] = " "
                 i += 2
@@ -225,6 +254,11 @@ def cpp_tokens(text: str) -> tuple[str, ...]:
         if ch == "/" and nxt == "*":
             end = text.find("*/", i + 2)
             i = len(text) if end < 0 else end + 2
+            continue
+        raw_end = raw_string_end(text, i)
+        if raw_end is not None:
+            tokens.append(text[i:raw_end])
+            i = raw_end
             continue
         if ch in {'"', "'"}:
             quote = ch
@@ -353,6 +387,11 @@ def main() -> int:
         by_name[function.name].append(function)
 
     failures: list[str] = []
+    if len(originals) != EXPECTED_BASELINE_FUNCTIONS:
+        failures.append(
+            f"baseline parser coverage changed: expected "
+            f"{EXPECTED_BASELINE_FUNCTIONS}, found {len(originals)}"
+        )
     matched = 0
     for original in originals:
         target_name = RENAMED_FUNCTIONS.get(original.name, original.name)

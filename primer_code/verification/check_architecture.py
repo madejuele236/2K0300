@@ -84,8 +84,43 @@ VISION_SOURCE_DEPENDENCIES = {
     "vision/scenes/element_scenes.cpp": "vision/internal/dependencies/element_scenes_dependencies.hpp",
 }
 
+PRESENTATION_VISION_OBSERVATIONS = {
+    "ObserveBinaryImage",
+    "ObserveLeftSideline",
+    "ObserveRightSideline",
+    "ObserveMidline",
+    "ObserveElementFacts",
+    "ObserveImageInformation",
+    "ObserveLeftLowCorner",
+    "ObserveLeftHighCorner",
+    "ObserveRightLowCorner",
+    "ObserveRightHighCorner",
+    "ObserveLeftHighCornerSecondary",
+    "ObserveRightHighCornerSecondary",
+    "ObserveRowDistance",
+    "ObserveResizedFrame",
+    "ObserveDirectionError",
+    "ObserveDistance",
+    "ObserveRoundaboutYawError",
+    "ObserveBlackRatio",
+    "ObserveJumpPoint",
+    "ObserveMaxlongColumn",
+    "ObserveLongMax",
+    "ObserveJumpPointSecondary",
+    "ObservePictureWhite",
+    "ObservePictureBlack",
+    "ObserveRedFindX",
+    "ObserveRedFindY",
+}
+
 INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
 EXTERN_DECLARATION = re.compile(r'^\s*extern\s+', re.MULTILINE)
+EXPRESSION_BINDING_MACRO = re.compile(
+    r'^\s*#\s*define\s+[A-Za-z_]\w*(?:\([^)]*\))?\s+'
+    r'\((?:::)?primer::',
+    re.MULTILINE,
+)
+OWNER_QUERY_INITIALIZER = re.compile(r'=\s*primer::', re.MULTILINE)
 FORBIDDEN_PUBLIC_MACROS = {
     "ABS",
     "LIMIT",
@@ -244,7 +279,21 @@ def main() -> int:
         source_relative = str(source.relative_to(CODE))
         if '"zf_common_headfile.hpp"' in text:
             failures.append(f"active layer uses application-wide umbrella: {source.relative_to(ROOT)}")
-        for include in INCLUDE.findall(text):
+        includes = INCLUDE.findall(text)
+        resolved_includes = [resolve_include(source, include) for include in includes]
+        expression_binding_positions = [
+            index
+            for index, target in enumerate(resolved_includes)
+            if target is not None
+            and target.suffix in {".h", ".hpp"}
+            and EXPRESSION_BINDING_MACRO.search(target.read_text(encoding="utf-8"))
+        ]
+        if expression_binding_positions and expression_binding_positions[-1] != len(includes) - 1:
+            failures.append(
+                f"expression-time compatibility macros must be included last: "
+                f"{source.relative_to(ROOT)}"
+            )
+        for include in includes:
             target = resolve_include(source, include)
             if target is None:
                 continue
@@ -336,6 +385,25 @@ def main() -> int:
                 f"retired vision aggregate still exists: {retired_aggregate.relative_to(ROOT)}"
             )
 
+    lazy_binding_headers = (
+        sorted((CODE / "runtime" / "internal").glob("*_bindings.hpp"))
+        + sorted(dependency_root.glob("*.hpp"))
+        + [CODE / "presentation" / "internal" / "legacy_presentation_bindings.hpp"]
+    )
+    for header in lazy_binding_headers:
+        text = header.read_text(encoding="utf-8")
+        for match in OWNER_QUERY_INITIALIZER.finditer(text):
+            line_start = text.rfind("\n", 0, match.start()) + 1
+            line_end = text.find("\n", match.start())
+            if line_end < 0:
+                line_end = len(text)
+            line = text[line_start:line_end]
+            if "constexpr" not in line:
+                failures.append(
+                    f"compatibility header performs a pre-main owner query: "
+                    f"{header.relative_to(ROOT)}:{text.count(chr(10), 0, match.start()) + 1}"
+                )
+
     pure_contracts = (
         CODE / "vision" / "vision_facts.hpp",
         CODE / "vision" / "internal" / "vision_stage_contracts.hpp",
@@ -373,6 +441,45 @@ def main() -> int:
     vision_facts_text = (CODE / "vision" / "vision_facts.hpp").read_text(encoding="utf-8")
     if re.search(r"^\s*#\s*define\b", vision_facts_text, re.MULTILINE):
         failures.append("public vision_facts.hpp publishes preprocessor macros")
+
+    wide_view_owners = sorted(
+        str(path.relative_to(CODE))
+        for path in layered_files
+        if "PresentationLiveView" in path.read_text(encoding="utf-8")
+    )
+    if wide_view_owners:
+        failures.append(
+            f"wide presentation aggregate has returned: {wide_view_owners}"
+        )
+
+    observation_header = CODE / "port" / "vision_observation.hpp"
+    observation_text = observation_header.read_text(encoding="utf-8")
+    declared_observations = set(
+        re.findall(r"\b(Observe[A-Za-z0-9_]+)\s*\(", observation_text)
+    )
+    if declared_observations != PRESENTATION_VISION_OBSERVATIONS:
+        failures.append(
+            "granular presentation observation inventory differs: "
+            f"expected {sorted(PRESENTATION_VISION_OBSERVATIONS)}, "
+            f"found {sorted(declared_observations)}"
+        )
+    vision_facts_owner = source_texts.get(CODE / "vision" / "facts.cpp", "")
+    presentation_binding = (
+        CODE / "presentation" / "internal" / "legacy_presentation_bindings.hpp"
+    ).read_text(encoding="utf-8")
+    for observation in sorted(PRESENTATION_VISION_OBSERVATIONS):
+        owner_count = len(re.findall(rf"\b{re.escape(observation)}\s*\(", vision_facts_owner))
+        binding_count = len(
+            re.findall(
+                rf"primer::port::vision::{re.escape(observation)}\s*\(",
+                presentation_binding,
+            )
+        )
+        if owner_count != 1 or binding_count != 1:
+            failures.append(
+                f"granular observation {observation} must have one owner and one "
+                f"presentation binding; found owner={owner_count}, binding={binding_count}"
+            )
 
     for filename in sorted(COMPATIBILITY_TUS):
         path = CODE / filename

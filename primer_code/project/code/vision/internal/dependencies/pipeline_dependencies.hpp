@@ -10,4 +10,4 @@ extern cv::Mat lq_frame;
 extern cv::Mat grayFrame;
 extern cv::Mat resizedFrame;
 
-static primer::port::VisionCameraPort &cam = primer::port::VisionCamera();
+#define cam (primer::port::VisionCamera())

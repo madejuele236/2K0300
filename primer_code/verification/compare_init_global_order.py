@@ -18,6 +18,7 @@ CURRENT = ROOT / "primer_code" / "project" / "code" / "runtime" / "hardware_comp
 START = "#define KEY_1_PATH"
 END = "volatile int16 dl1x_distance_raw = 0;"
 IGNORED_DECLARATION = ("extern", "lq_camera_ex", "cam", ";")
+EXPECTED_GLOBAL_ORDER_TOKENS = 263
 
 
 def baseline_text() -> str:
@@ -59,6 +60,12 @@ def main() -> int:
     actual = block(CURRENT.read_text(encoding="utf-8"), str(CURRENT.relative_to(ROOT)))
     print(f"baseline global-order tokens: {len(expected)} sha256={digest(expected)}")
     print(f"current global-order tokens: {len(actual)} sha256={digest(actual)}")
+    if len(expected) != EXPECTED_GLOBAL_ORDER_TOKENS:
+        print(
+            "baseline parser coverage changed: "
+            f"expected {EXPECTED_GLOBAL_ORDER_TOKENS}, found {len(expected)}"
+        )
+        return 1
     if actual != expected:
         mismatch = next(
             (index for index, pair in enumerate(zip(expected, actual)) if pair[0] != pair[1]),

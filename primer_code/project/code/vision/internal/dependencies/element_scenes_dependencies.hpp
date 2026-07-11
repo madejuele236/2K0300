@@ -28,11 +28,6 @@ int real_distance_to_row(float distance);
 float xielv_sideline(int x1, int y1, int x2, int y2, char data);
 void DetectRedBlock(cv::Mat &src, int roi_x, int roi_y, int width, int height);
 
-static const primer::port::VisionEncoderPort &encoder_L =
-    primer::port::VisionLeftEncoder();
-static const primer::port::VisionEncoderPort &encoder_R =
-    primer::port::VisionRightEncoder();
-
 struct LegacyEscBinding {
     void set_duty(int duty) const { primer::port::SetVisionEscDuty(duty); }
 };
@@ -52,3 +47,6 @@ struct LegacyDistanceRawBinding {
 static constexpr LegacyEscBinding esc_pwm{};
 static LegacyRunFlagBinding run_flag{};
 static constexpr LegacyDistanceRawBinding dl1x_distance_raw{};
+
+#define encoder_L (primer::port::VisionLeftEncoder())
+#define encoder_R (primer::port::VisionRightEncoder())

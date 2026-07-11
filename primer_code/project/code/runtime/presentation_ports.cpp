@@ -39,19 +39,33 @@ void ShowString(uint16 x, uint16 y, const char *value)
 
 }  // namespace
 
-DigitalKey DigitalKeyAt(unsigned index)
+uint8 DigitalKey::get_level() const
 {
-    return {ReadDigitalKey, index};
+    return ReadDigitalKey(index);
 }
 
-AnalogKey AnalogKeyAt(unsigned index)
+uint16 AnalogKey::convert() const
 {
-    return {ReadAnalogKey, index};
+    return ReadAnalogKey(index);
 }
 
-Display OperatorDisplay()
+void Display::clear() const
 {
-    return {ClearDisplay, ShowGrayImage, ShowString};
+    ClearDisplay();
+}
+
+void Display::show_gray_image(uint16 x, uint16 y, const uint8 *image,
+                              uint16 width, uint16 height,
+                              uint16 display_width, uint16 display_height,
+                              uint8 threshold) const
+{
+    ShowGrayImage(x, y, image, width, height, display_width, display_height,
+                  threshold);
+}
+
+void Display::show_string(uint16 x, uint16 y, const char *text) const
+{
+    ShowString(x, y, text);
 }
 
 void SetEscDuty(int duty)
@@ -97,11 +111,6 @@ TelemetryLiveView ObserveTelemetry()
     const auto telemetry = primer::runtime::ObserveRuntimeTelemetry();
     return {telemetry.left_encoder_total, telemetry.right_encoder_total,
             telemetry.encoder_distance};
-}
-
-primer::port::vision::PresentationLiveView ObserveVision()
-{
-    return primer::vision::ObserveVisionPresentationLiveView();
 }
 
 int DistanceToRow(float distance)

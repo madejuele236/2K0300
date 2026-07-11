@@ -7,6 +7,8 @@ import pathlib
 import subprocess
 import sys
 
+EXPECTED_BASELINE_DEFINITIONS = 2143
+
 
 def symbols(binary: pathlib.Path) -> set[str]:
     result = subprocess.run(
@@ -35,6 +37,12 @@ def main() -> int:
     missing = sorted(baseline - refactored)
     print(f"baseline global definitions: {len(baseline)}")
     print(f"refactored global definitions: {len(refactored)}")
+    if len(baseline) != EXPECTED_BASELINE_DEFINITIONS:
+        print(
+            "baseline symbol coverage changed: "
+            f"expected {EXPECTED_BASELINE_DEFINITIONS}, found {len(baseline)}"
+        )
+        return 1
     if missing:
         print("missing baseline definitions:")
         for symbol in missing:

@@ -1,11 +1,12 @@
 #include "runtime/lifecycle.h"
 
-#include "runtime/internal/lifecycle_bindings.hpp"
 #include "runtime/estimation_adapter.hpp"
 
 #include <csignal>
 #include <cstdio>
 #include <cstdlib>
+
+#include "runtime/internal/lifecycle_bindings.hpp"
 /*存放 定时器 电机 Flash 按键 编码器 蜂鸣器等外设的初始化*/
 void pid_init(void)
 {

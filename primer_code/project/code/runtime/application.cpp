@@ -4,7 +4,6 @@
 #include "presentation/show.hpp"
 #include "runtime/control_adapter.hpp"
 #include "runtime/estimation_adapter.hpp"
-#include "runtime/internal/application_bindings.hpp"
 #include "runtime/lifecycle.h"
 #include "vision/element_runtime.hpp"
 #include "vision/pipeline.hpp"
@@ -15,6 +14,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+
+#include "runtime/internal/application_bindings.hpp"
 
 //中断回调函数
 uint8 Tcp_buffer[128];
