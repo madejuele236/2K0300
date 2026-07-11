@@ -1,6 +1,4 @@
-#include "../internal/vision_stage_contracts.hpp"
-#include "../../estimation/imu_estimator.h"
-#include "../../runtime/estimation_adapter.hpp"
+#include "../internal/dependencies/roundabout_dependencies.hpp"
 #include <cstdlib>
 float Yaw_Huandao,Yaw_Huandao_err,yaw_correct,distance_HUAN1;//1m=35000
 

@@ -4,15 +4,23 @@ The active source tree is layered by ownership.  These rules are mechanically
 checked by `primer_code/verification`.
 
 - A layer includes its own headers and `port/` contracts.
-- A layer never includes another layer's private/internal header.  The sole
-  exception is a runtime composition translation unit, which may wire private
-  legacy symbols without publishing them.
+- A non-runtime owner never includes another owner, including that owner's
+  public API.  Only runtime composition/adapters know multiple owners, and
+  `port/` never depends back on an owner.
+- A layer never includes another layer's private/internal header.  Only
+  `runtime/hardware_composition.cpp` and `runtime/service_composition.cpp` may
+  wire another owner's private construction state without publishing it.
 - `runtime/` composes the original startup, foreground, 5 ms control, and
   cross-owner object-construction flows.
 - Public owner headers expose query/command/service APIs and contain no legacy
-  mutable `extern` declarations.
+  mutable `extern` declarations or generic legacy macros.
 - Layer-private legacy bindings may retain old identifier spellings only by
-  delegating to public owner APIs; they are not reusable application umbrellas.
+  delegating to public owner or `port/` APIs; they are not reusable application
+  umbrellas.  Each active vision translation unit has exactly one private,
+  one-to-one dependency header.
+- Vision's public control/presentation observations are const process-lifetime
+  `LiveView` contracts.  They preserve the baseline's live, unsynchronised read
+  timing while keeping mutation behind explicit commands.
 - `presentation/` and `transport/` are observers/IO owners; they do not derive
   control decisions.
 - Root-level `init.h`, `filt.h`, `flash.h`, `control.h`, `image.h`, `show.h`,

@@ -1,6 +1,4 @@
-#include "internal/vision_stage_contracts.hpp"
-#include "inference/classifier_service.hpp"
-#include "parameters/parameter_store.h"
+#include "internal/dependencies/red_target_dependencies.hpp"
 #include <chrono>
 #include <cmath>
 #include <iostream>

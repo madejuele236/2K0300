@@ -1,4 +1,4 @@
-#include "internal/vision_stage_contracts.hpp"
+#include "internal/dependencies/preprocess_dependencies.hpp"
 #include <cmath>
 uint8_t Threshold_deal(uint8 image[LCDH_1][LCDW_1],uint16 col,uint16 row) {
   #define GrayScale 255

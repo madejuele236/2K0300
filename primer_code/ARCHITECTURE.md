@@ -45,8 +45,9 @@ user/main
 all owners -> port contracts / their own internal facts
 ```
 
-- `port/` contains data-only cross-layer contracts.  It owns no device and runs
-  no algorithm.
+- `port/` contains data-only views and cross-layer command contracts.  It owns
+  no device, state, or algorithm; composition implements commands at the owner
+  boundary.
 - `platform/` owns vendor device objects and physical I/O conventions.
 - `estimation/` owns IMU conversion, calibration, AHRS, and filtering.
 - `control/` owns PID state, formulas, target mixing, and actuator values, but
@@ -61,13 +62,25 @@ all owners -> port contracts / their own internal facts
   does not produce control decisions.
 - `runtime/` is the only cross-owner orchestrator and owns lifecycle/cadence.
 - Public owner headers expose query/command/service functions, never legacy
-  mutable `extern` state.  Historical declarations are private to their owner.
-- Runtime composition translation units may include owner-private wiring
-  headers solely to preserve legacy symbols and construction order.  Ordinary
-  runtime algorithms and every non-runtime layer use public contracts.
+  mutable `extern` state or generic legacy macros.  Historical declarations
+  are private to their owner or preserved only by root compatibility facades.
+- Non-runtime owners include only their own layer, `port/`, and vendor/data
+  dependencies.  They never include another owner, even through that owner's
+  public API.  `port/` likewise never depends back on an owner.
+- Only `runtime/hardware_composition.cpp` and
+  `runtime/service_composition.cpp` may include another owner's private wiring
+  header, solely to preserve legacy symbols and construction order.  Runtime
+  application/lifecycle/adapters and every non-runtime layer use public or
+  `port/` contracts.
 - Token-identical legacy algorithms that still spell historical identifiers
-  bind those names in one layer-private compatibility header.  Those bindings
-  call owner APIs and never publish state to another layer.
+  bind those names in one translation-unit-specific private dependency header.
+  Vision has eleven such one-to-one headers; no shared vision state/binding
+  umbrella remains.  Those bindings call owner or port APIs and never publish
+  mutable state to another layer.
+- Vision control/presentation observations are explicitly named process-life
+  `LiveView` contracts.  Their members are const references so the original
+  unsynchronised observation timing is retained; mutation is available only
+  through explicitly named command/access APIs.
 - Root-level legacy headers are compatibility facades only.  Active
   implementations must not use a common application umbrella header to learn
   unrelated owners.
@@ -109,8 +122,8 @@ Current implementation coverage before the independent verifier gate:
 |---|---|---|
 | original definition ownership | complete | 102/102 function mapping and successful single link |
 | compatibility symbols | complete | all 2,143 baseline global definitions remain available |
-| explicit build ownership | complete | 24/24 layered application sources listed by CMake |
-| dependency boundaries | complete | 58 active files and 21 public headers pass façade, public-state, private-header, and composition-owner scans |
+| explicit build ownership | complete | 26/26 layered application sources listed by CMake |
+| dependency boundaries | complete | 83 layered files, 28 public headers, and 11 one-to-one vision dependency headers pass façade, public-state/macro, cross-owner, private-header, vision-to-runtime, and composition-owner scans |
 | global construction order | complete | 263/263 baseline init tokens remain ordered in one composition TU |
 | cross-owner service composition | complete | classifier, stream server, and camera remain singular and ordered under `runtime/service_composition.cpp` |
 | formula/order preservation | complete (static) | token-equivalent bodies plus checked façade-to-core delegation |

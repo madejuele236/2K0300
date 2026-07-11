@@ -4,4 +4,5 @@
 
 namespace primer::platform {
 lq_camera_ex &Camera();
+void StopCamera();
 }  // namespace primer::platform

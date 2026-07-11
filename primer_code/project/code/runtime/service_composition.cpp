@@ -17,4 +17,5 @@ TransmissionStreamServer &CameraStreamServer() { return camera_server; }
 
 namespace primer::platform {
 lq_camera_ex &Camera() { return cam; }
+void StopCamera() { cam.stop_collect(); }
 }  // namespace primer::platform

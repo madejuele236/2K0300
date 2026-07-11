@@ -1,34 +1,10 @@
 #pragma once
 
-#include "legacy_vision_state.hpp"
-#include "legacy_owner_bindings.hpp"
+#include "../vision_facts.hpp"
+#include "legacy_vision_constants.hpp"
 
 #define MODEL_INPUT_WIDTH 40
 #define MODEL_INPUT_HEIGHT 40
-
-extern uint8_t Threshold;
-extern uint8 Threshold_static;
-extern int roi_x_1;
-extern int roi_y_1;
-extern int ROI_SIZE;
-extern int roix1;
-extern int roiy1;
-extern int resize_cx;
-extern int resize_cy;
-extern int red_left;
-extern int red_right;
-extern int Last_Mid_Line[LCDH_0];
-extern unsigned char Right_Sideline_flag[LCDH_0];
-extern unsigned char white_width[LCDH_0];
-extern unsigned char starith_white_width[LCDH_0];
-
-extern float B;
-extern float A;
-extern float B_near;
-extern float A_near;
-extern float B_far;
-extern float A_far;
-extern float BA_ratio;
 
 int real_distance_to_row(float distance);
 

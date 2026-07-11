@@ -1,4 +1,4 @@
-#include "internal/vision_stage_contracts.hpp"
+#include "internal/dependencies/facts_dependencies.hpp"
 #include "vision_queries.hpp"
 #include "zf_device_uvc.hpp"
 #include "tensorflow/lite/core/c/common.h"
@@ -137,13 +137,13 @@ int real_distance_to_row(float distance) {
 
 namespace primer::vision {
 
-VisionControlFacts ObserveVisionControlFacts()
+VisionControlLiveView ObserveVisionControlLiveView()
 {
     return {Flag, imgInfo, L_h_guai, R_h_guai, real_distance,
             Dir_err, D_ERR, jump_point};
 }
 
-VisionPresentationFacts ObserveVisionPresentationFacts()
+VisionPresentationLiveView ObserveVisionPresentationLiveView()
 {
     return {Image_Use, Left_Sideline, Right_Sideline, Mid_Line,
             Flag, imgInfo, L_l_guai, L_h_guai, R_l_guai, R_h_guai,
@@ -151,6 +151,11 @@ VisionPresentationFacts ObserveVisionPresentationFacts()
             Dir_err, distance, Yaw_Huandao_err, black_ratio, jump_point,
             maxlong_colume, long_max, jump_point1, picture_white,
             picture_black, red_find_x, red_find_y};
+}
+
+RoundaboutYawState AccessRoundaboutYawState()
+{
+    return {Yaw_Huandao, yaw_correct, Yaw_Huandao_err};
 }
 
 int VisionDynamicForward()

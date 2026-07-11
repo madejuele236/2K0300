@@ -1,50 +1,54 @@
 #pragma once
 
-#include "estimation/imu_estimator.h"
-#include "parameters/parameter_store.h"
-#include "platform/device_platform.h"
-#include "runtime/runtime_state.hpp"
-#include "vision/vision_queries.hpp"
+#include "port/presentation_ports.hpp"
 
 // The original presentation routines intentionally remain token-identical.
 // These TU-local bindings translate their historical names to owner APIs;
 // no mutable owner state is published through a public header.
 namespace {
 
-const primer::vision::VisionPresentationFacts presentation_facts =
-    primer::vision::ObserveVisionPresentationFacts();
-const primer::runtime::RuntimeTelemetry runtime_telemetry =
-    primer::runtime::ObserveRuntimeTelemetry();
+const auto presentation_facts = primer::port::presentation::ObserveVision();
+const auto runtime_telemetry = primer::port::presentation::ObserveTelemetry();
 
-static auto &key_1 = primer::platform::DigitalKey(0);
-static auto &key_2 = primer::platform::DigitalKey(1);
-static auto &key_3 = primer::platform::DigitalKey(2);
-static auto &key_4 = primer::platform::DigitalKey(3);
-static auto &key_5 = primer::platform::DigitalKey(4);
-static auto &key_6 = primer::platform::DigitalKey(5);
-static auto &key_7 = primer::platform::AnalogKey(0);
-static auto &key_8 = primer::platform::AnalogKey(1);
-static auto &ips200 = primer::platform::Display();
+static const auto key_1 = primer::port::presentation::DigitalKeyAt(0);
+static const auto key_2 = primer::port::presentation::DigitalKeyAt(1);
+static const auto key_3 = primer::port::presentation::DigitalKeyAt(2);
+static const auto key_4 = primer::port::presentation::DigitalKeyAt(3);
+static const auto key_5 = primer::port::presentation::DigitalKeyAt(4);
+static const auto key_6 = primer::port::presentation::DigitalKeyAt(5);
+static const auto key_7 = primer::port::presentation::AnalogKeyAt(0);
+static const auto key_8 = primer::port::presentation::AnalogKeyAt(1);
+static const auto ips200 = primer::port::presentation::OperatorDisplay();
 
 struct LegacyEscBinding {
-    void set_duty(int duty) const { primer::platform::SetEscDuty(duty); }
+    void set_duty(int duty) const { primer::port::presentation::SetEscDuty(duty); }
 };
 
 struct LegacyRunFlagBinding {
-    operator int8_t() const { return primer::runtime::RunFlag(); }
+    operator int8_t() const { return primer::port::presentation::RunFlag(); }
     LegacyRunFlagBinding &operator=(int8_t value)
     {
-        primer::runtime::SetRunFlag(value);
+        primer::port::presentation::SetRunFlag(value);
         return *this;
     }
 };
 
 static constexpr LegacyEscBinding esc_pwm{};
 static LegacyRunFlagBinding run_flag{};
-static FlashInformation &Flash = primer::parameters::MutableParameters();
-static const icm_param_t &icm_data = primer::estimation::CurrentImuEstimate();
+static auto Flash = primer::port::presentation::ObserveParameters();
+static const auto icm_data = primer::port::presentation::ObserveImu();
 static const volatile int16 &dl1x_distance_raw =
-    primer::platform::DistanceRawSignal();
+    primer::port::presentation::ObserveDistanceRaw();
+
+inline void Param_SaveAll()
+{
+    primer::port::presentation::SaveParameters();
+}
+
+inline int real_distance_to_row(float distance)
+{
+    return primer::port::presentation::DistanceToRow(distance);
+}
 
 static const int32_t &encode_l_total = runtime_telemetry.left_encoder_total;
 static const int32_t &encode_r_total = runtime_telemetry.right_encoder_total;

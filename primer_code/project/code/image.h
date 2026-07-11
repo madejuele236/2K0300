@@ -2,6 +2,7 @@
 #define IMAGE_H
 
 #include "vision/vision_facts.hpp"
+#include "vision/internal/legacy_vision_constants.hpp"
 #include "control.h"
 
 #include <opencv2/imgcodecs.hpp>

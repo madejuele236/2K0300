@@ -1,4 +1,4 @@
-#include "internal/vision_stage_contracts.hpp"
+#include "internal/dependencies/track_dependencies.hpp"
 #include <cmath>
 #include <cstdlib>
 /***************************************************获取最长白列***************************************************/

@@ -13,6 +13,16 @@ float ImageOutput() { return Image_out; }
 float &MutableImageOutput() { return Image_out; }
 float CurrentSpeed() { return Now_Speed; }
 float DistanceOutput() { return Dis_Out; }
+RuntimeControlState AccessRuntimeControlState()
+{
+    return {Dis_1, Velocity_L, Velocity_R, speed_goal, Dis_Out, Dis_Speed,
+            Image_out, v_left_target, v_right_target, PWM_L, PWM_R,
+            Master_Speed};
+}
+EncoderControlState AccessEncoderControlState()
+{
+    return {Master_Speed, Now_Speed, Tpm_Dis, G_dis, Dis_Speed, last_G_dis};
+}
 }  // namespace primer::control
 int16_t speed_now_left,speed_now_right,speed_now,speed_last_left,speed_last_right,pos_goal,pos_now_left,pos_now_right,PWM_L,PWM_R,expect_angle;
 PID Velocity = {0};//速度环

@@ -1,5 +1,4 @@
-#include "../internal/vision_stage_contracts.hpp"
-#include "../../control/pid_controller.h"
+#include "../internal/dependencies/picture_scene_dependencies.hpp"
 #include <cmath>
 #include <cstdio>
 

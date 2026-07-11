@@ -3,15 +3,6 @@
 
 #include <cstdint>
 
-#ifndef MAX
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-#endif
-#ifndef MIN
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#endif
-
-#define LIMIT(input, low, upper)    MIN(MAX(input, low), upper)//限幅
-#define ABS(a) ((a >= 0) ? (a) : (-a))
 // /************************************PID***********************************/
 
 typedef struct
@@ -48,6 +39,30 @@ typedef struct{
 
 }Direction_PID;
 namespace primer::control {
+struct RuntimeControlState {
+    Direction_PID &distance_controller;
+    PID &left_velocity_controller;
+    PID &right_velocity_controller;
+    float &speed_goal;
+    float &distance_output;
+    float &distance_speed;
+    float &image_output;
+    float &left_velocity_target;
+    float &right_velocity_target;
+    int16_t &left_pwm;
+    int16_t &right_pwm;
+    const float &master_speed;
+};
+
+struct EncoderControlState {
+    float &master_speed;
+    float &current_speed;
+    float &encoder_speed_difference;
+    float &gyro_speed_difference;
+    float &fused_speed_difference;
+    float &last_gyro_speed_difference;
+};
+
 Direction_PID &ImageController();
 Direction_PID &DistanceController();
 PID &LeftVelocityController();
@@ -57,6 +72,8 @@ float ImageOutput();
 float &MutableImageOutput();
 float CurrentSpeed();
 float DistanceOutput();
+RuntimeControlState AccessRuntimeControlState();
+EncoderControlState AccessEncoderControlState();
 }  // namespace primer::control
 float Pos_Cal(PID*pid_t,float expect,float feedback);
 float Inc_Cal(PID *pid_t, float expect, float feedback);
@@ -66,6 +83,9 @@ void Speed_PID_Init(PID *pid, float kf,float kp, float ki, float kd,float maxI, 
 void Direction_PID_Init(void);
 float Image_PID_Calculate(Direction_PID *pid, float expect, float feedback);
 float speed_difference_Calculate(Direction_PID *pid, float expect, float feedback);
+float Dis_PID_CalculateCore(Direction_PID *pid, float expect, float feedback,
+                            float encoder_left_d_speed,
+                            float encoder_right_d_speed);
 
 
 

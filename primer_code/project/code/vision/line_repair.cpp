@@ -1,4 +1,4 @@
-#include "internal/vision_stage_contracts.hpp"
+#include "internal/dependencies/line_repair_dependencies.hpp"
 #include <cstdlib>
 /* 补线 */
 void Buxian(void)

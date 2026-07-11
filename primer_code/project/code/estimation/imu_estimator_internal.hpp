@@ -12,16 +12,4 @@ extern gyro_param_t GyroOffset;
 extern float param_Kp;
 extern float param_Ki;
 
-using estimation_sample_callback_t = void (*)(void);
-using estimation_delay_callback_t = void (*)(uint32_t milliseconds);
-
-void GyroOffset_InitCore(estimation_sample_callback_t read_acc,
-                         estimation_sample_callback_t read_gyro,
-                         estimation_delay_callback_t delay_ms);
-void ICM_GetEulerianAnglesCore(estimation_sample_callback_t read_gyro,
-                               estimation_sample_callback_t read_acc);
-void HuandaoYawCorrectCore(float yaw_huandao, float current_yaw,
-                           float *yaw_correct_value,
-                           float *yaw_huandao_error);
-
 #endif

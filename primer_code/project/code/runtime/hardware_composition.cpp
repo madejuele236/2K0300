@@ -1,4 +1,5 @@
 #include "platform/device_platform_internal.hpp"
+#include "port/run_state_port.hpp"
 #include "runtime/runtime_state_internal.hpp"
 
 /* Preserve the baseline init.cpp static construction sequence in one TU. */
@@ -60,6 +61,8 @@ volatile int16 dl1x_distance_raw = 0;      // 定时采集的距离原始数据�
 namespace primer::runtime {
 int8_t RunFlag() { return run_flag; }
 void SetRunFlag(int8_t value) { run_flag = value; }
+int32_t &CycleCounter() { return it_time; }
+float &SpeedFusionWeight() { return LPF_Speed; }
 int32_t LeftEncoderTotal() { return encode_l_total; }
 int32_t RightEncoderTotal() { return encode_r_total; }
 int16_t EncoderDistance() { return encoder_abs; }
@@ -67,4 +70,12 @@ RuntimeTelemetry ObserveRuntimeTelemetry()
 {
     return {encode_l_total, encode_r_total, encoder_abs};
 }
+RuntimeCounters AccessRuntimeCounters()
+{
+    return {encode_l_total, encode_r_total, encoder_abs};
+}
 }  // namespace primer::runtime
+
+namespace primer::port {
+void SetRunMode(int8_t value) { run_flag = value; }
+}  // namespace primer::port

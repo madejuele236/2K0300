@@ -42,10 +42,32 @@ typedef struct {
     float AZdata;
 } gyro_param_t;
 
+using estimation_sample_callback_t = void (*)(void);
+using estimation_delay_callback_t = void (*)(uint32_t milliseconds);
+
+void GyroOffset_InitCore(estimation_sample_callback_t read_acc,
+                         estimation_sample_callback_t read_gyro,
+                         estimation_delay_callback_t delay_ms);
+void ICM_GetEulerianAnglesCore(estimation_sample_callback_t read_gyro,
+                               estimation_sample_callback_t read_acc);
+void HuandaoYawCorrectCore(float yaw_huandao, float current_yaw,
+                           float *yaw_correct_value,
+                           float *yaw_huandao_error);
+
 
 //extern float icm_ay;
 //extern float icm_sy;
 namespace primer::estimation {
+struct RawImuState {
+    int16 &acc_x;
+    int16 &acc_y;
+    int16 &acc_z;
+    int16 &gyro_x;
+    int16 &gyro_y;
+    int16 &gyro_z;
+};
+
+RawImuState AccessRawImuState();
 const icm_param_t &CurrentImuEstimate();
 void SetRawGyroscope(int16 x, int16 y, int16 z);
 }  // namespace primer::estimation

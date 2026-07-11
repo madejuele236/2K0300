@@ -59,8 +59,44 @@ EXPECTED_DEFINITION_OWNERS = {
     r"^char\s+txt\s*\[": "presentation/show.cpp",
 }
 
+PRIVATE_WIRING_TUS = {
+    "runtime/hardware_composition.cpp",
+    "runtime/service_composition.cpp",
+}
+
+SERVICE_OBJECT_TYPES = {
+    "LQ_NCNN",
+    "TransmissionStreamServer",
+    "lq_camera_ex",
+}
+
+VISION_SOURCE_DEPENDENCIES = {
+    "vision/facts.cpp": "vision/internal/dependencies/facts_dependencies.hpp",
+    "vision/preprocess.cpp": "vision/internal/dependencies/preprocess_dependencies.hpp",
+    "vision/track.cpp": "vision/internal/dependencies/track_dependencies.hpp",
+    "vision/line_repair.cpp": "vision/internal/dependencies/line_repair_dependencies.hpp",
+    "vision/steering.cpp": "vision/internal/dependencies/steering_dependencies.hpp",
+    "vision/pipeline.cpp": "vision/internal/dependencies/pipeline_dependencies.hpp",
+    "vision/pipeline_init.cpp": "vision/internal/dependencies/pipeline_init_dependencies.hpp",
+    "vision/red_target.cpp": "vision/internal/dependencies/red_target_dependencies.hpp",
+    "vision/scenes/roundabout.cpp": "vision/internal/dependencies/roundabout_dependencies.hpp",
+    "vision/scenes/picture_scene.cpp": "vision/internal/dependencies/picture_scene_dependencies.hpp",
+    "vision/scenes/element_scenes.cpp": "vision/internal/dependencies/element_scenes_dependencies.hpp",
+}
+
 INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.MULTILINE)
 EXTERN_DECLARATION = re.compile(r'^\s*extern\s+', re.MULTILINE)
+FORBIDDEN_PUBLIC_MACROS = {
+    "ABS",
+    "LIMIT",
+    "MAX",
+    "MIN",
+    "PARAM_FILE_NAME",
+    "PORT",
+    "SERVER_IP",
+    "SaveFloat",
+    "SaveInt",
+}
 
 
 def layer_of(path: pathlib.Path) -> str | None:
@@ -133,6 +169,38 @@ def main() -> int:
                 f"expected {[expected_owner]}, found {owners}"
             )
 
+    service_object_definition = re.compile(
+        rf"^\s*(?:(?:const|inline|static)\s+)*"
+        rf"(?:{'|'.join(sorted(SERVICE_OBJECT_TYPES))})\s+"
+        rf"[A-Za-z_]\w*\s*(?:[;(={{])",
+        re.MULTILINE,
+    )
+    invalid_service_owners = sorted(
+        str(path.relative_to(CODE))
+        for path, text in source_texts.items()
+        if path != CODE / "runtime" / "service_composition.cpp"
+        and service_object_definition.search(text)
+    )
+    if invalid_service_owners:
+        failures.append(
+            "cross-owner service objects must be defined by "
+            "runtime/service_composition.cpp: "
+            f"{invalid_service_owners}"
+        )
+
+    service_header_owners = sorted(
+        str(path.relative_to(CODE))
+        for path in CODE.rglob("*")
+        if path.suffix in {".h", ".hpp"}
+        and layer_of(path) is not None
+        and service_object_definition.search(path.read_text(encoding="utf-8"))
+    )
+    if service_header_owners:
+        failures.append(
+            "layer headers define cross-owner service objects: "
+            f"{service_header_owners}"
+        )
+
     service_composition = source_texts.get(CODE / "runtime" / "service_composition.cpp", "")
     service_order = [
         service_composition.find("LQ_NCNN classifier;"),
@@ -156,13 +224,24 @@ def main() -> int:
     ]
     public_layer_headers = [path for path in layered_files if is_public_layer_header(path)]
     for header in public_layer_headers:
-        if EXTERN_DECLARATION.search(header.read_text(encoding="utf-8")):
+        header_text = header.read_text(encoding="utf-8")
+        if EXTERN_DECLARATION.search(header_text):
             failures.append(
                 f"public layer header exposes legacy extern state: {header.relative_to(ROOT)}"
+            )
+        macros = set(
+            re.findall(r"^\s*#\s*define\s+([A-Za-z_]\w*)", header_text, re.MULTILINE)
+        )
+        forbidden_macros = sorted(macros & FORBIDDEN_PUBLIC_MACROS)
+        if forbidden_macros:
+            failures.append(
+                f"public layer header publishes generic legacy macros "
+                f"{forbidden_macros}: {header.relative_to(ROOT)}"
             )
 
     for source in layered_files:
         text = source.read_text(encoding="utf-8")
+        source_relative = str(source.relative_to(CODE))
         if '"zf_common_headfile.hpp"' in text:
             failures.append(f"active layer uses application-wide umbrella: {source.relative_to(ROOT)}")
         for include in INCLUDE.findall(text):
@@ -172,6 +251,27 @@ def main() -> int:
             source_layer = layer_of(source)
             target_layer = layer_of(target)
             target_is_private = is_private_header(target)
+            if (
+                source_layer not in {None, "runtime", "port"}
+                and target_layer not in {None, source_layer, "port"}
+            ):
+                failures.append(
+                    f"non-runtime owner depends directly on another owner instead of port: "
+                    f"{source.relative_to(ROOT)} -> {target.relative_to(ROOT)}"
+                )
+            if (
+                source_layer == "port"
+                and target_layer not in {None, "port"}
+            ):
+                failures.append(
+                    f"port contract depends on an owner implementation: "
+                    f"{source.relative_to(ROOT)} -> {target.relative_to(ROOT)}"
+                )
+            if source_layer == "vision" and target_layer == "runtime":
+                failures.append(
+                    f"vision depends on runtime instead of a port contract: "
+                    f"{source.relative_to(ROOT)} -> {target.relative_to(ROOT)}"
+                )
             if (
                 is_public_layer_header(source)
                 and target_is_private
@@ -184,7 +284,7 @@ def main() -> int:
                 target_is_private
                 and target_layer is not None
                 and source_layer != target_layer
-                and source_layer != "runtime"
+                and source_relative not in PRIVATE_WIRING_TUS
             ):
                 failures.append(
                     f"{source.relative_to(ROOT)} reaches private {target.relative_to(ROOT)}"
@@ -199,14 +299,51 @@ def main() -> int:
                     f"{source.relative_to(ROOT)} -> {target.name}"
                 )
 
+    dependency_root = CODE / "vision" / "internal" / "dependencies"
+    expected_dependency_headers = set(VISION_SOURCE_DEPENDENCIES.values())
+    actual_dependency_headers = {
+        str(path.relative_to(CODE)) for path in dependency_root.glob("*.hpp")
+    }
+    if actual_dependency_headers != expected_dependency_headers:
+        failures.append(
+            "vision per-TU dependency inventory differs: "
+            f"expected {sorted(expected_dependency_headers)}, "
+            f"found {sorted(actual_dependency_headers)}"
+        )
+    for source_name, dependency_name in VISION_SOURCE_DEPENDENCIES.items():
+        source = CODE / source_name
+        included_dependencies = []
+        for include in INCLUDE.findall(source.read_text(encoding="utf-8")):
+            target = resolve_include(source, include)
+            if target is not None and target.parent == dependency_root.resolve():
+                included_dependencies.append(str(target.relative_to(CODE)))
+        if included_dependencies != [dependency_name]:
+            failures.append(
+                f"{source_name} must include only its own dependency header: "
+                f"expected {[dependency_name]}, found {included_dependencies}"
+            )
+
     forbidden_vision_umbrella = CODE / "vision" / "internal" / "vision_dependencies.hpp"
     if forbidden_vision_umbrella.exists():
         failures.append("vision_dependencies.hpp recreates the removed application umbrella")
+
+    for retired_aggregate in (
+        CODE / "vision" / "internal" / "legacy_vision_state.hpp",
+        CODE / "vision" / "internal" / "legacy_owner_bindings.hpp",
+    ):
+        if retired_aggregate.exists():
+            failures.append(
+                f"retired vision aggregate still exists: {retired_aggregate.relative_to(ROOT)}"
+            )
 
     pure_contracts = (
         CODE / "vision" / "vision_facts.hpp",
         CODE / "vision" / "internal" / "vision_stage_contracts.hpp",
     )
+    forbidden_vision_contract_includes = {
+        "legacy_owner_bindings.hpp",
+        "legacy_vision_state.hpp",
+    }
     forbidden_contract_tokens = (
         "control.h",
         "filt.h",
@@ -223,9 +360,19 @@ def main() -> int:
             failures.append(f"missing pure vision contract: {contract.relative_to(ROOT)}")
             continue
         text = contract.read_text(encoding="utf-8")
+        if contract.name == "vision_stage_contracts.hpp":
+            for include in INCLUDE.findall(text):
+                if pathlib.PurePosixPath(include).name in forbidden_vision_contract_includes:
+                    failures.append(
+                        f"{contract.relative_to(ROOT)} includes legacy aggregate {include}"
+                    )
         for token in forbidden_contract_tokens:
             if token in text:
                 failures.append(f"{contract.relative_to(ROOT)} depends on {token}")
+
+    vision_facts_text = (CODE / "vision" / "vision_facts.hpp").read_text(encoding="utf-8")
+    if re.search(r"^\s*#\s*define\b", vision_facts_text, re.MULTILINE):
+        failures.append("public vision_facts.hpp publishes preprocessor macros")
 
     for filename in sorted(COMPATIBILITY_TUS):
         path = CODE / filename
@@ -253,14 +400,15 @@ def main() -> int:
     print(f"explicit CMake application sources: {len(cmake_sources)}")
     print(f"layered headers/sources scanned: {len(layered_files)}")
     print(f"public layer headers scanned: {len(public_layer_headers)}")
+    print(f"one-to-one vision dependency headers: {len(actual_dependency_headers)}")
     if failures:
         print("architecture failures:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
     print(
-        "PASS: explicit source ownership, public API, pure vision facts, "
-        "private-header, and umbrella boundaries hold"
+        "PASS: explicit source ownership, mutually unaware non-runtime owners, "
+        "public API, pure vision facts, private-header, and umbrella boundaries hold"
     )
     return 0
 

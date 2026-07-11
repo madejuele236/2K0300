@@ -18,8 +18,36 @@ zf_driver_adc &AnalogKey(unsigned index)
 }
 void SetBeeper(bool enabled) { beep.set_level(enabled ? 1 : 0); }
 void SetEscDuty(int duty) { esc_pwm.set_duty(duty); }
+void SetMotorDriverDuty(unsigned index, int duty)
+{
+    (index == 0 ? drv8701e_pwm_1 : drv8701e_pwm_2).set_duty(duty);
+}
+void CaptureMotorDriverInfo(unsigned index)
+{
+    if (index == 0) drv8701e_pwm_1.get_dev_info(&drv8701e_pwm_1_info);
+    else drv8701e_pwm_2.get_dev_info(&drv8701e_pwm_2_info);
+}
+void StopPeriodicTimer() { pit_timer.stop(); }
+void InitializeImu() { imu_dev.init(); }
+void CaptureEscInfo() { esc_pwm.get_dev_info(&esc_info); }
+void InitializeDistanceSensor() { dl1x_dev.init(); }
+void InitializeDisplay(const char *framebuffer_path) { ips200.init(framebuffer_path); }
+int32_t ReadEncoderCount(unsigned index)
+{
+    return (index == 0 ? encoder_dir_1 : encoder_dir_2).get_count();
+}
+void ClearEncoderCount(unsigned index)
+{
+    (index == 0 ? encoder_dir_1 : encoder_dir_2).clear_count();
+}
+int16 ReadDistanceSensor() { return dl1x_dev.get_distance(); }
+void StartPeriodicTimer(uint32_t milliseconds, void (*callback)(void))
+{
+    pit_timer.init_ms(milliseconds, callback);
+}
 int16 DistanceRaw() { return dl1x_distance_raw; }
 const volatile int16 &DistanceRawSignal() { return dl1x_distance_raw; }
+volatile int16 &MutableDistanceRawSignal() { return dl1x_distance_raw; }
 }  // namespace primer::platform
 
 //到时候看一下左右电机哪个对应 pwm_1

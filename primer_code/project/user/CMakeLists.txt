@@ -78,6 +78,8 @@ set(PRIMER_APP_SRCS
     ../code/runtime/lifecycle.cpp
     ../code/runtime/control_adapter.cpp
     ../code/runtime/estimation_adapter.cpp
+    ../code/runtime/vision_stage_ports.cpp
+    ../code/runtime/presentation_ports.cpp
 
     ../code/platform/device_platform.cpp
     ../code/control/pid_controller.cpp

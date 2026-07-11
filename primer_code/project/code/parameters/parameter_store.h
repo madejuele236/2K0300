@@ -1,8 +1,6 @@
 #ifndef PRIMER_CODE_PARAMETERS_PARAMETER_STORE_H_
 #define PRIMER_CODE_PARAMETERS_PARAMETER_STORE_H_
 
-#define PARAM_FILE_NAME "params_config.txt"
-
 struct FlashInformation
 {
     // float dajin_or_sober;
@@ -57,9 +55,5 @@ FlashInformation &MutableParameters();
 void Param_Init(void);
 void Param_SaveSingle(const char* key, float value); // 注意：这里统一用 float 接收，整数会自动转小数
 void Param_SaveAll(void);
-
-
-#define SaveInt(key, val)   Param_SaveSingle(key, (float)(val))
-#define SaveFloat(key, val) Param_SaveSingle(key, (float)(val))
 
 #endif

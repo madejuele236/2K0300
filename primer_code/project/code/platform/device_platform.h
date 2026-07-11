@@ -12,9 +12,6 @@
 #include "zf_device_imu.hpp"
 #include "zf_device_ips200_fb.hpp"
 
-#define SERVER_IP "192.168.3.68"
-// 端口号
-#define PORT 1347
 typedef struct
 {
 int16_t count_now;
@@ -33,8 +30,20 @@ zf_driver_gpio &DigitalKey(unsigned index);
 zf_driver_adc &AnalogKey(unsigned index);
 void SetBeeper(bool enabled);
 void SetEscDuty(int duty);
+void SetMotorDriverDuty(unsigned index, int duty);
+void CaptureMotorDriverInfo(unsigned index);
+void StopPeriodicTimer();
+void InitializeImu();
+void CaptureEscInfo();
+void InitializeDistanceSensor();
+void InitializeDisplay(const char *framebuffer_path);
+int32_t ReadEncoderCount(unsigned index);
+void ClearEncoderCount(unsigned index);
+int16 ReadDistanceSensor();
+void StartPeriodicTimer(uint32_t milliseconds, void (*callback)(void));
 int16 DistanceRaw();
 const volatile int16 &DistanceRawSignal();
+volatile int16 &MutableDistanceRawSignal();
 }  // namespace primer::platform
 
 void set_pwm(int16_t pwm_l,int16_t pwm_r);

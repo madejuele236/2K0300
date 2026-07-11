@@ -1,6 +1,4 @@
-#include "../internal/vision_stage_contracts.hpp"
-#include "../../platform/device_platform.h"
-#include "../../runtime/runtime_state.hpp"
+#include "../internal/dependencies/element_scenes_dependencies.hpp"
 #include <cmath>
 
 uint16_t jump_point,finish_flag;

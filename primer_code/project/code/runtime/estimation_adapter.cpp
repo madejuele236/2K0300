@@ -1,9 +1,7 @@
 #include "runtime/estimation_adapter.hpp"
 
-#include "estimation/imu_estimator_internal.hpp"
-#include "platform/device_platform_internal.hpp"
-#include "vision/vision_facts.hpp"
-#include "vision/internal/legacy_vision_state.hpp"
+#include "port/roundabout_yaw_port.hpp"
+#include "runtime/internal/estimation_adapter_bindings.hpp"
 #include "zf_driver_delay.hpp"
 
 namespace {
@@ -50,4 +48,14 @@ void huandao_yaw_correct(void)
 {
     HuandaoYawCorrectCore(Yaw_Huandao, icm_data.yaw,
                           &yaw_correct, &Yaw_Huandao_err);
+}
+
+void primer::port::CorrectRoundaboutYaw()
+{
+    ::huandao_yaw_correct();
+}
+
+float primer::port::CurrentYaw()
+{
+    return icm_data.yaw;
 }

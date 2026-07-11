@@ -162,6 +162,12 @@ float param_Kp = 0.17f;
 float param_Ki = 0.004f;//
 
 namespace primer::estimation {
+RawImuState AccessRawImuState()
+{
+    return {imu660ra_acc_x, imu660ra_acc_y, imu660ra_acc_z,
+            imu660ra_gyro_x, imu660ra_gyro_y, imu660ra_gyro_z};
+}
+
 const icm_param_t &CurrentImuEstimate()
 {
     return icm_data;

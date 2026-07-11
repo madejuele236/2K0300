@@ -1,7 +1,4 @@
-#include "internal/vision_stage_contracts.hpp"
-#include "platform/camera/camera_service.hpp"
-#include "inference/classifier_service.hpp"
-#include "transport/stream_service.hpp"
+#include "internal/dependencies/pipeline_init_dependencies.hpp"
 #include <cstdio>
 #include <string>
 #include <vector>
