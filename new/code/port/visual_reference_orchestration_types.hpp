@@ -36,13 +36,12 @@ enum class VisualReferenceCandidateKind {
  * @struct VisualReferenceCandidate
  * @brief 单个视觉参考路径候选
  *
- * 包含候选路径的存在性、种类、BEV参考路径、置信度、来源和原因。
+ * 包含候选路径的存在性、种类、BEV参考路径、来源和原因。
  */
 struct VisualReferenceCandidate {
     bool present = false;                              ///< 候选是否存在
     VisualReferenceCandidateKind kind = VisualReferenceCandidateKind::kLine;  ///< 候选种类
     BEVReferencePath reference_path{};                 ///< BEV参考路径
-    float confidence = 0.0F;                           ///< 候选置信度
     std::string source = "none";                       ///< 候选来源描述
     std::string reason = "none";                       ///< 原因描述
 };

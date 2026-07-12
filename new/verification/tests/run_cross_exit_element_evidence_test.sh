@@ -3,12 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-OUT_BIN="${SCRIPT_DIR}/runtime_parameter_defaults_test"
+OUT_BIN="${SCRIPT_DIR}/cross_exit_element_evidence_test"
 
 c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   -I"${REPO_ROOT}/new/code" \
   -I"${REPO_ROOT}/new/code/port" \
-  "${REPO_ROOT}/new/verification/tests/runtime_parameter_defaults_test.cpp" \
+  "${REPO_ROOT}/new/verification/tests/cross_exit_element_evidence_test.cpp" \
+  "${REPO_ROOT}/new/code/vision/elements/cross_exit_element_evidence.cpp" \
   -o "${OUT_BIN}"
 
-"${OUT_BIN}" "${REPO_ROOT}/new/config/default_params.json"
+"${OUT_BIN}"

@@ -113,8 +113,6 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " perception_health.reason=" << snapshot.steering.perception_health.reason
                      << " element_evidence.cross_exit.present="
                      << BoolToken(snapshot.steering.element_evidence.cross_exit.present)
-                     << " element_evidence.cross_exit.confidence="
-                     << snapshot.steering.element_evidence.cross_exit.confidence
                      << " element_evidence.cross_exit.forward_min_m="
                      << snapshot.steering.element_evidence.cross_exit.forward_min_m
                      << " element_evidence.cross_exit.forward_max_m="

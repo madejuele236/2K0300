@@ -1,6 +1,5 @@
 #include "vision/elements/cross_exit_element_evidence.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -10,16 +9,6 @@ namespace {
 
 /// 十字出口检测的最小连续宽行数
 constexpr std::size_t kCrossMinContiguousWideRows = 3U;
-/// 每行最小可采样数
-constexpr std::size_t kCrossMinSampleablePerRow = 8U;
-/// 十字出口存在的最小置信度
-constexpr float kCrossPresentConfidenceMin = 0.70F;
-
-/// 将值钳制到[0, 1]范围
-float Clamp01(float value) {
-    return std::clamp(value, 0.0F, 1.0F);
-}
-
 /// 十字出口游程累加器，累计连续宽行行的统计数据和得分
 struct CrossRunAccumulator {
     std::size_t row_count = 0;         ///< 累加的行数
@@ -32,9 +21,9 @@ struct CrossRunAccumulator {
     std::size_t boundary_span_count = 0;      ///< 总计边界 span 数
 };
 
-bool BoundaryAbsentRow(const BEVSimpleRowScan& row) {
+bool BoundaryAbsentRow(const BEVSimpleRowScan& row, std::size_t min_sampleable_per_row) {
     return row.valid &&
-           row.sampleable_count >= kCrossMinSampleablePerRow &&
+           row.sampleable_count >= min_sampleable_per_row &&
            row.jumps.empty() &&
            row.spans.empty();
 }
@@ -103,7 +92,8 @@ port::CrossExitElementEvidence DetectCrossExitEvidence(
     bool saw_supported_row = false;
     CrossRunAccumulator current{};
     CrossRunAccumulator best{};
-    (void)params;
+    const std::size_t min_sampleable_per_row =
+        static_cast<std::size_t>(params.bev_element.cross_min_sampleable_per_row);
 
     const auto finish_run = [&current, &best]() {
         if (current.row_count > 0U && BetterRun(current, best)) {
@@ -117,14 +107,14 @@ port::CrossExitElementEvidence DetectCrossExitEvidence(
         evidence.boundary_jump_count += row.jumps.size();
         evidence.boundary_span_count += row.spans.size();
 
-        const bool supported = row.valid && row.sampleable_count >= kCrossMinSampleablePerRow;
+        const bool supported = row.valid && row.sampleable_count >= min_sampleable_per_row;
         saw_supported_row = saw_supported_row || supported;
         if (!supported) {
             finish_run();
             continue;
         }
 
-        if (!BoundaryAbsentRow(row)) {
+        if (!BoundaryAbsentRow(row, min_sampleable_per_row)) {
             finish_run();
             continue;
         }
@@ -142,9 +132,6 @@ port::CrossExitElementEvidence DetectCrossExitEvidence(
         return evidence;
     }
 
-    evidence.confidence =
-        Clamp01(static_cast<float>(best.row_count) /
-                static_cast<float>(kCrossMinContiguousWideRows));
     evidence.forward_min_m = best.forward_min_m;
     evidence.forward_max_m = best.forward_max_m;
     evidence.lateral_min_m = best.lateral_min_m;
@@ -152,11 +139,6 @@ port::CrossExitElementEvidence DetectCrossExitEvidence(
     evidence.sampleable_count = best.sampleable_count;
     evidence.boundary_jump_count = best.boundary_jump_count;
     evidence.boundary_span_count = best.boundary_span_count;
-    if (evidence.confidence < kCrossPresentConfidenceMin) {
-        evidence.reason = "low_confidence";
-        return evidence;
-    }
-
     evidence.present = true;
     evidence.reason = "present";
     return evidence;
@@ -185,7 +167,6 @@ port::VisualReferenceCandidate BuildCrossExitVisualReferenceCandidate(
     candidate.present = true;
     candidate.kind = port::VisualReferenceCandidateKind::kCrossExit;
     candidate.reference_path = line_candidate.reference_path;
-    candidate.confidence = evidence.confidence;
     candidate.source = "cross_exit";
     candidate.reason = "cross_exit_evidence_candidate";
 

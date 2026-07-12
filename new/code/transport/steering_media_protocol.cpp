@@ -175,8 +175,6 @@ void AppendVisualReferenceCandidatePathJson(std::ostringstream& stream,
     AppendJsonString(stream, candidate.source);
     stream << ",\"reason\":";
     AppendJsonString(stream, candidate.reason);
-    stream << ",\"confidence\":";
-    AppendFiniteJsonNumber(stream, candidate.confidence);
     stream << ",\"mode\":";
     AppendJsonString(stream, ReferenceModeToken(candidate.reference_path.mode));
     stream << ",\"sample_count\":"
@@ -614,6 +612,8 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"BEV_ELEMENT\":{";
     header << "\"CROSS_EXIT_TAKEOVER_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.cross_exit_takeover_enabled);
+    header << ",\"CROSS_MIN_SAMPLEABLE_PER_ROW\":"
+           << snapshot.param_snapshot.bev_element.cross_min_sampleable_per_row;
     header << ",\"CIRCLE_V2_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.circle_v2_enabled);
     header << ",\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":";

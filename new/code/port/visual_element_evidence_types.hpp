@@ -34,11 +34,10 @@ struct VisualElementCandidateSummary {
  * @brief 十字路口出口元素证据
  *
  * 描述十字路口出口处检测到的视觉元素（如斑马线、路口标记）的
- * 位置范围、置信度、V9 边界事实统计和候选状态。
+ * 位置范围、V9 边界事实统计和候选状态。
  */
 struct CrossExitElementEvidence {
     bool present = false;              ///< 元素是否存在
-    float confidence = 0.0F;           ///< 检测置信度
     float forward_min_m = 0.0F;        ///< 元素前向最小距离（米）
     float forward_max_m = 0.0F;        ///< 元素前向最大距离（米）
     float lateral_min_m = 0.0F;        ///< 元素横向最小位置（米）
@@ -112,6 +111,7 @@ struct VisualElementEvidenceFrame {
 struct BEVElementParameters {
     // 十字路口出口检测参数
     bool cross_exit_takeover_enabled = true;   ///< 是否启用十字路口出口接管
+    int cross_min_sampleable_per_row = 8;       ///< cross 判定每行最少可采样点数
 
     // Circle V2 场景状态机参数
     bool circle_v2_enabled = true;                  ///< 是否注册 CircleV2Scene

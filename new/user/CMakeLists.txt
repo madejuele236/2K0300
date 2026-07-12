@@ -252,6 +252,17 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
     )
 
     add_executable(
+        cross_exit_element_evidence_test
+        ../verification/tests/cross_exit_element_evidence_test.cpp
+        ../code/vision/elements/cross_exit_element_evidence.cpp
+    )
+    target_link_libraries(
+        cross_exit_element_evidence_test
+        pthread
+        m
+    )
+
+    add_executable(
         steering_circle_v2_scene_test
         ../verification/tests/steering_circle_v2_scene_test.cpp
         ../code/vision/elements/circle_v2/circle_v2_scene.cpp
@@ -273,21 +284,12 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         assistant_telemetry_selftest
         ../verification/tests/assistant_telemetry_selftest.cpp
         ../code/transport/assistant_protocol.cpp
+        ../code/safety/control_apply_observation.cpp
         ../code/control/motion_supervisor.cpp
     )
     target_link_libraries(
         assistant_telemetry_selftest
         ${OpenCV_LIBS}
-        pthread
-        m
-    )
-
-    add_executable(
-        runtime_parameter_defaults_test
-        ../verification/tests/runtime_parameter_defaults_test.cpp
-    )
-    target_link_libraries(
-        runtime_parameter_defaults_test
         pthread
         m
     )
@@ -340,6 +342,7 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../code/control/motion_supervisor.cpp
         ../code/runtime/capture/camera_frame_store.cpp
         ../code/runtime/services/steering_media_service.cpp
+        ../code/vision/image/luma_sampler.cpp
         ../code/port/perf_counter.cpp
     )
     target_link_libraries(

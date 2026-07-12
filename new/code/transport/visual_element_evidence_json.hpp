@@ -86,7 +86,7 @@ inline void AppendCandidateJson(std::ostream& stream,
 }
 
 /**
- * 向 JSON 输出流追加路口退出元素证据（含存在标志、置信度、空间范围和候选信息）。
+ * 向 JSON 输出流追加路口退出元素证据（含存在标志、空间范围和候选信息）。
  * @param stream 输出流
  * @param cross_exit 路口退出元素证据数据
  */
@@ -94,8 +94,6 @@ inline void AppendCrossExitJson(std::ostream& stream,
                                 const port::CrossExitElementEvidence& cross_exit) {
     stream << "{\"present\":";
     AppendJsonBool(stream, cross_exit.present);
-    stream << ",\"confidence\":";
-    AppendJsonNumber(stream, cross_exit.confidence);
     stream << ",\"forward_min_m\":";
     AppendJsonNumber(stream, cross_exit.forward_min_m);
     stream << ",\"forward_max_m\":";

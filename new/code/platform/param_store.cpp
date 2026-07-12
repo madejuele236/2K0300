@@ -611,7 +611,8 @@ bool ValidateBEVGeometry(const port::BEVGeometryParameters& params) {
 }
 
 bool ValidateBEVElement(const port::BEVElementParameters& params) {
-    return IsFiniteInRange(params.circle_v2_exit_yaw_threshold_deg, 1.0, 720.0) &&
+    return params.cross_min_sampleable_per_row >= 1 &&
+           IsFiniteInRange(params.circle_v2_exit_yaw_threshold_deg, 1.0, 720.0) &&
            params.circle_v2_exit_hold_frames >= 2 &&
            params.circle_v2_inner_trace_stall_timeout_ms >= 1 &&
            IsFiniteInRange(params.circle_v2_inner_trace_stall_yaw_min_deg, 0.0, 720.0) &&
@@ -948,6 +949,11 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
     ReadOptionalNestedBool(
         root, "BEV_ELEMENT", "CROSS_EXIT_TAKEOVER_ENABLED", parsed.bev_element.cross_exit_takeover_enabled,
         optional_malformed);
+    ReadOptionalNestedInt(root,
+                          "BEV_ELEMENT",
+                          "CROSS_MIN_SAMPLEABLE_PER_ROW",
+                          parsed.bev_element.cross_min_sampleable_per_row,
+                          optional_malformed);
     ReadOptionalNestedBool(
         root, "BEV_ELEMENT", "CIRCLE_V2_ENABLED", parsed.bev_element.circle_v2_enabled, optional_malformed);
     ReadOptionalNestedNumber(root,

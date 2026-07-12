@@ -22,7 +22,7 @@ compile_with_flags() {
 
 if pkg-config --exists opencv4; then
   compile_with_flags "$(pkg-config --cflags opencv4)" "$(pkg-config --libs opencv4)"
-  "${OUT_BIN}"
+  "${OUT_BIN}" "${REPO_ROOT}/new/config/default_params.json"
   exit 0
 fi
 
@@ -30,7 +30,7 @@ if [[ -n "${OPENCV_ROOT:-}" ]] && [[ -d "${OPENCV_ROOT}/include/opencv4" ]]; the
   compile_with_flags \
     "-I${OPENCV_ROOT}/include/opencv4" \
     "-L${OPENCV_ROOT}/lib -Wl,-rpath,${OPENCV_ROOT}/lib -lopencv_core"
-  "${OUT_BIN}"
+  "${OUT_BIN}" "${REPO_ROOT}/new/config/default_params.json"
   exit 0
 fi
 

@@ -38,13 +38,11 @@ ls2k::port::BEVReferencePath MakePath(int present_count) {
 
 ls2k::port::VisualReferenceCandidate Candidate(ls2k::port::VisualReferenceCandidateKind kind,
                                                int present_count,
-                                               float confidence,
                                                const std::string& source) {
     ls2k::port::VisualReferenceCandidate candidate{};
     candidate.present = present_count > 0;
     candidate.kind = kind;
     candidate.reference_path = MakePath(present_count);
-    candidate.confidence = confidence;
     candidate.source = source;
     candidate.reason = "unit_test_candidate";
     return candidate;
@@ -77,7 +75,7 @@ void TestValidLineCandidateIsSelected() {
 
 void TestMissingIndexZeroRejectsCandidate() {
     ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     line.reference_path.sampled_path[0].present = false;
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line});
@@ -90,7 +88,7 @@ void TestMissingIndexZeroRejectsCandidate() {
 
 void TestNoneModeRejectsCandidate() {
     ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     line.reference_path.mode = ls2k::port::ReferenceMode::kNone;
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line});
@@ -103,7 +101,7 @@ void TestNoneModeRejectsCandidate() {
 
 void TestHoldModeRejectsCandidate() {
     ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     line.reference_path.mode = ls2k::port::ReferenceMode::kHoldLast;
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line});
@@ -114,30 +112,29 @@ void TestHoldModeRejectsCandidate() {
            "kHoldLast mode rejection must be explicit");
 }
 
-void TestLineWinsWhenSpecialIsAbsentOrLowConfidence() {
+void TestLineWinsWhenSpecialIsAbsent() {
     const ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     ls2k::port::VisualReferenceCandidate cross =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCrossExit, 3, 0.30F, "cross_exit");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCrossExit, 0, "cross_exit");
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line, cross});
-    Expect(selection.present, "line must remain available when special candidate is low-confidence");
-    Expect(selection.source == "line", "low-confidence special candidate must not displace line");
+    Expect(selection.present, "line must remain available when special candidate is absent");
+    Expect(selection.source == "line", "absent special candidate must not displace line");
     Expect(selection.reason == "line_candidate_selected",
            "line fallback must keep deterministic selection reason");
 }
 
 void TestPriorityExplainsMultipleSpecialCandidates() {
     const ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     const ls2k::port::VisualReferenceCandidate cross =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCrossExit, 3, 0.90F, "cross_exit");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCrossExit, 3, "cross_exit");
     const ls2k::port::VisualReferenceCandidate circle =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleLeft, 3, 0.80F, "circle_v2_inner");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleLeft, 3, "circle_v2_inner");
     const ls2k::port::VisualReferenceCandidate roadblock =
         Candidate(ls2k::port::VisualReferenceCandidateKind::kRoadblockBypass,
                   3,
-                  0.70F,
                   "roadblock_bypass");
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line, cross, circle, roadblock});
@@ -151,30 +148,30 @@ void TestPriorityExplainsMultipleSpecialCandidates() {
 
 void TestCrossExitPriorityExceedsCircle() {
     const ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     const ls2k::port::VisualReferenceCandidate cross =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCrossExit, 3, 0.70F, "cross_exit");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCrossExit, 3, "cross_exit");
     const ls2k::port::VisualReferenceCandidate circle =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleLeft, 3, 0.95F, "circle_v2_inner");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleLeft, 3, "circle_v2_inner");
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line, circle, cross});
     Expect(selection.present, "cross and circle candidates must be arbitrated");
     Expect(selection.source == "cross_exit",
-           "cross exit must outrank circle even when circle confidence is higher");
+           "cross exit must outrank circle by explicit candidate priority");
     Expect(selection.reason == "special_visual_candidate_selected",
            "cross-over-circle selection must expose deterministic reason");
 }
 
 void TestEqualSpecialTieSelectsNone() {
     const ls2k::port::VisualReferenceCandidate line =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, 1.0F, "line");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     const ls2k::port::VisualReferenceCandidate circle_left =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleLeft, 3, 0.80F, "circle_v2_inner");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleLeft, 3, "circle_v2_inner");
     const ls2k::port::VisualReferenceCandidate circle_right =
-        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleRight, 3, 0.80F, "circle_v2_exit");
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kCircleRight, 3, "circle_v2_exit");
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line, circle_left, circle_right});
-    Expect(!selection.present, "equal-priority equal-confidence special tie must fail closed");
+    Expect(!selection.present, "equal-priority special conflict must fail closed");
     Expect(selection.reason == "ambiguous_visual_reference_candidates",
            "special tie must be explainable");
     Expect(selection.candidate_count == 3, "all structurally valid candidates must be counted");
@@ -189,7 +186,7 @@ int main() {
         TestMissingIndexZeroRejectsCandidate();
         TestNoneModeRejectsCandidate();
         TestHoldModeRejectsCandidate();
-        TestLineWinsWhenSpecialIsAbsentOrLowConfidence();
+        TestLineWinsWhenSpecialIsAbsent();
         TestPriorityExplainsMultipleSpecialCandidates();
         TestCrossExitPriorityExceedsCircle();
         TestEqualSpecialTieSelectsNone();

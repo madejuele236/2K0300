@@ -29,7 +29,6 @@ std::optional<port::VisualReferenceCandidate> AdaptCircleV2ReferencePlan(
                          ? port::VisualReferenceCandidateKind::kCircleLeft
                          : port::VisualReferenceCandidateKind::kCircleRight;
     candidate.reference_path = plan->reference_path;
-    candidate.confidence = 1.0F;
     candidate.source = SourceForRole(plan->role);
     candidate.reason = "circle_v2_scene";
     return candidate;

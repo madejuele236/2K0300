@@ -159,7 +159,8 @@ none
 ### 参数
 
 - `default_params.json` 是人工编辑的当前运行默认合同。
-- `RuntimeParameters{}` 是缺文件 / 解析失败 fallback 镜像，必须保持一致。
+- `RuntimeParameters{}` 是缺文件 / 解析失败时的编译期安全 fallback，不是当前调试参数的镜像。
+- 工作参数和编译期 fallback 必须各自合法，但允许取值不同；调参不要求冗余同步 C++ 默认值。
 - 不保留旧 JSON alias。
 - 有范围的参数必须在参数合同层显式校验；公式层不得偷偷 clamp 或改写语义。
 - 参数名必须表达当前真实语义：
@@ -380,6 +381,7 @@ steering media config snapshot 必须暴露当前真实参数，包括：
   "BEV_CONTROL_MODEL": {},
   "BEV_ELEMENT": {
     "CROSS_EXIT_TAKEOVER_ENABLED": 1,
+    "CROSS_MIN_SAMPLEABLE_PER_ROW": 8,
     "CIRCLE_V2_ENABLED": 1,
     "CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG": 330,
     "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT": 3
@@ -405,7 +407,7 @@ steering media config snapshot 必须暴露当前真实参数，包括：
 后续 extension 每次触碰相关链路，至少运行：
 
 ```bash
-rtk bash new/verification/tests/run_runtime_parameter_defaults_test.sh
+rtk bash new/verification/tests/run_param_store_load_runtime_parameters_test.sh
 rtk bash new/verification/tests/run_power_adapter_threshold_test.sh
 rtk bash new/verification/tests/run_startup_low_voltage_order_test.sh
 rtk bash new/verification/tests/run_bev_simple_perception_test.sh

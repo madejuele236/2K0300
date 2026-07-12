@@ -166,7 +166,6 @@ ls2k::port::VisualReferenceCandidate MakeCandidatePath(
     candidate.present = true;
     candidate.kind = kind;
     candidate.reference_path.mode = ls2k::port::ReferenceMode::kIntervalCenter;
-    candidate.confidence = 0.86F;
     candidate.source = source;
     candidate.reason = "unit_test_path_candidate";
     for (std::size_t index = 0; index < 3U; ++index) {
@@ -210,7 +209,6 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.perception_health.projector_ok = true;
     snapshot.steering.perception_health.reason = "ok";
     snapshot.steering.element_evidence.cross_exit.present = true;
-    snapshot.steering.element_evidence.cross_exit.confidence = 0.82F;
     snapshot.steering.element_evidence.cross_exit.forward_min_m = 0.20F;
     snapshot.steering.element_evidence.cross_exit.forward_max_m = 0.42F;
     snapshot.steering.element_evidence.cross_exit.lateral_min_m = -0.35F;
@@ -476,6 +474,7 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_control_model.curvature_to_wheel_delta_gain = 34.0;
     config.param_snapshot.bev_control_model.tracking_fit_min_samples = 5;
     config.param_snapshot.bev_element.cross_exit_takeover_enabled = false;
+    config.param_snapshot.bev_element.cross_min_sampleable_per_row = 9;
     config.param_snapshot.reference_time_alignment.enabled = true;
     config.param_snapshot.reference_time_alignment.max_age_ms = 120;
     config.param_snapshot.reference_time_alignment.effective_delay_ms = 25;
@@ -576,6 +575,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include BEV element group");
     Require(Contains(header_json, "\"CROSS_EXIT_TAKEOVER_ENABLED\":false"),
             "config snapshot must include default-off cross-exit takeover");
+    Require(Contains(header_json, "\"CROSS_MIN_SAMPLEABLE_PER_ROW\":9"),
+            "config snapshot must include cross per-row sampleable minimum");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "config snapshot must not include removed cross white-ratio threshold");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
@@ -977,7 +978,6 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.perception_health.projector_ok = true;
         state.control_debug_snapshot.steering.perception_health.reason = "ok";
         state.control_debug_snapshot.steering.element_evidence.cross_exit.present = true;
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.confidence = 0.81F;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.forward_min_m = 0.20F;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.forward_max_m = 0.42F;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.lateral_min_m = -0.35F;

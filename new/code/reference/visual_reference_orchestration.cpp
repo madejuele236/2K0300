@@ -5,9 +5,6 @@
 namespace ls2k::reference {
 namespace {
 
-/// 特殊候选最低置信度要求
-constexpr float kSpecialCandidateConfidenceMin = 0.65F;
-
 /// 候选验证结果
 struct CandidateValidation {
     bool accepted = false;                ///< 候选是否通过验证
@@ -17,16 +14,6 @@ struct CandidateValidation {
 /// 判断候选类型是否为特殊类型（非车道线）
 bool IsSpecialKind(port::VisualReferenceCandidateKind kind) {
     return kind != port::VisualReferenceCandidateKind::kLine;
-}
-
-/// 判断候选是否为高置信度的特殊候选
-bool IsConfidentSpecialCandidate(const port::VisualReferenceCandidate& candidate) {
-    return IsSpecialKind(candidate.kind) && candidate.confidence >= kSpecialCandidateConfidenceMin;
-}
-
-/// 判断两个置信度值是否近似相等（容差1e-6）
-bool SameConfidence(float lhs, float rhs) {
-    return std::fabs(lhs - rhs) <= 1e-6F;
 }
 
 /// 获取候选类型的优先级（数值越高优先级越高）
@@ -48,13 +35,10 @@ int Priority(port::VisualReferenceCandidateKind kind) {
 }
 
 /// 验证候选是否有效
-/// 检查：候选存在、置信度有效、参考路径模式正确、首个采样点存在、无间隙、坐标有限
+/// 检查：候选存在、参考路径模式正确、首个采样点存在、无间隙、坐标有限
 CandidateValidation ValidateCandidate(const port::VisualReferenceCandidate& candidate) {
     if (!candidate.present) {
         return {};
-    }
-    if (!std::isfinite(candidate.confidence) || candidate.confidence < 0.0F) {
-        return {false, "candidate_confidence_invalid"};
     }
     switch (candidate.reference_path.mode) {
         case port::ReferenceMode::kIntervalCenter:
@@ -127,7 +111,6 @@ port::VisualReferenceCandidate MakeLineVisualReferenceCandidate(
     candidate.present = reference_path.sampled_path[0].present;
     candidate.kind = port::VisualReferenceCandidateKind::kLine;
     candidate.reference_path = reference_path;
-    candidate.confidence = candidate.present ? reference_path.sampled_path[0].confidence : 0.0F;
     candidate.source = source.empty() ? "line" : source;
     candidate.reason = candidate.present ? "line_reference_candidate" : "line_reference_absent";
     return candidate;
@@ -136,9 +119,9 @@ port::VisualReferenceCandidate MakeLineVisualReferenceCandidate(
 /// SelectVisualReference 实现
 /// 从候选列表中选择最佳视觉参考：
 /// 1. 验证每个候选的有效性
-/// 2. 优先选择高置信度的特殊候选（按优先级）
+/// 2. 优先选择特殊候选（按优先级）
 /// 3. 若无特殊候选则选择最佳车道线候选
-/// 4. 若特殊候选出现置信度平局则返回ambiguous
+/// 4. 若特殊候选出现同优先级冲突则返回ambiguous
 port::VisualReferenceSelection SelectVisualReference(
     const port::VisualReferenceCandidate* candidates,
     std::size_t count) {
@@ -163,13 +146,13 @@ port::VisualReferenceSelection SelectVisualReference(
 
         ++selection.candidate_count;
         if (candidate.kind == port::VisualReferenceCandidateKind::kLine) {
-            if (best_line == nullptr || candidate.confidence > best_line->confidence) {
+            if (best_line == nullptr) {
                 best_line = &candidate;
             }
             continue;
         }
 
-        if (!IsConfidentSpecialCandidate(candidate)) {
+        if (!IsSpecialKind(candidate.kind)) {
             continue;
         }
         const int priority = Priority(candidate.kind);
@@ -182,15 +165,7 @@ port::VisualReferenceSelection SelectVisualReference(
         if (priority < best_special_priority) {
             continue;
         }
-        if (candidate.confidence > best_special->confidence &&
-            !SameConfidence(candidate.confidence, best_special->confidence)) {
-            best_special = &candidate;
-            best_special_tied = false;
-            continue;
-        }
-        if (SameConfidence(candidate.confidence, best_special->confidence)) {
-            best_special_tied = true;
-        }
+        best_special_tied = true;
     }
 
     if (best_special_tied) {

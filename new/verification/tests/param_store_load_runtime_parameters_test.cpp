@@ -1,6 +1,7 @@
 #include <fstream>
 #include <cmath>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -56,6 +57,14 @@ void WriteText(const std::string& path, const std::string& text) {
     output << text;
 }
 
+std::string ReadText(const std::string& path) {
+    std::ifstream input(path);
+    Expect(input.is_open(), "failed to open runtime parameters: " + path);
+    std::ostringstream text;
+    text << input.rdbuf();
+    return text.str();
+}
+
 ls2k::port::RuntimeParameters LoadFixture(const std::string& path, CaptureDiagnostics& diagnostics) {
     ls2k::port::RuntimeParameters params{};
     const std::unique_ptr<ls2k::port::IParamStore> store = ls2k::platform::MakeParamStore();
@@ -64,10 +73,55 @@ ls2k::port::RuntimeParameters LoadFixture(const std::string& path, CaptureDiagno
     return params;
 }
 
+void VerifyActiveRuntimeParameters(const std::string& path) {
+    CaptureDiagnostics diagnostics{};
+    const ls2k::port::RuntimeParameters params = LoadFixture(path, diagnostics);
+    Expect(!params.loaded_from_defaults,
+           "active runtime parameters must load without fallback");
+    Expect(!params.parse_failure,
+           "active runtime parameters must pass production validation");
+
+    const std::string json = ReadText(path);
+    const std::vector<std::string> removed_tokens = {
+        "\"turn_output_to_wheel_delta_gain\"",
+        "\"wheel_turn_target_scale\"",
+        "\"camera_frame_width\"",
+        "\"camera_frame_height\"",
+        "\"LATERAL_ERROR_FAR_WEIGHT\"",
+        "\"LATERAL_ERROR_TO_WHEEL_DELTA_GAIN\"",
+        "\"LOOKAHEAD_VISIBLE_RANGE_RATIO\"",
+        "\"LOOKAHEAD_MIN_M\"",
+        "\"LOOKAHEAD_MAX_M\"",
+        "\"PURE_PURSUIT_GAIN\"",
+        "\"CURVATURE_COMMAND_LIMIT\"",
+        "\"CURVATURE_TO_TURN_OUTPUT_GAIN\"",
+        "\"CURVATURE_TO_YAW_RATE_TARGET_GAIN\"",
+        "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\"",
+        "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\"",
+        "\"CIRCLE_ENTRY_",
+        "\"CIRCLE_EVIDENCE_",
+        "\"CIRCLE_MIN_",
+        "\"CIRCLE_OPEN",
+        "\"CIRCLE_OPPOSITE_",
+        "\"CIRCLE_PRESENT_",
+        "\"delta_s_m\"",
+        "\"BEV_ELEMENT_RASTER\"",
+    };
+    for (const std::string& token : removed_tokens) {
+        Expect(json.find(token) == std::string::npos,
+               "active runtime parameters retain removed token: " + token);
+    }
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        Expect(argc == 1 || argc == 2,
+               "usage: param_store_load_runtime_parameters_test [active_params.json]");
+        if (argc == 2) {
+            VerifyActiveRuntimeParameters(argv[1]);
+        }
         const std::string base = "/tmp/param_store_load_runtime_parameters_test";
         const ls2k::port::RuntimeParameters builtin_defaults{};
 
@@ -99,6 +153,7 @@ int main() {
                       "\"TRACKING_FIT_MIN_SAMPLES\": 5},\n"
                       "  \"BEV_ELEMENT\": {"
                       "\"CROSS_EXIT_TAKEOVER_ENABLED\": 1,"
+                      "\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 11,"
                       "\"CIRCLE_V2_ENABLED\": 1,"
                       "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\": 300,"
                       "\"CIRCLE_V2_EXIT_HOLD_FRAMES\": 4,"
@@ -162,6 +217,8 @@ int main() {
                "BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES should parse");
         Expect(enabled.bev_element.cross_exit_takeover_enabled,
                "CROSS_EXIT_TAKEOVER_ENABLED=1 should parse true");
+        Expect(enabled.bev_element.cross_min_sampleable_per_row == 11,
+               "CROSS_MIN_SAMPLEABLE_PER_ROW should parse");
         Expect(enabled.bev_element.circle_v2_enabled,
                "CIRCLE_V2_ENABLED=1 should parse true");
         Expect(std::abs(enabled.bev_element.circle_v2_exit_yaw_threshold_deg - 300.0F) <
@@ -215,6 +272,9 @@ int main() {
         Expect(absent.bev_element.cross_exit_takeover_enabled ==
                    builtin_defaults.bev_element.cross_exit_takeover_enabled,
                "missing BEV_ELEMENT should keep takeover enabled");
+        Expect(absent.bev_element.cross_min_sampleable_per_row ==
+                   builtin_defaults.bev_element.cross_min_sampleable_per_row,
+               "missing BEV_ELEMENT should keep cross sampleable threshold default");
         Expect(absent.bev_boundary.local_jump_min_y ==
                    builtin_defaults.bev_boundary.local_jump_min_y,
                "missing BEV_BOUNDARY should keep local jump default");
@@ -303,6 +363,23 @@ int main() {
                "malformed CROSS_EXIT_TAKEOVER_ENABLED should fall back to takeover enabled default");
         Expect(malformed_diagnostics.SawCode("params.parse"),
                "malformed CROSS_EXIT_TAKEOVER_ENABLED should emit params.parse");
+
+        const std::string invalid_cross_sampleable_path = base + "_invalid_cross_sampleable.json";
+        WriteText(invalid_cross_sampleable_path,
+                  MinimalRuntimeParametersJson(
+                      "  \"BEV_ELEMENT\": {\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 0}"));
+        CaptureDiagnostics invalid_cross_sampleable_diagnostics{};
+        const ls2k::port::RuntimeParameters invalid_cross_sampleable =
+            LoadFixture(invalid_cross_sampleable_path, invalid_cross_sampleable_diagnostics);
+        Expect(invalid_cross_sampleable.loaded_from_defaults,
+               "zero CROSS_MIN_SAMPLEABLE_PER_ROW should fall back to defaults");
+        Expect(invalid_cross_sampleable.parse_failure,
+               "zero CROSS_MIN_SAMPLEABLE_PER_ROW should set parse_failure");
+        Expect(invalid_cross_sampleable.bev_element.cross_min_sampleable_per_row ==
+                   builtin_defaults.bev_element.cross_min_sampleable_per_row,
+               "invalid cross sampleable threshold should keep default");
+        Expect(invalid_cross_sampleable_diagnostics.SawCode("params.parse"),
+               "zero CROSS_MIN_SAMPLEABLE_PER_ROW should emit params.parse");
 
         const std::string malformed_geometry_path = base + "_malformed_geometry.json";
         WriteText(malformed_geometry_path,

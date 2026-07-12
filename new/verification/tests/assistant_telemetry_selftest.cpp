@@ -26,7 +26,6 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.valid = true;
     snapshot.motion_phase = ls2k::control::MotionPhase::kRunning;
     snapshot.steering.element_evidence.cross_exit.present = true;
-    snapshot.steering.element_evidence.cross_exit.confidence = 0.82;
     snapshot.steering.element_evidence.cross_exit.forward_min_m = 0.20;
     snapshot.steering.element_evidence.cross_exit.forward_max_m = 0.42;
     snapshot.steering.element_evidence.cross_exit.lateral_min_m = -0.35;
@@ -168,6 +167,8 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
     const std::string json = ls2k::transport::EncodeAssistantTelemetry(telemetry);
     Expect(Contains(json, "\"element_evidence\":{\"cross_exit\":{\"present\":true"),
            "assistant telemetry must include element evidence object");
+    Expect(!Contains(json, "\"cross_exit\":{\"present\":true,\"confidence\":"),
+           "assistant telemetry must not expose removed cross confidence");
     Expect(Contains(json, "\"candidate\":{\"built\":true"),
            "assistant telemetry must include element candidate summary");
     Expect(Contains(json, "\"included_in_arbitration\":false"),
