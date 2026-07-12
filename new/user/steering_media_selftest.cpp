@@ -496,7 +496,6 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_projector.projector_hash = "unit-test-projector-hash";
     config.param_snapshot.bev_geometry.search_lateral_limit_m = 0.72F;
     config.param_snapshot.bev_geometry.sparse_row_count = 12;
-    config.param_snapshot.bev_geometry.reference_lateral_jump_gate_m = 1000.0F;
     config.param_snapshot.bev_geometry.boundary_trace_max_adjacent_distance_m = 0.45F;
     config.param_snapshot.bev_classification.white_confidence_min = 0.60F;
 
@@ -547,8 +546,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include BEV image scan lateral range");
     Require(Contains(header_json, "\"SPARSE_ROW_COUNT\":12"),
             "config snapshot must include sparse row count");
-    Require(Contains(header_json, "\"REFERENCE_LATERAL_JUMP_GATE_M\":1000"),
-            "config snapshot must include V5 reference lateral jump gate");
+    Require(!Contains(header_json, "\"REFERENCE_LATERAL_JUMP_GATE_M\""),
+            "config snapshot must not include removed reference lateral jump gate");
     Require(Contains(header_json, "\"BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M\":0.449999988079"),
             "config snapshot must include boundary trace distance");
     Require(Contains(header_json, "\"BEV_CLASSIFICATION\""),

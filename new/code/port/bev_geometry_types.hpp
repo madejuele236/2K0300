@@ -103,7 +103,6 @@ struct BEVGeometryParameters {
     int sparse_row_count = static_cast<int>(kBevReferenceSampleCount);  ///< 启用原始前向采样行的前 N 行
     float search_lateral_limit_m = 1.60F;  ///< 横向搜索范围限制（米）
     float lateral_step_m = 0.02F;          ///< 横向搜索步长（米）
-    float reference_lateral_jump_gate_m = 1000.0F;  ///< 参考路径横向跳变门限（米），默认失效化
     float boundary_trace_max_adjacent_distance_m = 0.15F;  ///< 边界 trace 相邻保留点最大距离（米）
     float nominal_road_half_width_m = 0.19F;  ///< 普通道路模型使用的名义半路宽（米）
 };

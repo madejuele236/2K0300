@@ -242,15 +242,12 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 | `BEV_GEOMETRY.SPARSE_ROW_COUNT` | `24` | 启用原 24 个 `FORWARD_SAMPLE_*` 的前 N 行。设为 `12` 表示只扫描并输出 `FORWARD_SAMPLE_0..11`，不是把 12 行重新均匀分布到 0.061..1.5m。 |
 | `BEV_GEOMETRY.SEARCH_LATERAL_LIMIT_M` | `1.6` | BEV 横向扫描半宽。漏掉真实边界时可增大；无关纹理边界变多时减小。它不是原图有效 span 裁剪。 |
 | `BEV_GEOMETRY.LATERAL_STEP_M` | `0.02` | BEV 横向采样步长。减小会更精细但更耗时、更易拾取细碎边界；增大会更稳但 reference 量化更粗。 |
-| `BEV_GEOMETRY.REFERENCE_LATERAL_JUMP_GATE_M` | `1000.0` | 参考路径相邻点横向跳变旧门限。默认极大，正常 BEV 范围内等同禁用；路径连续性由 boundary span 和 boundary trace 判断。 |
 | `BEV_GEOMETRY.BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M` | `0.15` | 普通路径候选生成前，边界 trace 相邻保留点的 BEV 平面最大距离。只用于原始边界点连续性裁剪，不从半路宽或采样步长推导。 |
 | `BEV_GEOMETRY.NOMINAL_ROAD_HALF_WIDTH_M` | `0.19` | 普通道路模型的稳定半路宽事实。CircleV2 ExitTrace 通过 `OrdinaryRoadModel.half_width` 消费该值，不再从每帧 rows 宽度实时重算。 |
 
 `FORWARD_SAMPLE_*` 必须单调递增。当前 24 点按 0.1..1.6m 均匀分布，步长约 0.065217m。这些参数已经是 BEV 投影后的车辆坐标系米制 `forward_m`，消费方直接把它们作为 BEV 行位置使用，不需要再额外做一次 BEV 转换。改采样分布会影响 LUT identity、leading range、lateral-error 权重含义和 steering media snapshot；不要只改某一个点来修局部画面。
 
 `SPARSE_ROW_COUNT` 是活跃前缀长度，合法范围为 `1..24`。它改变性能和最大前视距离，但不改变任何已定义采样行的物理位置；参数变化会让 sparse LUT 与 hold geometry identity 失效并重建。
-
-`REFERENCE_LATERAL_JUMP_GATE_M` 是旧横向跳变拒绝门的显式参数，合法范围为 `0..1000`。默认 `1000.0` 表示在正常 BEV 横向范围内不再拒绝路径；路径连续性由 boundary span 和 boundary trace 判断，不用该旧门限替代边线或 row 内连通性语义。
 
 同一条 sparse BEV 横线内，两个边点只有通过统一 boundary helper 形成同一 `BEVBoundarySpan` 后，才能被认为是同一道路片段的两边。图像外、不可采样或投影失败部分不形成 boundary，也不作为隔断。这个 row 内 span 事实与 row 间 boundary trace 连续性叠加使用，避免把断裂边界拼成同一道路。
 

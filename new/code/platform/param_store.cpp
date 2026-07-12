@@ -604,7 +604,6 @@ bool ValidateBEVControlModel(const port::BEVControlModelParameters& params) {
 
 bool ValidateBEVGeometry(const port::BEVGeometryParameters& params) {
     return IsFiniteInRange(params.nominal_road_half_width_m, 0.01, 2.0) &&
-           IsFiniteInRange(params.reference_lateral_jump_gate_m, 0.0, 1000.0) &&
            IsFiniteInRange(params.boundary_trace_max_adjacent_distance_m, 1.0e-6, 1000.0) &&
            params.sparse_row_count >= 1 &&
            params.sparse_row_count <= static_cast<int>(port::kBevReferenceSampleCount);
@@ -866,11 +865,6 @@ void ReadBevGeometryParams(const cv::FileNode& root,
                              "BEV_GEOMETRY",
                              "NOMINAL_ROAD_HALF_WIDTH_M",
                              parsed.bev_geometry.nominal_road_half_width_m,
-                             optional_malformed);
-    ReadOptionalNestedNumber(root,
-                             "BEV_GEOMETRY",
-                             "REFERENCE_LATERAL_JUMP_GATE_M",
-                             parsed.bev_geometry.reference_lateral_jump_gate_m,
                              optional_malformed);
     ReadOptionalNestedNumber(root,
                              "BEV_GEOMETRY",

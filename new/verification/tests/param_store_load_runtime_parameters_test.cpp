@@ -138,7 +138,6 @@ int main(int argc, char** argv) {
                       "  \"BEV_GEOMETRY\": {"
                       "\"NOMINAL_ROAD_HALF_WIDTH_M\": 0.33,"
                       "\"SPARSE_ROW_COUNT\": 12,"
-                      "\"REFERENCE_LATERAL_JUMP_GATE_M\": 0.42,"
                       "\"BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M\": 0.37},\n"
                       "  \"BEV_CLASSIFICATION\": {"
                       "\"WHITE_CONFIDENCE_MIN\": 0.66,"
@@ -188,9 +187,6 @@ int main(int argc, char** argv) {
                "BEV_GEOMETRY.NOMINAL_ROAD_HALF_WIDTH_M should parse");
         Expect(enabled.bev_geometry.sparse_row_count == 12,
                "BEV_GEOMETRY.SPARSE_ROW_COUNT should parse");
-        Expect(std::abs(enabled.bev_geometry.reference_lateral_jump_gate_m -
-                        0.42F) < 1.0e-6F,
-               "BEV_GEOMETRY.REFERENCE_LATERAL_JUMP_GATE_M should parse");
         Expect(std::abs(enabled.bev_geometry.boundary_trace_max_adjacent_distance_m -
                         0.37F) < 1.0e-6F,
                "BEV_GEOMETRY.BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M should parse");
@@ -314,9 +310,6 @@ int main(int argc, char** argv) {
         Expect(absent.bev_geometry.sparse_row_count ==
                    static_cast<int>(ls2k::port::kBevReferenceSampleCount),
                "missing BEV_GEOMETRY should keep sparse row count default");
-        Expect(std::abs(absent.bev_geometry.reference_lateral_jump_gate_m -
-                        1000.0F) < 1.0e-6F,
-               "missing BEV_GEOMETRY should keep reference jump gate disabled");
         Expect(std::abs(absent.bev_geometry.boundary_trace_max_adjacent_distance_m -
                         0.15F) < 1.0e-6F,
                "missing BEV_GEOMETRY should keep boundary trace distance default");
@@ -398,26 +391,27 @@ int main(int argc, char** argv) {
         Expect(malformed_geometry_diagnostics.SawCode("params.parse"),
                "zero nominal road half width should emit params.parse");
 
-        const std::string malformed_reference_jump_path =
-            base + "_malformed_reference_jump.json";
-        WriteText(malformed_reference_jump_path,
+        const std::string legacy_reference_jump_path =
+            base + "_legacy_reference_jump.json";
+        WriteText(legacy_reference_jump_path,
                   MinimalRuntimeParametersJson(
                       "  \"BEV_GEOMETRY\": {"
                       "\"REFERENCE_LATERAL_JUMP_GATE_M\": -0.1}"));
-        CaptureDiagnostics malformed_reference_jump_diagnostics{};
-        const ls2k::port::RuntimeParameters malformed_reference_jump =
-            LoadFixture(malformed_reference_jump_path,
-                        malformed_reference_jump_diagnostics);
-        Expect(malformed_reference_jump.loaded_from_defaults,
-               "negative reference jump gate should fall back to defaults");
-        Expect(malformed_reference_jump.parse_failure,
-               "negative reference jump gate should set parse_failure");
-        Expect(std::abs(malformed_reference_jump.bev_geometry
-                            .reference_lateral_jump_gate_m -
-                        1000.0F) < 1.0e-6F,
-               "reference jump gate fallback should keep disabled default");
-        Expect(malformed_reference_jump_diagnostics.SawCode("params.parse"),
-               "negative reference jump gate should emit params.parse");
+        CaptureDiagnostics legacy_reference_jump_diagnostics{};
+        const ls2k::port::RuntimeParameters legacy_reference_jump =
+            LoadFixture(legacy_reference_jump_path,
+                        legacy_reference_jump_diagnostics);
+        Expect(!legacy_reference_jump.loaded_from_defaults,
+               "removed reference jump gate key should not trigger fallback");
+        Expect(!legacy_reference_jump.parse_failure,
+               "removed reference jump gate key should be ignored cleanly");
+        Expect(std::abs(legacy_reference_jump.bev_geometry
+                            .boundary_trace_max_adjacent_distance_m -
+                        builtin_defaults.bev_geometry
+                            .boundary_trace_max_adjacent_distance_m) < 1.0e-6F,
+               "removed reference jump gate key must not alter current geometry defaults");
+        Expect(!legacy_reference_jump_diagnostics.SawCode("params.parse"),
+               "removed reference jump gate key should not emit params.parse");
 
         const std::string malformed_boundary_trace_path =
             base + "_malformed_boundary_trace.json";

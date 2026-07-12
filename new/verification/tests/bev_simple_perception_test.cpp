@@ -737,30 +737,6 @@ void TestBoundaryJumpConnectivityRejectsLateralCrossing() {
            "row-local boundary jump between adjacent center candidates must stop connectivity");
 }
 
-void TestDeprecatedReferenceJumpGateDoesNotAffectReference() {
-    ls2k::port::RuntimeParameters params{};
-    params.bev_geometry.reference_lateral_jump_gate_m = 0.0F;
-    params.bev_geometry.boundary_trace_max_adjacent_distance_m = 1.0F;
-    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
-    rows.reserve(ls2k::port::kBevReferenceSampleCount);
-    for (float forward : params.bev_geometry.forward_samples_m) {
-        rows.push_back(SyntheticRow(forward, -1.0F, 1.0F));
-    }
-    AddSyntheticInterval(rows[0], -0.08F, 0.08F);
-    AddSyntheticInterval(rows[1], -0.06F, 0.10F);
-    AddSyntheticInterval(rows[2], -0.06F, 0.10F);
-
-    const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
-    Expect(CountPresentPathPoints(reference,
-                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
-           "deprecated reference jump gate must not reject active visual reference facts");
-    ExpectNear(reference.sampled_path[1].point.lateral_m,
-               0.02F,
-               1.0e-5F,
-               "test fixture must exercise a nonzero lateral change");
-}
-
 void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
     ls2k::port::RuntimeParameters params{};
     ls2k::vision::BEVProjector projector = MakeProjector(params);
@@ -867,7 +843,6 @@ int main() {
         TestSingleEdgeOffsetMayLeaveSampleableSpan();
         TestOrdinaryReferenceSelectsAfterCandidateInterpretation();
         TestBoundaryJumpConnectivityRejectsLateralCrossing();
-        TestDeprecatedReferenceJumpGateDoesNotAffectReference();
         TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange();
         TestSparseRowCountUsesOriginalForwardSamplePrefix();
     } catch (const TestFailure& failure) {
