@@ -75,6 +75,30 @@ against equivalent board, camera, model, parameter, and timing conditions.
   `37735a74775a4d42b2f69c3df2e978871818bb006c82786a9c30affd00406255`.
 - `git diff --check`: PASS.
 
+## Complete static function-call graph
+
+- The build-boundary graph covers all 63 CMake application/vendor translation
+  units plus the two active inline headers: 487 function definitions and 1,068
+  unique lexical call edges.
+- The own-code graph covers all 50 sources in the refactor verifier's
+  `active_sources()` scope: 339 function definitions and 803 unique call edges.
+- Each graph includes every discovered function, including leaf and currently
+  unreferenced definitions. `internal`, `ambiguous`, and `external` edges are
+  kept distinct; the latter two explicitly represent overload/virtual/macro,
+  callback, and library boundaries instead of inventing a target.
+- Machine-readable and visual artifacts:
+  [build JSON](verification/reports/function_call_graph_build.json),
+  [build DOT](verification/reports/function_call_graph_build.dot),
+  [build report](verification/reports/function_call_graph_build.md),
+  [own-code JSON](verification/reports/function_call_graph_own.json),
+  [own-code DOT](verification/reports/function_call_graph_own.dot), and
+  [own-code report](verification/reports/function_call_graph_own.md).
+- The reproducible generator is
+  [generate_call_graph.py](verification/generate_call_graph.py). It is a
+  conservative source-level graph, not a runtime trace; hardware interrupt
+  timing, virtual dispatch, function-pointer targets, macro expansion, and
+  linked-library internals remain explicit unresolved boundaries.
+
 These checks establish source-level and link-level preservation.  Board,
 camera, model-file, device-node, scheduler-jitter, and physical motor behavior
 remain unverified because this refactor was not executed on hardware.
