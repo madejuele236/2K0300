@@ -1,0 +1,87 @@
+run_id=motor-coldboot-diagnostic-20260713
+board=root@192.168.137.100
+source_status=diagnostic_failure_not_acceptance
+
+confirmed_hard_reset:
+kernel=4.19.190
+uptime_seconds_at_preflight=87
+iio_device0=1611c000.adc
+iio_device1=IMU660RA
+blocked_D_tasks=none
+
+read_only_preflight:
+encoder_1_open_read_close_rc=0
+encoder_2_open_read_close_rc=0
+pwm_motor_1_open_close_markers=OPENED,CLOSED
+pwm_motor_1_open_close_rc=0
+pwm_motor_2_open_close_markers=OPENED,CLOSED
+pwm_motor_2_open_close_rc=0
+
+binary_zero_preflight:
+method=dd if=/dev/zero bs=2 count=1 to each motor and ESC PWM node
+elapsed=completed within the SSH command
+driver_contract=write may apply the value while returning zero bytes; dd therefore reports ENOSPC and rc=1
+note=an earlier shell `printf 0` sent ASCII 0x30 and was not a binary-zero proof; it is not reused
+
+first_motion_run:
+binary_sha256=7ee7b804097e9843a827b0960453f19d318cba051beda184628a2f1cd69ca863
+command=/home/root/motor_device_board_test --confirm-low-duty-motion
+external_limit_seconds=3
+forward_window_seconds=1
+result=FAIL
+encoder_mode=open-read-close
+motor_mode=fallback
+initialize_status=ok
+safe_zero_status=ok
+forward_raw_left_sum=-6
+forward_raw_right_sum=-29
+forward_logical_left_sum=-6
+forward_logical_right_sum=29
+forward_left_nonzero_samples=2
+forward_right_nonzero_samples=5
+motor_apply_us=54
+encoder_read_max_us=33
+adc_samples=50
+adc_errors=0
+adc_min=248
+adc_max=492
+external_binary_zero_after_run=complete
+observation=right logical direction was positive; left activity was sparse and aggregate sign was negative
+inference=the sample does not distinguish a physically reversed left wheel from low-activity encoder noise without additional evidence
+
+test_safety_fix:
+change=direction-validation failure now calls MotorDevice::Stop before returning; warning moved to stderr for immediate progress visibility
+replacement_helper_sha256=d692633b74bd2ed2df195167ce519312b0defcf8c57a6481eafce026edbaa6fa
+host_motor_contract=exit_0
+cross_build=exit_0
+local_remote_hash_match=true
+
+second_diagnostic_run:
+command=/home/root/motor_device_board_test --confirm-channel-map
+external_limit_seconds=7
+observed_output=warning only
+encoder_io_mode_output=absent
+motor_initialize_output=absent
+motor_access_reached=false
+result=timeout inside EncoderPair::Initialize before MotorDevice construction
+post_timeout_motor_process=absent
+post_timeout_D_tasks=none
+exact_blocking_syscall=unresolved
+
+source_boundary:
+actual encoder fops has read but no llseek/open/release
+persistent preference fails immediately at lseek with ESPIPE and performs no encoder read
+fallback validation performs one destructive open/read/close per channel
+driver read consumes a sample and clears LOW_BUFFER
+candidate=one fallback open/read/close operation or its MMIO/GPIO work stalled
+root_cause=not established without syscall trace or kernel stack captured while blocked
+
+five_second_dual_window_user_observation:
+commanded_pwm=3000
+commanded_wheels=both
+window_seconds=5
+observed_by_user=motors buzzed but did not rotate
+encoder_end_raw_left=-7
+encoder_end_raw_right=4
+encoder_direction_result=not_authoritative_for_motor_polarity_because_no_physical_rotation_occurred
+next_boundary=compare old and current PWM/GPIO initialization, payload, polarity, fd, and enable sequences before further motion

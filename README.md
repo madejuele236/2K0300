@@ -397,6 +397,7 @@ steering media config snapshot 必须暴露当前真实参数，包括：
 - `docs/archive/**` 只保留历史文档，不参与 active authority。
 - `new/docs/superseded/**` 只保留历史路线图和草稿，不参与 active authority。
 - `new/verification/archive/**` 只保留历史证据，不参与 active authority。
+- `archive/true_ls2k0300_vendor_drivers_20260713/**` 只保留已替代 vendor 驱动及 SHA-256 manifest，不参与 include/build/link；LS2K0300 主程序驱动 authority 位于 `new/code`。
 - `authority-baseline/manifest.json` 是历史 manifest，必须留在 archive。
 - active `authority-baseline` 目录只允许 raw `*.raw` 作为当前输入样本。
 - historical manifest / overlay / txt 不能作为 active verification authority。

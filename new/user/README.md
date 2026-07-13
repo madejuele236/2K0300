@@ -7,6 +7,9 @@
 
 参数说明与调参攻略见 [`../config/default_params.md`](../config/default_params.md)。
 
+LS2K0300 驱动 target、设备 owner、硬件合同和 vendor 归档边界见
+[`../docs/ls2k0300-platform-ownership.md`](../docs/ls2k0300-platform-ownership.md)。`new/code` 是主程序唯一维护中的驱动实现。
+
 实时图像显示系统短版说明见 [`STEERING_LIVE_VIEWER_BRIEF.md`](STEERING_LIVE_VIEWER_BRIEF.md)，完整说明见 [`STEERING_LIVE_VIEWER_README.md`](STEERING_LIVE_VIEWER_README.md)。
 
 ## 常用命令

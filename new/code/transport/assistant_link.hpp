@@ -1,7 +1,7 @@
 #ifndef LS2K_TRANSPORT_ASSISTANT_LINK_HPP
 #define LS2K_TRANSPORT_ASSISTANT_LINK_HPP
 
-#include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -63,11 +63,6 @@ public:
     bool Ready() const;
 
 private:
-    /// @brief 解码接收到的原始字节数据为入站消息
-    /// @param bytes 收到的原始字节
-    /// @param inbound_messages 输出参数：解码后的消息列表
-    void DecodeReceivedBytes(const std::string& bytes, std::vector<AssistantInboundMessage>& inbound_messages);
-
     /// 是否已配置
     bool configured_ = false;
     /// 当前是否已就绪（连接状态）
@@ -78,8 +73,8 @@ private:
     int last_state_code_ = -1;
     /// 运行最大目标速度，用于校验助手速度指令上限
     double max_target_speed_ = 0.0;
-    /// 入站数据缓存（跨 Poll 调用累积未完成的行）
-    std::string inbound_buffer_{};
+    /// 项目协议层拥有跨 Poll 的 byte-level JSON 行组帧状态。
+    std::unique_ptr<AssistantProtocolDecoder> protocol_decoder_{};
 };
 
 }  // namespace ls2k::transport

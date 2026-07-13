@@ -1,0 +1,6 @@
+run_id=assistant-board-coldboot-20260713
+board=root@192.168.137.100
+binary_sha256=392088295ab222d8f082b5ed70154fa6f1fb74be4415e371ae101324872f594b
+command=/home/root/assistant_bridge_board_test
+exit_code=0
+assistant_bridge_contract_test passed

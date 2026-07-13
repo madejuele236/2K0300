@@ -1,0 +1,32 @@
+run_id=motor-pwm-debugfs-20260713
+board=root@192.168.137.100
+source_status=direct_kernel_pwm_state_during_dual_forward_window
+motor_helper_sha256=9a02dde6168f5968f8b96ddb3f2bd8f07e3457d436c4e1ad2d7c0ec5022009db
+command=motor_device_board_test --confirm-low-duty-motion in background with 15 debugfs samples at 100ms intervals
+
+pwm_sample_0:
+1611b020_enabled=true duty_ns=0 period_ns=58823
+1611b010_enabled=true duty_ns=0 period_ns=58823
+pwm_sample_1:
+1611b020_enabled=true duty_ns=0 period_ns=58823
+1611b010_enabled=true duty_ns=0 period_ns=58823
+pwm_samples_2_through_10:
+1611b020_enabled=true duty_ns=17646 period_ns=58823
+1611b010_enabled=true duty_ns=17646 period_ns=58823
+pwm_samples_11_through_14:
+1611b020_enabled=true duty_ns=0 period_ns=58823
+1611b010_enabled=true duty_ns=0 period_ns=58823
+
+helper_observation:
+window_duration_seconds=1
+forward_raw_left_sum=-2
+forward_raw_right_sum=-19
+forward_logical_left_sum=-2
+forward_logical_right_sum=19
+forward_left_nonzero_samples=1
+forward_right_nonzero_samples=2
+validation_failure_stop=ok
+external_binary_zero_after_run=complete
+
+conclusion=the later channel write did not overwrite or disable the earlier PWM; both commanded PWM producer states persisted for the full window
+not_proven=physical wheel motion and encoder direction correctness

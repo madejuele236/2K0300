@@ -1,0 +1,7 @@
+run_id=camera-restart-coldboot-20260713
+board=root@192.168.137.100
+binary_sha256=db567c53ae3991c89b07a12ae4ca18bc72bb34bddc06e5e0b9fd502026398266
+command=/home/root/camera_device_board_test
+exit_code=0
+camera_device_board_test passed cycles=3 frames_per_cycle=5 fd_count=6
+camera_device_board_test memory virtual_pages_after_stop=322 resident_pages_after_stop=191

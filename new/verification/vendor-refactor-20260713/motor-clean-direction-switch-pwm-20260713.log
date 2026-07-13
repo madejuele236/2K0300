@@ -1,0 +1,40 @@
+platform/16119000.pwm, 4 PWM devices
+ pwm-0   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-1   (zf_device_pwm_esc_1 ): requested enabled period: 20000000 ns duty: 0 ns polarity: inverse
+ pwm-2   (zf_device_pwm_esc_2 ): requested enabled period: 20000000 ns duty: 0 ns polarity: inverse
+ pwm-3   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+
+platform/16118000.pwm, 7 PWM devices
+ pwm-0   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-1   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-2   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-3   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-4   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-5   (zf_device_pwm_servo ): requested enabled period: 3333333 ns duty: 0 ns polarity: inverse
+ pwm-6   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+
+platform/1611b020.pwm, 1 PWM device
+ pwm-0   (zf_device_pwm_motor_): requested enabled period: 58823 ns duty: 17646 ns polarity: inverse
+
+platform/1611b010.pwm, 1 PWM device
+ pwm-0   (zf_device_pwm_motor_): requested enabled period: 58823 ns duty: 17646 ns polarity: inverse
+platform/16119000.pwm, 4 PWM devices
+ pwm-0   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-1   (zf_device_pwm_esc_1 ): requested enabled period: 20000000 ns duty: 0 ns polarity: inverse
+ pwm-2   (zf_device_pwm_esc_2 ): requested enabled period: 20000000 ns duty: 0 ns polarity: inverse
+ pwm-3   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+
+platform/16118000.pwm, 7 PWM devices
+ pwm-0   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-1   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-2   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-3   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-4   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+ pwm-5   (zf_device_pwm_servo ): requested enabled period: 3333333 ns duty: 0 ns polarity: inverse
+ pwm-6   ((null)              ): period: 0 ns duty: 0 ns polarity: normal
+
+platform/1611b020.pwm, 1 PWM device
+ pwm-0   (zf_device_pwm_motor_): requested enabled period: 58823 ns duty: 17646 ns polarity: inverse
+
+platform/1611b010.pwm, 1 PWM device
+ pwm-0   (zf_device_pwm_motor_): requested enabled period: 58823 ns duty: 17646 ns polarity: inverse

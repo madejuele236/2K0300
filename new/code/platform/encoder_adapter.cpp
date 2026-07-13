@@ -1,5 +1,6 @@
 #include "port/platform_adapter.hpp"
-#include "platform/true_ls2k0300/bridge.hpp"
+#include "platform/true_ls2k0300/encoder_mapping.hpp"
+#include "platform/true_ls2k0300/encoder_pair.hpp"
 #include "platform/true_ls2k0300/vendor_paths.hpp"
 
 #include <cstdlib>
@@ -9,11 +10,6 @@
 
 namespace ls2k::platform {
 namespace {
-
-/// 左编码器方向符号（正向保持原始符号）
-constexpr int kLeftEncoderDirectionSign = 1;
-/// 右编码器方向符号（取反以匹配逻辑坐标系）
-constexpr int kRightEncoderDirectionSign = -1;
 
 /// @brief 从环境变量加载正整数（用于故障注入间隔配置）
 /// @param key 环境变量名
@@ -40,8 +36,8 @@ int LoadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, 
 
 /// @brief 编码器适配器类
 ///
-/// 实现 port::IEncoderAdapter 接口，封装 true_ls2k0300 桥接层的
-/// 编码器初始化、增量读取和关闭操作。支持 direct-match 和 adaptation-hook 两种模式。
+/// 实现 port::IEncoderAdapter 接口，持有具体 EncoderPair 设备对象。
+/// 支持 direct-match 和 adaptation-hook 两种模式。
 /// 对左右编码器原始计数值应用方向符号归一化。
 class EncoderAdapter final : public port::IEncoderAdapter {
 public:
@@ -77,14 +73,16 @@ public:
             return true;
         }
 
-        const true_ls2k0300::BridgeStatus init = true_ls2k0300::InitializeEncoder();
-        ready_ = init.ok;
+        const true_ls2k0300::EncoderInitResult init = encoder_.Initialize();
+        ready_ = init.ready;
         diagnostics.Emit({ready_ ? port::DiagnosticLevel::kInfo : port::DiagnosticLevel::kFailSafe,
                           "encoder.init",
-                          ready_ ? "encoder initialized through true_ls2k0300 bridge: left=" +
+                          ready_ ? "encoder initialized: left=" +
                                        std::string(true_ls2k0300::kLeftEncoderPath) + ", right=" +
-                                       std::string(true_ls2k0300::kRightEncoderPath)
-                                 : "encoder backend unavailable: " + init.detail,
+                                       std::string(true_ls2k0300::kRightEncoderPath) + ", mode=" +
+                                       true_ls2k0300::EncoderIoModeName(init.mode)
+                                 : std::string("encoder backend unavailable: ") +
+                                       true_ls2k0300::EncoderStatusName(init.status),
                           port::NowMs()});
         if (ready_) {
             diagnostics.Emit({port::DiagnosticLevel::kInfo,
@@ -129,19 +127,23 @@ public:
             return out;
         }
 
-        const true_ls2k0300::EncoderCounts counts = true_ls2k0300::ReadEncoderCounts();
-        if (!counts.valid) {
+        const true_ls2k0300::EncoderPairResult counts = encoder_.ReadCounts();
+        if (!counts.valid()) {
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kWarning,
                                    "encoder.read.invalid",
-                                   counts.detail.empty() ? "encoder sample unavailable" : counts.detail,
+                                   !counts.left.ok() ? true_ls2k0300::EncoderStatusName(counts.left.status)
+                                                     : true_ls2k0300::EncoderStatusName(counts.right.status),
                                    out.capture_time_ms},
                                   1000);
             return out;
         }
 
-        out.left = counts.left * kLeftEncoderDirectionSign;
-        out.right = counts.right * kRightEncoderDirectionSign;
+        const true_ls2k0300::LogicalEncoderCounts logical =
+            true_ls2k0300::NormalizeEncoderCounts(counts.left.count,
+                                                  counts.right.count);
+        out.left = logical.left;
+        out.right = logical.right;
         out.valid = true;
         MaybeEmitSummary(out, diagnostics);
         return out;
@@ -151,6 +153,7 @@ public:
     /// @param diagnostics 诊断输出接口
     void Shutdown(port::DiagnosticSink& diagnostics) override {
         ready_ = false;
+        encoder_.Shutdown();
         diagnostics.Emit({port::DiagnosticLevel::kInfo,
                           "encoder.shutdown",
                           "encoder adapter shutdown complete",
@@ -195,6 +198,9 @@ private:
     int inject_invalid_every_n_ = 0;
     /// 上次样本摘要输出时间
     uint64_t last_summary_ms_ = 0;
+    /// 具体编码器资源 owner；左右 fd 与初始化模式均为对象状态。
+    true_ls2k0300::EncoderPair encoder_{true_ls2k0300::kLeftEncoderPath,
+                                       true_ls2k0300::kRightEncoderPath};
 };
 
 }  // namespace

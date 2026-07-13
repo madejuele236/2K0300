@@ -1,11 +1,24 @@
 #include "port/platform_adapter.hpp"
-#include "platform/true_ls2k0300/bridge.hpp"
+#include "platform/true_ls2k0300/motor_device.hpp"
 #include "platform/true_ls2k0300/vendor_paths.hpp"
 
 #include <string>
 
 namespace ls2k::platform {
 namespace {
+
+const char* MotorStatusText(true_ls2k0300::MotorStatus status) {
+    using true_ls2k0300::MotorStatus;
+    switch (status) {
+        case MotorStatus::kOk: return "ok";
+        case MotorStatus::kNotInitialized: return "not initialized";
+        case MotorStatus::kOpenFailed: return "device open failed";
+        case MotorStatus::kWriteFailed: return "device write failed";
+        case MotorStatus::kCloseFailed: return "device close failed";
+        case MotorStatus::kSafeStopFailed: return "safe PWM=0 rollback failed";
+    }
+    return "unknown motor status";
+}
 
 class ActuatorAdapter final : public port::IActuatorAdapter {
 public:
@@ -42,23 +55,13 @@ public:
             return false;
         }
 
-        const true_ls2k0300::BridgeStatus motor_init = true_ls2k0300::InitializeMotor();
-        if (!motor_init.ok) {
+        const true_ls2k0300::MotorResult motor_init = motor_.Initialize();
+        if (!motor_init.ok()) {
             ready_ = false;
             diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
                               "actuator.init.motor",
-                              "differential motor backend unavailable: " + motor_init.detail,
-                              port::NowMs()});
-            return false;
-        }
-
-        const true_ls2k0300::BridgeStatus esc_init = true_ls2k0300::InitializeBrushlessEsc();
-        if (!esc_init.ok) {
-            (void)true_ls2k0300::DisableMotorOutput();
-            ready_ = false;
-            diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
-                              "actuator.init.brushless_esc",
-                              "brushless ESC backend unavailable: " + esc_init.detail,
+                              std::string("motor backend unavailable: ") +
+                                  MotorStatusText(motor_init.status),
                               port::NowMs()});
             return false;
         }
@@ -104,30 +107,17 @@ public:
             return DisableAllForApply(diagnostics, "actuator.emergency_stop.failed");
         }
 
-        const true_ls2k0300::BridgeStatus motor_result =
-            true_ls2k0300::ApplyMotorCommand(command.left_drive_pwm, command.right_drive_pwm);
-        if (!motor_result.ok) {
-            DisableAfterFailure();
+        const true_ls2k0300::MotorResult result = motor_.Apply(
+            {command.left_drive_pwm,
+             command.right_drive_pwm,
+             command.left_brushless_pwm,
+             command.right_brushless_pwm});
+        if (!result.ok()) {
             ready_ = false;
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kFailSafe,
                                    "actuator.apply.motor_failed",
-                                   motor_result.detail,
-                                   port::NowMs()},
-                                  1000);
-            return false;
-        }
-
-        const true_ls2k0300::BridgeStatus esc_result =
-            true_ls2k0300::ApplyBrushlessEscCommand(command.left_brushless_pwm,
-                                                    command.right_brushless_pwm);
-        if (!esc_result.ok) {
-            DisableAfterFailure();
-            ready_ = false;
-            port::EmitRateLimited(diagnostics,
-                                  {port::DiagnosticLevel::kFailSafe,
-                                   "actuator.apply.brushless_esc_failed",
-                                   esc_result.detail,
+                                   MotorStatusText(result.status),
                                    port::NowMs()},
                                   1000);
             return false;
@@ -140,31 +130,22 @@ public:
         if (!enabled_ || adaptation_hook_) {
             return;
         }
-        const true_ls2k0300::BridgeStatus motor_result = true_ls2k0300::DisableMotorOutput();
-        if (!motor_result.ok) {
+        const true_ls2k0300::MotorResult result = motor_.Apply({});
+        if (!result.ok()) {
             ready_ = false;
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kWarning,
-                                   "actuator.disable.motor_failed",
-                                   motor_result.detail,
-                                   port::NowMs()},
-                                  1000);
-        }
-
-        const true_ls2k0300::BridgeStatus esc_result = true_ls2k0300::DisableBrushlessEscOutput();
-        if (!esc_result.ok) {
-            ready_ = false;
-            port::EmitRateLimited(diagnostics,
-                                  {port::DiagnosticLevel::kWarning,
-                                   "actuator.disable.brushless_esc_failed",
-                                   esc_result.detail,
+                                   "actuator.disable.failed",
+                                   MotorStatusText(result.status),
                                    port::NowMs()},
                                   1000);
         }
     }
 
     void Shutdown(port::DiagnosticSink& diagnostics) override {
-        Disable(diagnostics);
+        if (enabled_ && !adaptation_hook_) {
+            static_cast<void>(motor_.Stop());
+        }
         ready_ = false;
         diagnostics.Emit({port::DiagnosticLevel::kInfo,
                           "actuator.shutdown",
@@ -176,28 +157,21 @@ public:
 
 private:
     bool DisableAllForApply(port::DiagnosticSink& diagnostics, const char* diagnostic_code) {
-        const true_ls2k0300::BridgeStatus motor_result = true_ls2k0300::DisableMotorOutput();
-        const true_ls2k0300::BridgeStatus esc_result = true_ls2k0300::DisableBrushlessEscOutput();
-        const bool ok = motor_result.ok && esc_result.ok;
+        const true_ls2k0300::MotorResult result = motor_.Apply({});
+        const bool ok = result.ok();
         if (!ok) {
             ready_ = false;
-            const std::string detail =
-                std::string("motor=") + motor_result.detail + "; brushless_esc=" + esc_result.detail;
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kFailSafe,
                                    diagnostic_code,
-                                   detail,
+                                   MotorStatusText(result.status),
                                    port::NowMs()},
                                   1000);
         }
         return ok;
     }
 
-    void DisableAfterFailure() {
-        (void)true_ls2k0300::DisableMotorOutput();
-        (void)true_ls2k0300::DisableBrushlessEscOutput();
-    }
-
+    true_ls2k0300::MotorDevice motor_{};
     bool enabled_ = false;
     bool ready_ = false;
     bool adaptation_hook_ = false;

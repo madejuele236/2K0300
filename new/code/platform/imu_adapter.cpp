@@ -1,5 +1,5 @@
 #include "port/platform_adapter.hpp"
-#include "platform/true_ls2k0300/bridge.hpp"
+#include "platform/true_ls2k0300/imu_device.hpp"
 
 #include <array>
 #include <atomic>
@@ -86,23 +86,10 @@ int LoadPositiveIntervalEnv(const char* key, port::DiagnosticSink& diagnostics, 
 /// @brief 根据 IMU 类型码返回可读的名称字符串
 /// @param imu_type IMU 类型标识字节
 /// @return IMU 型号名称（如 "imu660ra"）
-const char* ImuTypeName(uint8_t imu_type) {
-    switch (imu_type) {
-        case 0x10:
-            return "imu660ra";
-        case 0x11:
-            return "imu660rb";
-        case 0x12:
-            return "imu963ra";
-        default:
-            return "unknown";
-    }
-}
-
 /// @brief IMU 适配器类
 ///
-/// 实现 port::IImuAdapter 接口，封装 true_ls2k0300 桥接层的
-/// IMU 初始化、样本读取和关闭操作。支持 direct-match 和 adaptation-hook 两种模式。
+/// 实现 port::IImuAdapter 接口，持有具体 ImuDevice 资源 owner。
+/// 支持 direct-match 和 adaptation-hook 两种模式。
 /// 内部包含加速度低通滤波和陀螺仪零偏校准逻辑。
 class ImuAdapter final : public port::IImuAdapter {
 public:
@@ -140,18 +127,21 @@ public:
             return true;
         }
 
-        const true_ls2k0300::ImuInitResult init = true_ls2k0300::InitializeImu();
+        const true_ls2k0300::ImuInitResult init = imu_.Initialize();
         ready_ = init.ready;
         ResetCalibrationState();
         diagnostics.Emit({ready_ ? port::DiagnosticLevel::kInfo : port::DiagnosticLevel::kFailSafe,
                           "imu.init",
-                          ready_ ? "imu initialized through true_ls2k0300 bridge: " + init.detail
-                                 : "imu unavailable: " + init.detail,
+                          ready_ ? std::string("imu initialized: mode=") +
+                                       true_ls2k0300::ImuIoModeName(init.mode)
+                                 : std::string("imu unavailable: ") +
+                                       true_ls2k0300::ImuStatusName(init.status),
                           port::NowMs()});
         diagnostics.Emit({ready_ ? port::DiagnosticLevel::kInfo : port::DiagnosticLevel::kWarning,
                           "imu.detect",
-                          std::string("imu detection path selected: ") + ImuTypeName(init.imu_type) +
-                              " source=" + (init.source.empty() ? "unresolved" : init.source),
+                          std::string("imu detection path selected: ") +
+                              true_ls2k0300::ImuTypeName(init.type) + " source=" +
+                              (imu_.source().empty() ? "unresolved" : imu_.source()),
                           port::NowMs()});
         if (ready_) {
             PrimeBiasCalibration(diagnostics);
@@ -249,7 +239,7 @@ public:
         ready_ = false;
         StopSampler();
         if (enabled_ && !adaptation_hook_) {
-            true_ls2k0300::ShutdownImu();
+            imu_.Shutdown();
         }
         ResetCalibrationState();
         diagnostics.Emit({port::DiagnosticLevel::kInfo,
@@ -325,7 +315,7 @@ private:
             return cached;
         }
 
-        const true_ls2k0300::ImuBridgeSample sample = true_ls2k0300::ReadImuSample();
+        const true_ls2k0300::ImuRawSample sample = imu_.ReadRawSample();
         if (!sample.valid) {
             cached.invalid_kind = CachedInvalidKind::kReadFailed;
             return cached;
@@ -336,7 +326,7 @@ private:
     }
 
     /// @brief 将桥接层原始样本转换为控制层 IMU 样本
-    port::ImuSample NormalizeBridgeSample(const true_ls2k0300::ImuBridgeSample& sample, uint64_t capture_time_ms) {
+    port::ImuSample NormalizeBridgeSample(const true_ls2k0300::ImuRawSample& sample, uint64_t capture_time_ms) {
         port::ImuSample out{};
         out.capture_time_ms = capture_time_ms;
         const std::array<float, 3> acc_mps2 = {static_cast<float>(sample.acc_x) * kAccelMetersPerSecPerCount,
@@ -419,7 +409,7 @@ private:
         std::array<double, 3> gyro_sum{};
         int collected = 0;
         for (int i = 0; i < kImuBiasCalibrationSamples; ++i) {
-            const true_ls2k0300::ImuBridgeSample sample = true_ls2k0300::ReadImuSample();
+            const true_ls2k0300::ImuRawSample sample = imu_.ReadRawSample();
             if (!sample.valid) {
                 continue;
             }
@@ -501,6 +491,8 @@ private:
     std::atomic<uint32_t> cached_gyro_y_bits_{0};
     /// 最近一次角速度 Z
     std::atomic<uint32_t> cached_gyro_z_bits_{0};
+    /// 具体 IMU 资源 owner；型号、路径、通道 fd 与模式均为对象状态。
+    true_ls2k0300::ImuDevice imu_{};
 };
 
 }  // namespace

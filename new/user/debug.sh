@@ -1769,6 +1769,12 @@ smoke_runtime_env() {
     if [[ -n "${SMOKE_FORCE_LOW_VOLTAGE}" ]]; then
         printf ' LS2K_FORCE_LOW_VOLTAGE=%s' "${SMOKE_FORCE_LOW_VOLTAGE}"
     fi
+    if [[ -n "${LS2K_PERF_REPORT_INTERVAL_MS:-}" ]]; then
+        printf ' LS2K_PERF_REPORT_INTERVAL_MS=%s' "${LS2K_PERF_REPORT_INTERVAL_MS}"
+    fi
+    if [[ -n "${LS2K_PERF_VERBOSE:-}" ]]; then
+        printf ' LS2K_PERF_VERBOSE=%s' "${LS2K_PERF_VERBOSE}"
+    fi
 }
 
 frame_progress_count() {

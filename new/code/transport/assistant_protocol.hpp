@@ -4,8 +4,10 @@
 // 辅助协议定义 —— 外部助手通信的消息类型、状态视图和编解码接口。
 // 基于 JSON 行协议，支持命令下发和遥测上传。
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "port/visual_element_evidence_types.hpp"
 
@@ -44,6 +46,27 @@ struct AssistantInboundMessage {
     std::uint64_t seq = 0;                                                           ///< 相关序列号
     std::string reason;                                                              ///< 拒绝原因（如适用）
 };
+
+/// JSON-line wire decoder owned by the project protocol layer.
+///
+/// This boundary accepts arbitrary byte chunks, preserves an incomplete line
+/// across calls, and emits only complete protocol messages.  It deliberately
+/// has no socket, DNS, reconnect, or service-state knowledge.
+class AssistantProtocolDecoder {
+public:
+    explicit AssistantProtocolDecoder(double max_target_speed);
+
+    std::vector<AssistantInboundMessage> PushBytes(const std::uint8_t* bytes,
+                                                   std::size_t length);
+    void Reset();
+
+private:
+    double max_target_speed_ = 0.0;
+    std::string pending_bytes_{};
+};
+
+/// Encode one already-serialized JSON object as an on-wire JSON-line frame.
+std::string EncodeAssistantJsonFrame(const std::string& json);
 
 /// @brief 助手状态快照视图
 struct AssistantStatusView {

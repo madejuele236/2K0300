@@ -1,6 +1,6 @@
 // 辅助桥接实现 —— 基于 TCP 的远程辅助通信桥。
 // 管理与外部上位机（如调参控制台）的连接、重连、数据收发。
-// 封装 seekfree_assistant 协议，支持波形发送和图像传输。
+// 仅拥有非阻塞 TCP 机制；协议编解码由 transport/assistant_protocol 拥有。
 
 #include "platform/true_ls2k0300/assistant_bridge.hpp"
 
@@ -19,9 +19,6 @@
 #include <unistd.h>
 #include <utility>
 #include <netinet/tcp.h>
-
-#include "seekfree_assistant.h"
-#include "seekfree_assistant_interface.h"
 
 namespace ls2k::platform::true_ls2k0300 {
 namespace {
@@ -52,7 +49,6 @@ enum class SendPolicy {
 struct AssistantBridgeContext {
     AssistantBridgeConfig config{};
     AssistantBridgeState state = AssistantBridgeState::kUnconfigured;
-    bool interface_bound = false;
     int socket_fd = -1;
     uint64_t next_retry_at_ms = 0;
     bool state_dirty = false;
@@ -66,7 +62,6 @@ struct AssistantBridgeContext {
     std::size_t last_received_bytes = 0;
     uint64_t last_send_at_ms = 0;
     uint64_t last_recv_at_ms = 0;
-    SendPolicy active_send_policy = SendPolicy::kDropIfBusy;
 };
 
 AssistantBridgeContext g_bridge{};
@@ -345,16 +340,18 @@ bool WaitForSocketWritable(uint64_t started_at_ms, uint64_t timeout_ms) {
 }
 
 // 带发送策略的数据发送 —— kDropIfBusy 丢弃整帧，kReliable 等待可写重试
-uint32 BridgeSendDataWithPolicy(const uint8* buff, uint32 length, SendPolicy policy) {
+std::uint32_t BridgeSendDataWithPolicy(const std::uint8_t* buff,
+                                       std::uint32_t length,
+                                       SendPolicy policy) {
     if (g_bridge.state != AssistantBridgeState::kReady || g_bridge.socket_fd < 0) {
         RecordIoStatus(IoStatus::kClosed, "assistant transport is not connected");
         return length;
     }
 
-    uint32 sent_total = 0;
+    std::uint32_t sent_total = 0;
     const uint64_t started_at_ms = MonotonicNowMs();
     while (sent_total < length) {
-        const uint32 remaining = length - sent_total;
+        const std::uint32_t remaining = length - sent_total;
 #ifdef MSG_NOSIGNAL
         const int send_flags = MSG_NOSIGNAL;
 #else
@@ -369,7 +366,7 @@ uint32 BridgeSendDataWithPolicy(const uint8* buff, uint32 length, SendPolicy pol
             g_bridge.last_sent_bytes = static_cast<std::size_t>(sent);
             g_bridge.total_sent_bytes += static_cast<std::size_t>(sent);
             g_bridge.last_send_at_ms = MonotonicNowMs();
-            sent_total += static_cast<uint32>(sent);
+            sent_total += static_cast<std::uint32_t>(sent);
             continue;
         }
         if (sent == 0) {
@@ -402,13 +399,8 @@ uint32 BridgeSendDataWithPolicy(const uint8* buff, uint32 length, SendPolicy pol
     return 0;
 }
 
-// 使用当前活跃发送策略发送数据
-uint32 BridgeSendData(const uint8* buff, uint32 length) {
-    return BridgeSendDataWithPolicy(buff, length, g_bridge.active_send_policy);
-}
-
 // 从套接字接收数据 —— 返回实际收到的字节数，0 表示无数据或连接关闭
-uint32 BridgeReadData(uint8* buff, uint32 length) {
+std::uint32_t BridgeReadData(std::uint8_t* buff, std::uint32_t length) {
     if (g_bridge.state != AssistantBridgeState::kReady || g_bridge.socket_fd < 0 || buff == nullptr || length == 0) {
         return 0;
     }
@@ -428,7 +420,7 @@ uint32 BridgeReadData(uint8* buff, uint32 length) {
             g_bridge.last_received_bytes = static_cast<std::size_t>(received);
             g_bridge.total_received_bytes += static_cast<std::size_t>(received);
             g_bridge.last_recv_at_ms = MonotonicNowMs();
-            return static_cast<uint32>(received);
+            return static_cast<std::uint32_t>(received);
         }
         if (received == 0) {
             RecordIoStatus(IoStatus::kClosed, "assistant TCP peer closed the connection");
@@ -448,13 +440,13 @@ uint32 BridgeReadData(uint8* buff, uint32 length) {
 
 // 排空接收缓冲区 —— 将可读数据追加到待处理字节串，单次上限 kMaxReceiveDrainBytesPerPoll
 void DrainReceiveBuffer() {
-    uint8_t buffer[256];
+    std::uint8_t buffer[256];
     std::size_t drained_bytes = 0;
     while (true) {
         if (!SocketHasReadableEvent()) {
             return;
         }
-        const uint32 received = BridgeReadData(buffer, sizeof(buffer));
+        const std::uint32_t received = BridgeReadData(buffer, sizeof(buffer));
         if (received == 0 || g_bridge.last_io_status == IoStatus::kClosed || g_bridge.last_io_status == IoStatus::kError) {
             return;
         }
@@ -562,7 +554,7 @@ void FinishPendingConnect() {
 }
 
 // 获取轮询结果 —— 提取状态、变更标记、待处理数据，清理 dirty 标志
-AssistantBridgePollResult TakePollResult(const uint64_t now_ms) {
+AssistantBridgePollResult TakePollResult() {
     AssistantBridgePollResult result{};
     result.state = g_bridge.state;
     result.state_changed = g_bridge.state_dirty;
@@ -588,18 +580,13 @@ bool FinalizeTransferResult(std::string& detail) {
 
 }  // namespace
 
-// 初始化辅助桥 —— 配置主机/端口，绑定协议接口，重置全局状态
+// 初始化辅助桥 —— 配置主机/端口并重置 TCP 状态；不绑定任何协议回调 ABI。
 bool InitializeAssistantBridge(const AssistantBridgeConfig& config, std::string& detail) {
     if (config.host.empty() || config.port <= 0) {
         CloseSocket();
         detail = "assistant TCP host/port is invalid";
         TransitionTo(AssistantBridgeState::kUnconfigured, detail);
         return false;
-    }
-
-    if (!g_bridge.interface_bound) {
-        seekfree_assistant_interface_init(BridgeSendData, BridgeReadData);
-        g_bridge.interface_bound = true;
     }
 
     g_bridge.config = config;
@@ -648,7 +635,7 @@ AssistantBridgePollResult PollAssistantBridge() {
             break;
     }
 
-    return TakePollResult(now_ms);
+    return TakePollResult();
 }
 
 // 检查辅助桥是否处于就绪状态
@@ -668,8 +655,8 @@ bool SendAssistantBytes(const std::uint8_t* data, std::size_t length, bool relia
     }
 
     ResetIoStatus();
-    const uint32 unsent = BridgeSendDataWithPolicy(reinterpret_cast<const uint8*>(data),
-                                                   static_cast<uint32>(length),
+    const std::uint32_t unsent = BridgeSendDataWithPolicy(data,
+                                                   static_cast<std::uint32_t>(length),
                                                    reliable ? SendPolicy::kReliable : SendPolicy::kDropIfBusy);
     if (unsent != 0 && g_bridge.last_io_status == IoStatus::kOk) {
         detail = "assistant payload send incomplete";

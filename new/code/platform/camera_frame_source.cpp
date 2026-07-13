@@ -1,474 +1,79 @@
 #include "platform/camera_frame_source.hpp"
 
-#include <algorithm>
-#include <cerrno>
 #include <chrono>
-#include <cstring>
-#include <fcntl.h>
-#include <linux/videodev2.h>
-#include <poll.h>
-#include <sstream>
+#include <memory>
 #include <string>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <vector>
 
-#include "platform/camera_v4l2_timestamp.hpp"
-#include "platform/camera_frame_source_v4l2_selection.hpp"
-#include "platform/true_ls2k0300/bridge.hpp"
-#include "port/perf_counter.hpp"
+#include "platform/true_ls2k0300/camera_device.hpp"
 
 namespace ls2k::platform {
 namespace {
 
-uint64_t NowUs() {
+std::uint64_t NowUs() noexcept {
     using namespace std::chrono;
-    return static_cast<uint64_t>(
+    return static_cast<std::uint64_t>(
         duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count());
 }
 
-bool IoctlRetry(int fd, unsigned long request, void* arg) {
-    int rc = 0;
-    do {
-        rc = ioctl(fd, request, arg);
-    } while (rc == -1 && errno == EINTR);
-    return rc == 0;
-}
-
-std::string ErrnoText(const char* operation) {
-    return std::string(operation) + " failed: " + std::strerror(errno);
-}
-
-struct MappedBuffer {
-    void* start = nullptr;
-    std::size_t length = 0;
-};
-
-class FdV4l2BufferRequeue final : public detail::IV4l2BufferRequeue {
+class CameraDeviceFrameSource final : public port::ICameraFrameSource {
 public:
-    explicit FdV4l2BufferRequeue(int fd) : fd_(fd) {}
-    void Requeue(v4l2_buffer buffer) override {
-        (void)IoctlRetry(fd_, VIDIOC_QBUF, &buffer);
-    }
+    explicit CameraDeviceFrameSource(const char* name) noexcept : name_(name) {}
 
-private:
-    int fd_ = -1;
-};
-
-class V4l2YuyvFrameSource final : public port::ICameraFrameSource {
-public:
     bool Start(const port::CameraSourceParameters& config,
                port::DiagnosticSink& diagnostics) override {
         Stop(diagnostics);
-        config_ = config;
-        if (!ValidateConfig(config, diagnostics) ||
-            !OpenDevice(config, diagnostics) ||
-            !QueryCapabilities(diagnostics) ||
-            !ConfigureFormat(config, diagnostics) ||
-            !RequestBuffers(config, diagnostics) ||
-            !MapAndQueueBuffers(diagnostics) ||
-            !StartStream(diagnostics)) {
-            return false;
-        }
-        ready_ = true;
-        diagnostics.Emit({port::DiagnosticLevel::kInfo,
-                          "camera_source.v4l2.start",
-                          "V4L2 YUYV camera source started on " + config.device,
-                          port::NowMs()});
-        return true;
-    }
-
-    void Stop(port::DiagnosticSink& diagnostics) override {
-        if (fd_ >= 0) {
-            if (ready_) {
-                v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-                (void)IoctlRetry(fd_, VIDIOC_STREAMOFF, &type);
-            }
-            for (MappedBuffer& buffer : buffers_) {
-                if (buffer.start != nullptr && buffer.start != MAP_FAILED) {
-                    munmap(buffer.start, buffer.length);
-                }
-            }
-            buffers_.clear();
-            close(fd_);
-            fd_ = -1;
-        }
-        if (ready_) {
-            diagnostics.Emit({port::DiagnosticLevel::kInfo,
-                              "camera_source.v4l2.stop",
-                              "V4L2 YUYV camera source stopped",
-                              port::NowMs()});
-        }
-        ready_ = false;
-        bytesperline_ = 0;
-    }
-
-    port::CameraRawFrame WaitRawFrame(int timeout_ms,
-                                      port::DiagnosticSink& diagnostics) override {
-        port::CameraRawFrame out{};
-        (void)CaptureRawFrame(timeout_ms,
-                              diagnostics,
-                              [&](const port::CameraRawFrameView& view) {
-                                  if (!view.Valid()) {
-                                      return false;
-                                  }
-                                  const std::size_t needed =
-                                      static_cast<std::size_t>(view.height) *
-                                      static_cast<std::size_t>(view.stride);
-                                  out.valid = true;
-                                  out.format = view.format;
-                                  out.width = view.width;
-                                  out.height = view.height;
-                                  out.stride = view.stride;
-                                  out.metadata = view.metadata;
-                                  out.data.assign(view.data, view.data + needed);
-                                  return true;
-                              });
-        return out;
-    }
-
-    bool CaptureRawFrame(int timeout_ms,
-                         port::DiagnosticSink& diagnostics,
-                         const port::CameraRawFrameConsumer& consumer) override {
-        port::CameraRawFrameMetadata metadata{};
-        metadata.source = Name();
-        if (!ready_ || fd_ < 0) {
-            return false;
-        }
-
-        pollfd pfd{};
-        pfd.fd = fd_;
-        pfd.events = POLLIN;
-        const uint64_t poll_begin_us = NowUs();
-        int poll_rc = 0;
-        poll_rc = poll(&pfd, 1, std::max(1, timeout_ms));
-        metadata.poll_wait_us = NowUs() - poll_begin_us;
-        if (poll_rc <= 0) {
-            if (poll_rc < 0 && errno != EINTR) {
-                port::EmitRateLimited(diagnostics,
-                                      {port::DiagnosticLevel::kWarning,
-                                       "camera_source.v4l2.poll",
-                                       ErrnoText("poll"),
-                                       port::NowMs()},
-                                      1000);
-            }
-            return false;
-        }
-
-        const uint64_t dequeue_begin_us = NowUs();
-        int drained = 0;
-        FdV4l2BufferRequeue requeue(fd_);
-        detail::DequeuedBufferGuard selected(requeue);
-        port::CameraRawFrameMetadata selected_metadata{};
-        selected_metadata.source = Name();
-        {
-            LS2K_PERF_SCOPE(port::PerfStage::kCameraV4l2Dequeue);
-        while (true) {
-            v4l2_buffer buffer{};
-            buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            buffer.memory = V4L2_MEMORY_MMAP;
-            if (!IoctlRetry(fd_, VIDIOC_DQBUF, &buffer)) {
-                if (errno != EAGAIN) {
-                    port::EmitRateLimited(diagnostics,
-                                          {port::DiagnosticLevel::kWarning,
-                                           "camera_source.v4l2.dqbuf",
-                                           ErrnoText("VIDIOC_DQBUF"),
-                                           port::NowMs()},
-                                          1000);
-                }
-                break;
-            }
-            if (buffer.index < buffers_.size()) {
-                selected_metadata.source = Name();
-                selected_metadata.frame_id = ++frame_id_;
-                selected_metadata.dequeue_time_ms = port::NowMs();
-                const V4l2CaptureTimestampSelection timestamp =
-                    SelectV4l2CaptureTimestamp(buffer.timestamp,
-                                               buffer.flags,
-                                               selected_metadata.dequeue_time_ms);
-                selected_metadata.capture_time_ms = timestamp.capture_time_ms;
-                selected_metadata.v4l2_timestamp_valid = timestamp.v4l2_timestamp_valid;
-                selected_metadata.v4l2_sequence = buffer.sequence;
-                (void)detail::SelectNewestDequeuedBufferForProcessing(
-                    buffer,
-                    buffers_.size(),
-                    selected);
-            } else {
-                (void)IoctlRetry(fd_, VIDIOC_QBUF, &buffer);
-            }
-            ++drained;
-            if (!config_.drain_ready_buffers) {
-                break;
-            }
-        }
-        }
-        if (!selected.Active()) {
-            return false;
-        }
-        selected_metadata.drained_buffer_count = drained;
-        selected_metadata.poll_wait_us = metadata.poll_wait_us;
-        selected_metadata.dequeue_us = NowUs() - dequeue_begin_us;
-
-        const v4l2_buffer& selected_buffer = selected.Buffer();
-        if (selected_buffer.index >= buffers_.size()) {
-            return false;
-        }
-        const MappedBuffer& mapped = buffers_[selected_buffer.index];
-        const std::size_t needed =
-            static_cast<std::size_t>(config_.height) * static_cast<std::size_t>(bytesperline_);
-        if (mapped.length < needed) {
-            return false;
-        }
-
-        port::CameraRawFrameView view{};
-        view.valid = true;
-        view.format = port::CameraFrameFormat::kYuyv;
-        view.data = static_cast<const uint8_t*>(mapped.start);
-        view.width = config_.width;
-        view.height = config_.height;
-        view.stride = bytesperline_;
-        view.metadata = selected_metadata;
-        return consumer(view);
-    }
-
-    bool Ready() const override { return ready_; }
-    const char* Name() const override { return "v4l2_yuyv"; }
-
-private:
-    bool ValidateConfig(const port::CameraSourceParameters& config,
-                        port::DiagnosticSink& diagnostics) const {
-        if (config.width > 0 && config.height > 0 &&
-            config.width <= port::kCompiledCameraFrameWidth &&
-            config.height <= port::kCompiledCameraFrameHeight) {
-            return true;
-        }
-        diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
-                          "camera_source.v4l2.geometry_invalid",
-                          "configured V4L2 YUYV geometry exceeds compiled frame storage",
-                          port::NowMs()});
-        return false;
-    }
-
-    bool OpenDevice(const port::CameraSourceParameters& config, port::DiagnosticSink& diagnostics) {
-        fd_ = open(config.device.c_str(), O_RDWR | O_NONBLOCK);
-        if (fd_ >= 0) {
-            return true;
-        }
-        diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                          "camera_source.v4l2.open",
-                          ErrnoText(("open " + config.device).c_str()),
-                          port::NowMs()});
-        return false;
-    }
-
-    bool QueryCapabilities(port::DiagnosticSink& diagnostics) {
-        v4l2_capability cap{};
-        if (IoctlRetry(fd_, VIDIOC_QUERYCAP, &cap)) {
-            return true;
-        }
-        diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                          "camera_source.v4l2.querycap",
-                          ErrnoText("VIDIOC_QUERYCAP"),
-                          port::NowMs()});
-        Stop(diagnostics);
-        return false;
-    }
-
-    bool ConfigureFormat(const port::CameraSourceParameters& config, port::DiagnosticSink& diagnostics) {
-        v4l2_format format{};
-        format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        format.fmt.pix.width = static_cast<__u32>(config.width);
-        format.fmt.pix.height = static_cast<__u32>(config.height);
-        format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-        format.fmt.pix.field = V4L2_FIELD_ANY;
-        if (!IoctlRetry(fd_, VIDIOC_S_FMT, &format)) {
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                              "camera_source.v4l2.set_format",
-                              ErrnoText("VIDIOC_S_FMT YUYV"),
-                              port::NowMs()});
-            Stop(diagnostics);
-            return false;
-        }
-        if (!AcceptedFormat(config, format, diagnostics)) {
-            Stop(diagnostics);
-            return false;
-        }
-        bytesperline_ = static_cast<int>(format.fmt.pix.bytesperline);
-        ConfigureFrameRate(config);
-        return true;
-    }
-
-    bool AcceptedFormat(const port::CameraSourceParameters& config,
-                        const v4l2_format& format,
-                        port::DiagnosticSink& diagnostics) const {
-        if (format.fmt.pix.pixelformat == V4L2_PIX_FMT_YUYV &&
-            static_cast<int>(format.fmt.pix.width) == config.width &&
-            static_cast<int>(format.fmt.pix.height) == config.height &&
-            static_cast<int>(format.fmt.pix.bytesperline) >= config.width * 2) {
-            return true;
-        }
-        std::ostringstream message;
-        message << "V4L2 device did not accept exact YUYV geometry: width="
-                << format.fmt.pix.width << " height=" << format.fmt.pix.height
-                << " bytesperline=" << format.fmt.pix.bytesperline;
-        diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                          "camera_source.v4l2.unsupported_format",
-                          message.str(),
-                          port::NowMs()});
-        return false;
-    }
-
-    void ConfigureFrameRate(const port::CameraSourceParameters& config) const {
-        v4l2_streamparm parm{};
-        parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        parm.parm.capture.timeperframe.numerator = 1;
-        parm.parm.capture.timeperframe.denominator = static_cast<__u32>(std::max(1, config.fps));
-        (void)IoctlRetry(fd_, VIDIOC_S_PARM, &parm);
-    }
-
-    bool RequestBuffers(const port::CameraSourceParameters& config, port::DiagnosticSink& diagnostics) {
-        v4l2_requestbuffers request{};
-        request.count = static_cast<__u32>(std::max(2, config.buffer_count));
-        request.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        request.memory = V4L2_MEMORY_MMAP;
-        if (IoctlRetry(fd_, VIDIOC_REQBUFS, &request) && request.count >= 2) {
-            buffers_.clear();
-            buffers_.resize(request.count);
-            return true;
-        }
-        diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                          "camera_source.v4l2.reqbufs",
-                          ErrnoText("VIDIOC_REQBUFS"),
-                          port::NowMs()});
-        Stop(diagnostics);
-        return false;
-    }
-
-    bool MapAndQueueBuffers(port::DiagnosticSink& diagnostics) {
-        for (std::size_t index = 0; index < buffers_.size(); ++index) {
-            if (!MapAndQueueBuffer(index, diagnostics)) {
-                Stop(diagnostics);
-                return false;
-            }
-        }
-        return true;
-    }
-
-    bool MapAndQueueBuffer(std::size_t index, port::DiagnosticSink& diagnostics) {
-        v4l2_buffer buffer{};
-        buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        buffer.memory = V4L2_MEMORY_MMAP;
-        buffer.index = static_cast<__u32>(index);
-        if (!IoctlRetry(fd_, VIDIOC_QUERYBUF, &buffer)) {
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                              "camera_source.v4l2.querybuf",
-                              ErrnoText("VIDIOC_QUERYBUF"),
-                              port::NowMs()});
-            return false;
-        }
-        void* mapped = mmap(nullptr,
-                            buffer.length,
-                            PROT_READ | PROT_WRITE,
-                            MAP_SHARED,
-                            fd_,
-                            static_cast<off_t>(buffer.m.offset));
-        if (mapped == MAP_FAILED) {
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                              "camera_source.v4l2.mmap",
-                              ErrnoText("mmap"),
-                              port::NowMs()});
-            return false;
-        }
-        buffers_[index] = {mapped, buffer.length};
-        if (IoctlRetry(fd_, VIDIOC_QBUF, &buffer)) {
-            return true;
-        }
-        diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                          "camera_source.v4l2.qbuf",
-                          ErrnoText("VIDIOC_QBUF"),
-                          port::NowMs()});
-        return false;
-    }
-
-    bool StartStream(port::DiagnosticSink& diagnostics) {
-        v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        if (IoctlRetry(fd_, VIDIOC_STREAMON, &type)) {
-            return true;
-        }
-        diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                          "camera_source.v4l2.streamon",
-                          ErrnoText("VIDIOC_STREAMON"),
-                          port::NowMs()});
-        Stop(diagnostics);
-        return false;
-    }
-
-    port::CameraSourceParameters config_{};
-    std::vector<MappedBuffer> buffers_{};
-    int fd_ = -1;
-    int bytesperline_ = 0;
-    bool ready_ = false;
-    uint64_t frame_id_ = 0;
-};
-
-class VendorUvcFrameSource final : public port::ICameraFrameSource {
-public:
-    bool Start(const port::CameraSourceParameters& config,
-               port::DiagnosticSink& diagnostics) override {
-        config_ = config;
-        ready_ = true_ls2k0300::InitializeCamera(config.device);
+        const true_ls2k0300::CameraConfig device_config{
+            config.device.c_str(),
+            config.width,
+            config.height,
+            config.fps,
+            config.buffer_count,
+            config.poll_timeout_ms,
+        };
+        ready_ = device_.Start(device_config);
         diagnostics.Emit({ready_ ? port::DiagnosticLevel::kInfo : port::DiagnosticLevel::kWarning,
-                          ready_ ? "camera_source.vendor.start" : "camera_source.vendor.start_failed",
-                          ready_ ? "vendor UVC camera source started"
-                                 : "vendor UVC camera source failed to start",
+                          ready_ ? "camera_source.device.start"
+                                 : "camera_source.device.start_failed",
+                          ready_ ? std::string("CameraDevice started on ") + config.device
+                                 : std::string("CameraDevice failed to start on ") + config.device,
                           port::NowMs()});
         return ready_;
     }
 
     void Stop(port::DiagnosticSink& diagnostics) override {
-        if (ready_) {
-            true_ls2k0300::ShutdownCamera();
+        const bool was_ready = ready_;
+        device_.Stop();
+        ready_ = false;
+        if (was_ready) {
             diagnostics.Emit({port::DiagnosticLevel::kInfo,
-                              "camera_source.vendor.stop",
-                              "vendor UVC camera source stopped",
+                              "camera_source.device.stop",
+                              "CameraDevice released stream, mappings, buffers, and fd",
                               port::NowMs()});
         }
-        ready_ = false;
     }
 
     port::CameraRawFrame WaitRawFrame(int timeout_ms,
                                       port::DiagnosticSink& diagnostics) override {
-        (void)timeout_ms;
+        (void)timeout_ms;  // timeout is bound into CameraDevice at Start().
         port::CameraRawFrame out{};
-        out.metadata.source = Name();
-        if (!ready_) {
-            return out;
-        }
-        const uint64_t begin_us = NowUs();
-        const true_ls2k0300::CameraFrameView frame = true_ls2k0300::CaptureCameraFrame();
-        out.metadata.dequeue_us = NowUs() - begin_us;
-        out.metadata.dequeue_time_ms = port::NowMs();
-        out.metadata.capture_time_ms = out.metadata.dequeue_time_ms;
-        out.metadata.frame_id = ++frame_id_;
-        out.metadata.drained_buffer_count = frame.valid ? 1 : 0;
-        if (!frame.valid || frame.gray == nullptr) {
-            port::EmitRateLimited(diagnostics,
-                                  {port::DiagnosticLevel::kWarning,
-                                   "camera_source.vendor.empty",
-                                   "vendor UVC source returned empty frame",
-                                   port::NowMs()},
-                                  1000);
-            return out;
-        }
-        out.valid = true;
-        out.format = port::CameraFrameFormat::kGray;
-        out.width = frame.width;
-        out.height = frame.height;
-        out.stride = frame.width;
-        const std::size_t size =
-            static_cast<std::size_t>(frame.width) * static_cast<std::size_t>(frame.height);
-        out.data.assign(frame.gray, frame.gray + size);
+        static_cast<void>(CaptureRawFrame(
+            timeout_ms,
+            diagnostics,
+            [&out](const port::CameraRawFrameView& view) {
+                if (!view.Valid()) {
+                    return false;
+                }
+                const std::size_t size =
+                    static_cast<std::size_t>(view.height) * static_cast<std::size_t>(view.stride);
+                out.valid = true;
+                out.format = view.format;
+                out.width = view.width;
+                out.height = view.height;
+                out.stride = view.stride;
+                out.metadata = view.metadata;
+                out.data.assign(view.data, view.data + size);
+                return true;
+            }));
         return out;
     }
 
@@ -476,45 +81,45 @@ public:
                          port::DiagnosticSink& diagnostics,
                          const port::CameraRawFrameConsumer& consumer) override {
         (void)timeout_ms;
-        port::CameraRawFrameMetadata metadata{};
-        metadata.source = Name();
         if (!ready_) {
             return false;
         }
-        const uint64_t begin_us = NowUs();
-        const true_ls2k0300::CameraFrameView frame = true_ls2k0300::CaptureCameraFrame();
-        metadata.dequeue_us = NowUs() - begin_us;
-        metadata.dequeue_time_ms = port::NowMs();
-        metadata.capture_time_ms = metadata.dequeue_time_ms;
-        metadata.frame_id = ++frame_id_;
-        metadata.drained_buffer_count = frame.valid ? 1 : 0;
-        if (!frame.valid || frame.gray == nullptr) {
+        const std::uint64_t begin_us = NowUs();
+        const true_ls2k0300::CameraFrameView frame = device_.Capture();
+        const std::uint64_t dequeue_time_ms = port::NowMs();
+        if (!frame.valid()) {
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kWarning,
-                                   "camera_source.vendor.empty",
-                                   "vendor UVC source returned empty frame",
-                                   port::NowMs()},
+                                   "camera_source.device.empty",
+                                   "CameraDevice returned no complete YUYV frame",
+                                   dequeue_time_ms},
                                   1000);
             return false;
         }
         port::CameraRawFrameView view{};
         view.valid = true;
-        view.format = port::CameraFrameFormat::kGray;
-        view.data = frame.gray;
+        view.format = port::CameraFrameFormat::kYuyv;
+        view.data = frame.data;
         view.width = frame.width;
         view.height = frame.height;
-        view.stride = frame.width;
-        view.metadata = metadata;
+        view.stride = frame.stride;
+        view.metadata.source = Name();
+        view.metadata.frame_id = ++frame_id_;
+        view.metadata.capture_time_ms = dequeue_time_ms;
+        view.metadata.dequeue_time_ms = dequeue_time_ms;
+        view.metadata.dequeue_us = NowUs() - begin_us;
+        view.metadata.drained_buffer_count = 1;
         return consumer(view);
     }
 
-    bool Ready() const override { return ready_; }
-    const char* Name() const override { return "vendor_uvc"; }
+    bool Ready() const override { return ready_ && device_.Running(); }
+    const char* Name() const override { return name_; }
 
 private:
-    port::CameraSourceParameters config_{};
+    const char* name_;
+    true_ls2k0300::CameraDevice device_{};
     bool ready_ = false;
-    uint64_t frame_id_ = 0;
+    std::uint64_t frame_id_ = 0;
 };
 
 class NullCameraFrameSource final : public port::ICameraFrameSource {
@@ -534,10 +139,12 @@ private:
 
 std::unique_ptr<port::ICameraFrameSource> MakeSourceByName(const std::string& backend) {
     if (backend == "v4l2_yuyv") {
-        return std::make_unique<V4l2YuyvFrameSource>();
+        return std::make_unique<CameraDeviceFrameSource>("v4l2_yuyv");
     }
+    // Keep the configuration spelling during the atomic migration, but route
+    // it to the same new owner. No vendor globals or vendor UVC code are used.
     if (backend == "vendor_uvc") {
-        return std::make_unique<VendorUvcFrameSource>();
+        return std::make_unique<CameraDeviceFrameSource>("camera_device_yuyv");
     }
     if (backend == "null" || backend == "disabled") {
         return std::make_unique<NullCameraFrameSource>();

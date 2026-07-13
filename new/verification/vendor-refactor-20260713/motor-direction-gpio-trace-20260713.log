@@ -1,0 +1,47 @@
+run_id=motor-direction-gpio-trace-20260713
+board=root@192.168.137.100
+source_status=direct_debugfs_gpio_observation_during_logical_positive_window
+
+device_tree_runtime_mapping:
+encoder_1=/sys/firmware/devicetree/base/soc/pwm@1611b000
+encoder_1_dir_gpio_phandle=8
+encoder_1_dir_gpio_pin=3
+encoder_1_global_gpio=51
+encoder_2=/sys/firmware/devicetree/base/soc/pwm@1611b030
+encoder_2_dir_gpio_phandle=8
+encoder_2_dir_gpio_pin=2
+encoder_2_global_gpio=50
+phandle_8=/sys/firmware/devicetree/base/soc/pinctrl@0x16000490/gpa3@0x16104000
+motor_output_gpios=72,73
+
+logical_command:
+left_drive_pwm=3000
+right_drive_pwm=3000
+window_seconds=1
+
+observed_transition:
+initial_samples_gpio50=low
+initial_samples_gpio51=low
+settled_gpio50=high
+settled_gpio51=low
+motor_gpio72=high_throughout_motion
+motor_gpio73=high_throughout_motion
+
+encoder_driver_sign_contract:
+raw_left_sign_source=gpio51
+raw_right_sign_source=gpio50
+normalized_left=raw_left
+normalized_right=-raw_right
+
+observed_end_sample:
+raw_left_count=-5
+raw_right_count=1
+normalized_left_count=-5
+normalized_right_count=-1
+
+propagation=logical positive -> Motor GPIO high -> settled encoder direction gpio51 low/gpio50 high -> raw left negative/raw right positive -> both normalized directions negative
+superseded_inference=MotorDevice hardware polarity conversion was initially suspected
+inference_invalidated_by=user observed that the five-second PWM3000 window only buzzed and neither wheel rotated, so Encoder direction could not identify physical Motor polarity
+current_conclusion=GPIO/PWM producer state was observed, but physical motion did not occur; Motor polarity is unresolved until old/current A/B can be observed after physical board recovery
+excluded=PWM channel overwrite; both providers remained enabled at 30 percent duty for the complete window
+test_artifact=the prior 20ms destructive reads could sample direction-input transition and falsely accept the wrong polarity

@@ -1,0 +1,31 @@
+run_id=encoder-board-coldboot-20260713
+board=root@192.168.137.100
+binary_sha256=022f3f3fd7000df8fa275143054cbb3238ec2c524733fc3f30b0b689ffd6bb9f
+policy=open-read-close
+motor_pwm_gpio_access=none
+
+instrumented_run:
+command=/usr/bin/timeout -k 1 5 /home/root/encoder_pair_board_test
+initialize_ready=1
+initialize_mode=open-read-close
+initialize_status=ok
+left_init_open_return=3
+left_init_read_count=2
+left_init_read_return=0
+left_init_close_return=0
+right_init_open_return=3
+right_init_read_count=2
+right_init_read_return=0
+right_init_close_return=0
+sample_count=4
+all_sample_open_read_close_calls_returned=true
+all_samples_valid=true
+exit_code=0
+
+repeat_run:
+command=20 sequential encoder_pair_board_test processes under one 10-second timeout
+completed_runs=20
+exit_code=0
+
+contract_observation=the board driver returns zero from successful 2-byte reads while placing the 32-bit word in the supplied storage; the low signed 16 bits are decoded
+scope=proves current default initialization and short repeated process lifecycle; does not prove the earlier timeout root cause

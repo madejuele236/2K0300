@@ -1,5 +1,5 @@
 #include "port/platform_adapter.hpp"
-#include "platform/true_ls2k0300/bridge.hpp"
+#include "platform/true_ls2k0300/adc_device.hpp"
 #include "platform/true_ls2k0300/vendor_paths.hpp"
 
 #include <cctype>
@@ -13,6 +13,24 @@ namespace ls2k::platform {
 namespace {
 
 constexpr int kDefaultLowVoltageRawThreshold = 400;
+
+const char* AdcErrorDetail(true_ls2k0300::AdcReadError error) noexcept {
+    switch (error) {
+        case true_ls2k0300::AdcReadError::kNone:
+            return "none";
+        case true_ls2k0300::AdcReadError::kOpenFailed:
+            return "path unavailable";
+        case true_ls2k0300::AdcReadError::kReadFailed:
+            return "read failed";
+        case true_ls2k0300::AdcReadError::kEmpty:
+            return "empty input";
+        case true_ls2k0300::AdcReadError::kParseFailed:
+            return "invalid integer";
+        case true_ls2k0300::AdcReadError::kOutOfRange:
+            return "integer out of range";
+    }
+    return "unknown error";
+}
 
 /**
  * 尝试将 C 字符串解析为正整数。
@@ -99,19 +117,19 @@ public:
         const char* override_path = std::getenv("LS2K_LOW_VOLTAGE_RAW_PATH");
         const char* adc_path =
             (override_path != nullptr && override_path[0] != '\0') ? override_path : true_ls2k0300::kBatteryAdcPath;
-        const true_ls2k0300::BatteryRawResult probe = true_ls2k0300::ReadBatteryRaw(adc_path);
-        ready_ = probe.valid;
+        adc_.emplace(adc_path);
+        const true_ls2k0300::AdcSampleResult probe = adc_->ReadRaw();
+        ready_ = probe.ok();
         if (ready_) {
             diagnostics.Emit({port::DiagnosticLevel::kInfo,
                               "power.init",
-                              "power monitor initialized with true_ls2k0300 adc bridge path=" + probe.source,
+                              "power monitor initialized with true_ls2k0300 adc device path=" + adc_->path(),
                               port::NowMs()});
             return true;
         }
         diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
                           "power.init",
-                          probe.detail.empty() ? "power monitor backend unavailable during init"
-                                               : probe.detail,
+                          "battery ADC " + std::string(AdcErrorDetail(probe.error)) + ": " + adc_->path(),
                           port::NowMs()});
         return true;
     }
@@ -166,16 +184,15 @@ public:
                                   1000);
         }
 
-        const char* override_path = std::getenv("LS2K_LOW_VOLTAGE_RAW_PATH");
-        const char* adc_path =
-            (override_path != nullptr && override_path[0] != '\0') ? override_path : true_ls2k0300::kBatteryAdcPath;
-        const true_ls2k0300::BatteryRawResult bridge_sample = true_ls2k0300::ReadBatteryRaw(adc_path);
+        const true_ls2k0300::AdcSampleResult adc_sample =
+            adc_ ? adc_->ReadRaw()
+                 : true_ls2k0300::AdcSampleResult{-1, true_ls2k0300::AdcReadError::kOpenFailed, 0};
 
-        if (bridge_sample.valid) {
-            sample.raw_value = bridge_sample.raw_value;
+        if (adc_sample.ok()) {
+            sample.raw_value = adc_sample.raw_value;
             sample.valid = true;
             sample.emergency = sample.raw_value <= sample.threshold;
-            sample.source = bridge_sample.source;
+            sample.source = adc_->path();
             std::ostringstream message;
             message << "low-voltage raw check path=" << sample.source << " raw=" << sample.raw_value
                     << " threshold=" << sample.threshold;
@@ -191,12 +208,12 @@ public:
 
         sample.valid = false;
         sample.emergency = true;
-        sample.source = bridge_sample.source.empty() ? "unavailable" : bridge_sample.source;
+        sample.source = adc_ ? adc_->path() : "unavailable";
         port::EmitRateLimited(diagnostics,
                               {port::DiagnosticLevel::kFailSafe,
                                "startup.low_voltage.unavailable",
-                               bridge_sample.detail.empty() ? "low-voltage backend unavailable; forcing fail-safe emergency veto"
-                                                            : bridge_sample.detail,
+                               "battery ADC " + std::string(AdcErrorDetail(adc_sample.error)) +
+                                   "; forcing fail-safe emergency veto path=" + sample.source,
                                sample.capture_time_ms},
                               1000);
         return sample;
@@ -213,6 +230,8 @@ private:
     bool initialized_ = false;
     /** 底层 ADC 读取是否可用 */
     bool ready_ = false;
+    /** 初始化时绑定的 ADC 设备路径 */
+    std::optional<true_ls2k0300::AdcDevice> adc_{};
     /** 已配置的低电压 ADC 阈值（可通过 ConfigureLowVoltageThreshold 设置） */
     int configured_raw_threshold_ = kDefaultLowVoltageRawThreshold;
 };

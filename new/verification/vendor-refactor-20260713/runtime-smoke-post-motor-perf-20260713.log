@@ -1,0 +1,465 @@
+== runtime smoke 2026-07-13T12:59:26Z ==
+board=root@192.168.137.100
+binary=/home/root/new
+params_source=/home/madejuele/projects/2K0300/new/config/default_params.json
+profile_source=/home/madejuele/projects/2K0300/new/config/hardware_profile.json
+smoke_enable_actuator=0
+true_vendor_root=/home/madejuele/projects/2K0300/true_LS2K0300_Library/Seekfree_LS2K0300_Opensource_Library
+harness_context_begin
+LS2K_AUTO_START=1
+LS2K_AUTO_START_DELAY_MS=200
+LS2K_AUTO_STOP_AFTER_MS=0
+LS2K_AUTO_RESET_FAULT=0
+SMOKE_MAX_FRAMES=250
+LS2K_FAULT_INJECT_DROP_FRAME_EVERY_N=0
+LS2K_FAULT_INJECT_IMU_INVALID_EVERY_N=0
+LS2K_FAULT_INJECT_ENCODER_INVALID_EVERY_N=0
+LS2K_FORCE_LOW_VOLTAGE=unset
+harness_context_end
+[INFO][thread.scheduling][2477421] applied SCHED_FIFO for role=main_loop priority=89
+[INFO][main.start][2477421] starting ls2k migration runtime
+[INFO][profile.loaded][2477426] hardware profile loaded from /home/root/hardware_profile.smoke.json
+[INFO][params.loaded][2477432] runtime parameters loaded from /home/root/default_params.smoke.json
+[INFO][profile.camera][2477432] direct-match:parameterized-direct-gray-no-exp-light-control
+[INFO][profile.imu][2477432] direct-match:imu-core-device-detect
+[INFO][profile.encoder][2477432] direct-match:absolute-count-delta-baseline
+[INFO][profile.actuator][2477432] disabled:smoke-actuator-disabled
+[INFO][profile.timer][2477432] direct-match:pit-timer-bridge
+[WARN][startup.mode.degraded][2477432] degraded startup mode enabled: non-direct-match profiles may pass startup for diagnostics only
+[WARN][startup.profile.actuator.degraded][2477432] actuator profile is disabled:smoke-actuator-disabled (allowed only in degraded startup mode)
+[INFO][params.critical.apply][2477432] applied startup-critical exp_light before adapter bring-up
+[INFO][power.init][2477432] power monitor initialized with true_ls2k0300 adc device path=/sys/bus/iio/devices/iio:device0/in_voltage7_raw
+[INFO][startup.low_voltage.clear][2477433] startup low-voltage check is clear
+[INFO][camera.init][2477433] camera adapter validated; capture ownership is delegated to CameraCaptureWorker
+[INFO][imu.init][2477434] imu initialized: mode=persistent
+[INFO][imu.detect][2477434] imu detection path selected: imu660ra source=/sys/bus/iio/devices/iio:device1/name
+[INFO][imu.calibration.ready][2477450] imu gyro zero-bias calibrated from 32 startup sample(s)
+[INFO][encoder.init][2477450] encoder initialized: left=/dev/zf_encoder_1, right=/dev/zf_encoder_2, mode=open-read-close
+[INFO][encoder.normalization][2477450] encoder direct-match normalization keeps logical left=raw_left and logical right=-raw_right for direct speed samples
+[INFO][actuator.disabled][2477450] actuator subsystem disabled by hardware profile
+[WARN][startup.actuator.disabled.degraded][2477450] actuator is disabled by profile and degraded startup mode is enabled
+[INFO][startup.complete][2477451] startup validated required adapters and applied critical params
+[WARN][control.start.degraded.actuator_disabled][2477451] degraded startup keeps control loop running with actuator disabled; actuators stay disarmed
+[INFO][timer.start.pit][2477451] timer started with true_ls2k0300 timerfd bridge
+[FAIL_SAFE][control.arm.actuator_disabled][2477451] actuator profile is disabled; control loop stays diagnostics-only with actuators disarmed
+[INFO][control.start][2477451] control loop started with gate -> motion supervisor -> shaping/apply sequencing
+[FAIL_SAFE][control.veto][2477456] vetoing actuator update due to perception_stale
+[FAIL_SAFE][control.veto.perception_stale][2477456] dominant control veto reason: perception_stale
+[WARN][control.apply.suppressed][2477456] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][imu.continuity.ready][2477607] imu sample stream stayed valid for 32 consecutive reads after bridge normalization
+[WARN][control.veto.sustained][2477656] control remained vetoed for 200 ms with dominant reason=perception_stale
+[INFO][camera_source.device.start][2477800] CameraDevice started on /dev/video0
+[INFO][camera_capture_worker.start][2477802] camera capture worker started
+[INFO][perception.projector.configured][2477802] BEV projector configured once for runtime perception
+[INFO][assistant.configured][2477802] assistant sidecar configured for TCP endpoint 192.168.137.1:43011
+[INFO][steering_media.configured][2477802] steering media configured for TCP endpoint 192.168.137.1:43012
+[INFO][main.harness_context][2477803] automation_context auto_start=true auto_start_delay_ms=200 auto_stop_after_ms=0 auto_reset_fault=false emit_frame_progress=true
+[INFO][assistant.connecting][2477803] assistant TCP connecting to 192.168.137.1:43011
+[INFO][perf_report_worker.start][2477804] perf report worker started
+[INFO][thread.scheduling][2477805] applied SCHED_FIFO for role=camera_capture priority=87
+[INFO][thread.scheduling][2477805] applied SCHED_FIFO for role=steering_media priority=85
+[INFO][steering_media_worker.start][2477805] steering media worker started
+[INFO][steering_media.connecting][2477805] steering media TCP connecting to 192.168.137.1:43012
+[WARN][assistant.backoff][2477820] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2477820] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2477850] processed_frames=1
+[FAIL_SAFE][control.veto.reference_control_not_ready][2477861] dominant control veto reason: reference_control_not_ready
+[INFO][control.veto.interval.closed][2477861] previous veto interval closed after 405 ms (reason=perception_stale)
+[INFO][main.frame.processed][2477868] processed_frames=2
+[INFO][control.veto.interval.closed][2477876] previous veto interval closed after 15 ms (reason=reference_control_not_ready)
+[INFO][main.frame.processed][2477883] processed_frames=3
+[INFO][main.frame.processed][2477904] processed_frames=4
+[INFO][main.frame.processed][2477919] processed_frames=5
+[INFO][main.frame.processed][2477934] processed_frames=6
+[INFO][main.frame.processed][2477950] processed_frames=7
+[INFO][main.frame.processed][2477966] processed_frames=8
+[INFO][main.frame.processed][2477983] processed_frames=9
+[INFO][motion.start.requested][2478003] motion start requested by LS2K_AUTO_START
+[INFO][motion.phase.transition][2478006] motion phase transitioned from DISARMED to START_REQUESTED
+[INFO][main.frame.processed][2478004] processed_frames=10
+[INFO][motion.phase.transition][2478021] motion phase transitioned from START_REQUESTED to SPINUP
+[INFO][motion.spinup.enter][2478021] motion start request cleared the gate-confirmation boundary and entered spinup
+[INFO][control.command.requested_nonzero][2478026] non-zero differential-drive command requested
+[INFO][main.frame.processed][2478018] processed_frames=11
+[INFO][main.frame.processed][2478034] processed_frames=12
+[INFO][main.frame.processed][2478050] processed_frames=13
+[INFO][main.frame.processed][2478068] processed_frames=14
+[INFO][control.unveto.sustained][2478076] control remained non-veto for 200 ms; actuator path stayed eligible for lifecycle evaluation
+[INFO][main.frame.processed][2478084] processed_frames=15
+[INFO][main.frame.processed][2478103] processed_frames=16
+[INFO][main.frame.processed][2478119] processed_frames=17
+[INFO][main.frame.processed][2478134] processed_frames=18
+[INFO][main.frame.processed][2478152] processed_frames=19
+[INFO][main.frame.processed][2478168] processed_frames=20
+[INFO][main.frame.processed][2478184] processed_frames=21
+[INFO][main.frame.processed][2478203] processed_frames=22
+[INFO][main.frame.processed][2478218] processed_frames=23
+[INFO][main.frame.processed][2478234] processed_frames=24
+[INFO][main.frame.processed][2478250] processed_frames=25
+[INFO][main.frame.processed][2478267] processed_frames=26
+[INFO][main.frame.processed][2478283] processed_frames=27
+[INFO][main.frame.processed][2478303] processed_frames=28
+[INFO][main.frame.processed][2478318] processed_frames=29
+[INFO][main.frame.processed][2478334] processed_frames=30
+[INFO][main.frame.processed][2478350] processed_frames=31
+[INFO][main.frame.processed][2478366] processed_frames=32
+[INFO][main.frame.processed][2478383] processed_frames=33
+[INFO][main.frame.processed][2478403] processed_frames=34
+[INFO][main.frame.processed][2478418] processed_frames=35
+[INFO][main.frame.processed][2478435] processed_frames=36
+[WARN][control.apply.suppressed][2478456] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2478450] processed_frames=37
+[INFO][main.frame.processed][2478466] processed_frames=38
+[INFO][main.frame.processed][2478483] processed_frames=39
+[INFO][main.frame.processed][2478504] processed_frames=40
+[INFO][main.frame.processed][2478518] processed_frames=41
+[INFO][main.frame.processed][2478534] processed_frames=42
+[INFO][main.frame.processed][2478550] processed_frames=43
+[INFO][main.frame.processed][2478566] processed_frames=44
+[INFO][main.frame.processed][2478583] processed_frames=45
+[INFO][main.frame.processed][2478604] processed_frames=46
+[INFO][main.frame.processed][2478618] processed_frames=47
+[INFO][main.frame.processed][2478634] processed_frames=48
+[INFO][main.frame.processed][2478650] processed_frames=49
+[INFO][main.frame.processed][2478667] processed_frames=50
+[INFO][main.frame.processed][2478683] processed_frames=51
+[INFO][main.frame.processed][2478704] processed_frames=52
+[INFO][main.frame.processed][2478718] processed_frames=53
+[INFO][main.frame.processed][2478734] processed_frames=54
+[INFO][main.frame.processed][2478750] processed_frames=55
+[INFO][main.frame.processed][2478766] processed_frames=56
+[INFO][main.frame.processed][2478783] processed_frames=57
+[INFO][main.frame.processed][2478804] processed_frames=58
+[INFO][perf.window][2478813] stage=low_voltage.sample count=1 avg_us=402 max_us=402 last_us=402 max_event=813 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=perception.frame count=58 avg_us=6748 max_us=7890 last_us=6683 max_event=712 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=camera.frame_age count=58 avg_us=2 max_us=3 last_us=2 max_event=1124 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=perception.bev count=58 avg_us=6389 max_us=7516 last_us=6318 max_event=711 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=bev.simple count=58 avg_us=6009 max_us=7162 last_us=5870 max_event=247 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=bev.simple.lut count=58 avg_us=26 max_us=814 last_us=10 max_event=242 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=bev.simple.scan_rows count=58 avg_us=3539 max_us=3955 last_us=3749 max_event=295 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=reference.hold count=21 avg_us=16 max_us=19 last_us=17 max_event=676 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=control.tick count=272 avg_us=942 max_us=1409 last_us=867 max_event=3 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=control.imu_read count=272 avg_us=9 max_us=95 last_us=8 max_event=94 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2478813] stage=control.encoder_read count=272 avg_us=112 max_us=146 last_us=107 max_event=224 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][motion.phase.transition][2478821] motion phase transitioned from SPINUP to RUNNING
+[INFO][motion.spinup.complete][2478821] spinup timer completed and running authority is now released
+[INFO][assistant.connecting][2478828] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2478818] processed_frames=59
+[INFO][steering_media.connecting][2478829] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2478835] processed_frames=60
+[WARN][assistant.backoff][2478847] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2478847] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2478849] processed_frames=61
+[INFO][main.frame.processed][2478865] processed_frames=62
+[INFO][main.frame.processed][2478883] processed_frames=63
+[INFO][main.frame.processed][2478898] processed_frames=64
+[INFO][main.frame.processed][2478918] processed_frames=65
+[INFO][main.frame.processed][2478934] processed_frames=66
+[INFO][main.frame.processed][2478951] processed_frames=67
+[INFO][main.frame.processed][2478967] processed_frames=68
+[INFO][main.frame.processed][2478983] processed_frames=69
+[INFO][main.frame.processed][2478998] processed_frames=70
+[INFO][control.command.requested_nonzero][2479026] non-zero differential-drive command requested
+[INFO][main.frame.processed][2479018] processed_frames=71
+[INFO][main.frame.processed][2479034] processed_frames=72
+[INFO][main.frame.processed][2479050] processed_frames=73
+[INFO][main.frame.processed][2479067] processed_frames=74
+[INFO][main.frame.processed][2479083] processed_frames=75
+[INFO][main.frame.processed][2479099] processed_frames=76
+[INFO][main.frame.processed][2479119] processed_frames=77
+[INFO][main.frame.processed][2479134] processed_frames=78
+[INFO][main.frame.processed][2479152] processed_frames=79
+[INFO][main.frame.processed][2479167] processed_frames=80
+[INFO][main.frame.processed][2479184] processed_frames=81
+[INFO][main.frame.processed][2479198] processed_frames=82
+[INFO][main.frame.processed][2479218] processed_frames=83
+[INFO][main.frame.processed][2479234] processed_frames=84
+[INFO][main.frame.processed][2479250] processed_frames=85
+[INFO][main.frame.processed][2479267] processed_frames=86
+[INFO][main.frame.processed][2479283] processed_frames=87
+[INFO][main.frame.processed][2479299] processed_frames=88
+[INFO][main.frame.processed][2479318] processed_frames=89
+[INFO][main.frame.processed][2479334] processed_frames=90
+[INFO][main.frame.processed][2479349] processed_frames=91
+[INFO][main.frame.processed][2479367] processed_frames=92
+[INFO][main.frame.processed][2479383] processed_frames=93
+[INFO][main.frame.processed][2479398] processed_frames=94
+[INFO][main.frame.processed][2479418] processed_frames=95
+[INFO][main.frame.processed][2479435] processed_frames=96
+[WARN][control.apply.suppressed][2479456] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2479450] processed_frames=97
+[INFO][main.frame.processed][2479467] processed_frames=98
+[INFO][main.frame.processed][2479483] processed_frames=99
+[INFO][main.frame.processed][2479498] processed_frames=100
+[INFO][main.frame.processed][2479518] processed_frames=101
+[INFO][main.frame.processed][2479535] processed_frames=102
+[INFO][main.frame.processed][2479550] processed_frames=103
+[INFO][main.frame.processed][2479568] processed_frames=104
+[INFO][main.frame.processed][2479584] processed_frames=105
+[INFO][main.frame.processed][2479599] processed_frames=106
+[INFO][main.frame.processed][2479618] processed_frames=107
+[INFO][main.frame.processed][2479634] processed_frames=108
+[INFO][main.frame.processed][2479650] processed_frames=109
+[INFO][main.frame.processed][2479667] processed_frames=110
+[INFO][main.frame.processed][2479683] processed_frames=111
+[INFO][main.frame.processed][2479699] processed_frames=112
+[INFO][main.frame.processed][2479718] processed_frames=113
+[INFO][main.frame.processed][2479734] processed_frames=114
+[INFO][main.frame.processed][2479750] processed_frames=115
+[INFO][main.frame.processed][2479766] processed_frames=116
+[INFO][main.frame.processed][2479783] processed_frames=117
+[INFO][main.frame.processed][2479799] processed_frames=118
+[INFO][main.frame.processed][2479818] processed_frames=119
+[INFO][perf.window][2479828] stage=low_voltage.sample count=1 avg_us=408 max_us=408 last_us=408 max_event=1796 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=perception.frame count=61 avg_us=6801 max_us=7898 last_us=6667 max_event=1464 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=camera.frame_age count=61 avg_us=1 max_us=3 last_us=2 max_event=1501 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=perception.bev count=61 avg_us=6446 max_us=7346 last_us=6314 max_event=1892 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=bev.simple count=61 avg_us=6062 max_us=6970 last_us=5956 max_event=1673 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=bev.simple.lut count=61 avg_us=12 max_us=108 last_us=11 max_event=1537 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=bev.simple.scan_rows count=61 avg_us=3542 max_us=3863 last_us=3615 max_event=1936 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=reference.hold count=26 avg_us=21 max_us=72 last_us=19 max_event=1891 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=control.tick count=203 avg_us=932 max_us=1372 last_us=818 max_event=1349 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=control.imu_read count=203 avg_us=8 max_us=19 last_us=6 max_event=1483 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2479828] stage=control.encoder_read count=203 avg_us=114 max_us=142 last_us=113 max_event=1351 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][main.frame.processed][2479834] processed_frames=120
+[INFO][assistant.connecting][2479847] assistant TCP connecting to 192.168.137.1:43011
+[INFO][steering_media.connecting][2479847] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2479849] processed_frames=121
+[WARN][steering_media.backoff][2479860] steering media TCP connect failed: Connection refused
+[WARN][assistant.backoff][2479860] assistant TCP connect failed: Connection refused
+[INFO][main.frame.processed][2479865] processed_frames=122
+[INFO][main.frame.processed][2479883] processed_frames=123
+[INFO][main.frame.processed][2479899] processed_frames=124
+[INFO][main.frame.processed][2479918] processed_frames=125
+[INFO][main.frame.processed][2479935] processed_frames=126
+[INFO][main.frame.processed][2479950] processed_frames=127
+[INFO][main.frame.processed][2479968] processed_frames=128
+[INFO][main.frame.processed][2479983] processed_frames=129
+[INFO][main.frame.processed][2479998] processed_frames=130
+[INFO][control.command.requested_nonzero][2480026] non-zero differential-drive command requested
+[INFO][main.frame.processed][2480018] processed_frames=131
+[INFO][main.frame.processed][2480035] processed_frames=132
+[INFO][main.frame.processed][2480050] processed_frames=133
+[INFO][main.frame.processed][2480067] processed_frames=134
+[INFO][main.frame.processed][2480083] processed_frames=135
+[INFO][main.frame.processed][2480099] processed_frames=136
+[INFO][main.frame.processed][2480118] processed_frames=137
+[INFO][main.frame.processed][2480134] processed_frames=138
+[INFO][main.frame.processed][2480152] processed_frames=139
+[INFO][main.frame.processed][2480168] processed_frames=140
+[INFO][main.frame.processed][2480184] processed_frames=141
+[INFO][main.frame.processed][2480198] processed_frames=142
+[INFO][main.frame.processed][2480218] processed_frames=143
+[INFO][main.frame.processed][2480235] processed_frames=144
+[INFO][main.frame.processed][2480250] processed_frames=145
+[INFO][main.frame.processed][2480268] processed_frames=146
+[INFO][main.frame.processed][2480284] processed_frames=147
+[INFO][main.frame.processed][2480298] processed_frames=148
+[INFO][main.frame.processed][2480318] processed_frames=149
+[INFO][main.frame.processed][2480335] processed_frames=150
+[INFO][main.frame.processed][2480350] processed_frames=151
+[INFO][main.frame.processed][2480366] processed_frames=152
+[INFO][main.frame.processed][2480383] processed_frames=153
+[INFO][main.frame.processed][2480399] processed_frames=154
+[INFO][main.frame.processed][2480419] processed_frames=155
+[INFO][main.frame.processed][2480435] processed_frames=156
+[WARN][control.apply.suppressed][2480456] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2480450] processed_frames=157
+[INFO][main.frame.processed][2480466] processed_frames=158
+[INFO][main.frame.processed][2480483] processed_frames=159
+[INFO][main.frame.processed][2480498] processed_frames=160
+[INFO][main.frame.processed][2480518] processed_frames=161
+[INFO][main.frame.processed][2480535] processed_frames=162
+[INFO][main.frame.processed][2480550] processed_frames=163
+[INFO][main.frame.processed][2480567] processed_frames=164
+[INFO][main.frame.processed][2480583] processed_frames=165
+[INFO][main.frame.processed][2480599] processed_frames=166
+[INFO][main.frame.processed][2480618] processed_frames=167
+[INFO][main.frame.processed][2480635] processed_frames=168
+[INFO][main.frame.processed][2480650] processed_frames=169
+[INFO][main.frame.processed][2480665] processed_frames=170
+[INFO][main.frame.processed][2480683] processed_frames=171
+[INFO][main.frame.processed][2480699] processed_frames=172
+[INFO][main.frame.processed][2480718] processed_frames=173
+[INFO][main.frame.processed][2480734] processed_frames=174
+[INFO][main.frame.processed][2480750] processed_frames=175
+[INFO][main.frame.processed][2480767] processed_frames=176
+[INFO][main.frame.processed][2480783] processed_frames=177
+[INFO][main.frame.processed][2480798] processed_frames=178
+[INFO][main.frame.processed][2480818] processed_frames=179
+[INFO][perf.window][2480828] stage=low_voltage.sample count=1 avg_us=413 max_us=413 last_us=413 max_event=2783 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=perception.frame count=60 avg_us=6692 max_us=7754 last_us=6924 max_event=2465 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=camera.frame_age count=60 avg_us=2 max_us=3 last_us=2 max_event=2814 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=perception.bev count=60 avg_us=6346 max_us=7416 last_us=6569 max_event=2464 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=bev.simple count=60 avg_us=5962 max_us=7058 last_us=6202 max_event=2462 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=bev.simple.lut count=60 avg_us=11 max_us=14 last_us=12 max_event=2375 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=bev.simple.scan_rows count=60 avg_us=3527 max_us=3860 last_us=3597 max_event=2625 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=reference.hold count=20 avg_us=20 max_us=75 last_us=16 max_event=2679 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=control.tick count=200 avg_us=935 max_us=1416 last_us=776 max_event=2807 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=control.imu_read count=200 avg_us=8 max_us=18 last_us=8 max_event=2826 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2480828] stage=control.encoder_read count=200 avg_us=115 max_us=142 last_us=106 max_event=2519 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][main.frame.processed][2480835] processed_frames=180
+[INFO][main.frame.processed][2480851] processed_frames=181
+[INFO][assistant.connecting][2480860] assistant TCP connecting to 192.168.137.1:43011
+[INFO][steering_media.connecting][2480861] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2480867] processed_frames=182
+[WARN][assistant.backoff][2480879] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2480879] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2480884] processed_frames=183
+[INFO][main.frame.processed][2480899] processed_frames=184
+[INFO][main.frame.processed][2480919] processed_frames=185
+[INFO][main.frame.processed][2480934] processed_frames=186
+[INFO][main.frame.processed][2480950] processed_frames=187
+[INFO][main.frame.processed][2480965] processed_frames=188
+[INFO][main.frame.processed][2480983] processed_frames=189
+[INFO][main.frame.processed][2480999] processed_frames=190
+[INFO][control.command.requested_nonzero][2481026] non-zero differential-drive command requested
+[INFO][main.frame.processed][2481018] processed_frames=191
+[INFO][main.frame.processed][2481034] processed_frames=192
+[INFO][main.frame.processed][2481050] processed_frames=193
+[INFO][main.frame.processed][2481067] processed_frames=194
+[INFO][main.frame.processed][2481083] processed_frames=195
+[INFO][main.frame.processed][2481098] processed_frames=196
+[INFO][main.frame.processed][2481114] processed_frames=197
+[INFO][main.frame.processed][2481135] processed_frames=198
+[INFO][main.frame.processed][2481151] processed_frames=199
+[INFO][main.frame.processed][2481168] processed_frames=200
+[INFO][main.frame.processed][2481183] processed_frames=201
+[INFO][main.frame.processed][2481198] processed_frames=202
+[INFO][main.frame.processed][2481215] processed_frames=203
+[INFO][main.frame.processed][2481234] processed_frames=204
+[INFO][main.frame.processed][2481250] processed_frames=205
+[INFO][main.frame.processed][2481265] processed_frames=206
+[INFO][main.frame.processed][2481283] processed_frames=207
+[INFO][main.frame.processed][2481299] processed_frames=208
+[INFO][main.frame.processed][2481314] processed_frames=209
+[INFO][main.frame.processed][2481335] processed_frames=210
+[INFO][main.frame.processed][2481350] processed_frames=211
+[INFO][main.frame.processed][2481366] processed_frames=212
+[INFO][main.frame.processed][2481383] processed_frames=213
+[INFO][main.frame.processed][2481399] processed_frames=214
+[INFO][main.frame.processed][2481414] processed_frames=215
+[INFO][main.frame.processed][2481433] processed_frames=216
+[WARN][control.apply.suppressed][2481456] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2481450] processed_frames=217
+[INFO][main.frame.processed][2481466] processed_frames=218
+[INFO][main.frame.processed][2481483] processed_frames=219
+[INFO][main.frame.processed][2481499] processed_frames=220
+[INFO][main.frame.processed][2481515] processed_frames=221
+[INFO][main.frame.processed][2481534] processed_frames=222
+[INFO][main.frame.processed][2481550] processed_frames=223
+[INFO][main.frame.processed][2481567] processed_frames=224
+[INFO][main.frame.processed][2481584] processed_frames=225
+[INFO][main.frame.processed][2481598] processed_frames=226
+[INFO][main.frame.processed][2481614] processed_frames=227
+[INFO][main.frame.processed][2481635] processed_frames=228
+[INFO][main.frame.processed][2481650] processed_frames=229
+[INFO][main.frame.processed][2481667] processed_frames=230
+[INFO][main.frame.processed][2481683] processed_frames=231
+[INFO][main.frame.processed][2481699] processed_frames=232
+[INFO][main.frame.processed][2481714] processed_frames=233
+[INFO][main.frame.processed][2481734] processed_frames=234
+[INFO][main.frame.processed][2481750] processed_frames=235
+[INFO][main.frame.processed][2481766] processed_frames=236
+[INFO][main.frame.processed][2481783] processed_frames=237
+[INFO][main.frame.processed][2481798] processed_frames=238
+[INFO][main.frame.processed][2481814] processed_frames=239
+[INFO][perf.window][2481834] stage=low_voltage.sample count=1 avg_us=398 max_us=398 last_us=398 max_event=3759 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=perception.frame count=60 avg_us=6603 max_us=7604 last_us=6219 max_event=3736 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=camera.frame_age count=60 avg_us=2 max_us=3 last_us=2 max_event=4018 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=perception.bev count=60 avg_us=6239 max_us=7255 last_us=5889 max_event=3735 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=bev.simple count=60 avg_us=5848 max_us=6912 last_us=5473 max_event=4090 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=bev.simple.lut count=60 avg_us=11 max_us=13 last_us=11 max_event=4019 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=bev.simple.scan_rows count=60 avg_us=3497 max_us=3798 last_us=3232 max_event=3506 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=reference.hold count=14 avg_us=16 max_us=19 last_us=15 max_event=3750 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=control.tick count=201 avg_us=923 max_us=1367 last_us=1037 max_event=3783 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=control.imu_read count=201 avg_us=8 max_us=17 last_us=7 max_event=3884 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2481834] stage=control.encoder_read count=201 avg_us=113 max_us=141 last_us=112 max_event=3496 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][main.frame.processed][2481835] processed_frames=240
+[INFO][main.frame.processed][2481850] processed_frames=241
+[INFO][main.frame.processed][2481866] processed_frames=242
+[INFO][assistant.connecting][2481880] assistant TCP connecting to 192.168.137.1:43011
+[INFO][steering_media.connecting][2481880] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2481883] processed_frames=243
+[WARN][assistant.backoff][2481894] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2481894] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2481899] processed_frames=244
+[INFO][main.frame.processed][2481914] processed_frames=245
+[INFO][main.frame.processed][2481934] processed_frames=246
+[INFO][main.frame.processed][2481951] processed_frames=247
+[INFO][main.frame.processed][2481968] processed_frames=248
+[INFO][main.frame.processed][2481983] processed_frames=249
+[INFO][main.frame.processed][2481998] processed_frames=250
+[INFO][main.frame.processed][2482015] processed_frames=251
+[INFO][control.command.requested_nonzero][2482026] non-zero differential-drive command requested
+[INFO][main.frame.processed][2482034] processed_frames=252
+[INFO][main.frame.processed][2482051] processed_frames=253
+[INFO][main.frame.processed][2482067] processed_frames=254
+[INFO][main.frame.processed][2482083] processed_frames=255
+[INFO][main.frame.processed][2482098] processed_frames=256
+[INFO][main.frame.processed][2482114] processed_frames=257
+[INFO][main.frame.processed][2482135] processed_frames=258
+[INFO][main.frame.processed][2482150] processed_frames=259
+[INFO][main.frame.processed][2482167] processed_frames=260
+[INFO][main.frame.processed][2482183] processed_frames=261
+[INFO][main.frame.processed][2482198] processed_frames=262
+[INFO][main.frame.processed][2482215] processed_frames=263
+[INFO][main.frame.processed][2482235] processed_frames=264
+[INFO][main.frame.processed][2482251] processed_frames=265
+[INFO][main.frame.processed][2482267] processed_frames=266
+[INFO][main.frame.processed][2482283] processed_frames=267
+[INFO][main.frame.processed][2482299] processed_frames=268
+[INFO][main.frame.processed][2482314] processed_frames=269
+[INFO][main.frame.processed][2482334] processed_frames=270
+[INFO][main.frame.processed][2482350] processed_frames=271
+[INFO][main.frame.processed][2482367] processed_frames=272
+[INFO][main.frame.processed][2482384] processed_frames=273
+[INFO][main.frame.processed][2482398] processed_frames=274
+[INFO][main.frame.processed][2482414] processed_frames=275
+[INFO][motion.stop.requested][2482427] controlled stop requested by signal
+[INFO][main.frame.processed][2482435] processed_frames=276
+[WARN][control.apply.suppressed][2482456] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2482450] processed_frames=277
+[INFO][main.frame.processed][2482467] processed_frames=278
+[INFO][main.frame.processed][2482483] processed_frames=279
+[INFO][main.frame.processed][2482499] processed_frames=280
+[INFO][main.frame.processed][2482514] processed_frames=281
+[INFO][main.frame.processed][2482534] processed_frames=282
+[INFO][main.frame.processed][2482550] processed_frames=283
+[INFO][main.frame.processed][2482568] processed_frames=284
+[INFO][main.frame.processed][2482583] processed_frames=285
+[INFO][main.frame.processed][2482599] processed_frames=286
+[INFO][main.frame.processed][2482615] processed_frames=287
+[INFO][main.frame.processed][2482635] processed_frames=288
+[INFO][main.frame.processed][2482650] processed_frames=289
+[INFO][main.frame.processed][2482667] processed_frames=290
+[INFO][main.frame.processed][2482683] processed_frames=291
+[INFO][main.frame.processed][2482698] processed_frames=292
+[INFO][main.frame.processed][2482714] processed_frames=293
+[INFO][motion.phase.transition][2482731] motion phase transitioned from STOPPING to DISARMED
+[INFO][motion.stop.complete][2482731] controlled stop completed and runtime returned to DISARMED
+[INFO][main.exit.ready][2482732] controlled stop reached DISARMED; process may now exit
+[INFO][steering_media_worker.stop][2482732] steering media worker stopped
+[INFO][perf_report_worker.stop][2482733] perf report worker stopped
+[INFO][camera_source.device.stop][2482775] CameraDevice released stream, mappings, buffers, and fd
+[INFO][timer.stop][2482775] timer bridge stopped
+[INFO][perf.window][2482775] stage=low_voltage.sample count=1 avg_us=395 max_us=395 last_us=395 max_event=4737 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=perception.frame count=54 avg_us=6767 max_us=7794 last_us=6840 max_event=4601 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=camera.frame_age count=54 avg_us=1 max_us=3 last_us=2 max_event=4393 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=perception.bev count=54 avg_us=6406 max_us=7468 last_us=6489 max_event=4600 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=bev.simple count=54 avg_us=6021 max_us=7109 last_us=6131 max_event=4598 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=bev.simple.lut count=54 avg_us=11 max_us=43 last_us=13 max_event=4182 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=bev.simple.scan_rows count=54 avg_us=3485 max_us=3738 last_us=3566 max_event=4594 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=reference.hold count=19 avg_us=20 max_us=70 last_us=17 max_event=4403 max_thread=13677808602112474443 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=control.tick count=188 avg_us=939 max_us=1377 last_us=1041 max_event=4545 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=control.imu_read count=188 avg_us=8 max_us=15 last_us=6 max_event=5032 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][perf.window][2482775] stage=control.encoder_read count=188 avg_us=115 max_us=147 last_us=103 max_event=4867 max_thread=5419770536549040095 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119989
+[INFO][camera.shutdown][2482776] camera adapter shutdown complete
+[INFO][imu.shutdown][2482778] imu adapter shutdown complete
+[INFO][encoder.shutdown][2482778] encoder adapter shutdown complete
+[INFO][actuator.shutdown][2482778] actuator adapter shutdown complete
+[INFO][shutdown.complete][2482778] actuators disabled and resources released
+[INFO][main.exit][2482778] runtime exit complete
+remote_runtime_exit=0
+remote_log_copy_exit=0
+remote_runtime_invoked=1

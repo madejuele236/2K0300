@@ -16,6 +16,8 @@
 namespace ls2k::transport {
 namespace {
 
+constexpr std::size_t kMaxInboundLineBytes = 4096;
+
 /// @brief 尝试将文本解析为 JSON 对象
 /// @param text 输入 JSON 文本
 /// @param storage 输出参数：解析后的 FileStorage 对象
@@ -191,6 +193,52 @@ void AppendJsonBool(std::ostringstream& stream, bool value) {
 }
 
 }  // namespace
+
+AssistantProtocolDecoder::AssistantProtocolDecoder(double max_target_speed)
+    : max_target_speed_(max_target_speed) {}
+
+std::vector<AssistantInboundMessage> AssistantProtocolDecoder::PushBytes(
+    const std::uint8_t* bytes,
+    std::size_t length) {
+    std::vector<AssistantInboundMessage> messages;
+    if (bytes == nullptr || length == 0U) {
+        return messages;
+    }
+
+    pending_bytes_.append(reinterpret_cast<const char*>(bytes), length);
+    while (true) {
+        const std::size_t newline_index = pending_bytes_.find('\n');
+        if (newline_index == std::string::npos) {
+            break;
+        }
+
+        std::string line = pending_bytes_.substr(0, newline_index);
+        pending_bytes_.erase(0, newline_index + 1U);
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        messages.push_back(DecodeAssistantJsonLine(line, max_target_speed_));
+    }
+
+    if (pending_bytes_.size() > kMaxInboundLineBytes) {
+        messages.push_back(AssistantInboundMessage{AssistantInboundMessageType::kInputRejected,
+                                                   {},
+                                                   0,
+                                                   "input line too long"});
+        pending_bytes_.clear();
+    }
+    return messages;
+}
+
+void AssistantProtocolDecoder::Reset() {
+    pending_bytes_.clear();
+}
+
+std::string EncodeAssistantJsonFrame(const std::string& json) {
+    std::string frame = json;
+    frame.push_back('\n');
+    return frame;
+}
 
 /// @brief 解码一行 JSON 格式的助手入站消息
 /// @param line 原始 JSON 行字符串

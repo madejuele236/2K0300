@@ -7,9 +7,6 @@
 namespace ls2k::transport {
 namespace {
 
-/// 最大入站行字节数，超过此长度将丢弃缓存并返回输入拒绝
-constexpr std::size_t kMaxInboundLineBytes = 4096;
-
 /// @brief 将助手桥接状态转换为诊断标记字符串
 /// @param state 桥接状态枚举值
 /// @return 对应的诊断标记名称
@@ -53,7 +50,7 @@ bool AssistantLink::Initialize(const port::RuntimeParameters& params, port::Diag
     disconnect_pending_ = false;
     last_state_code_ = static_cast<int>(::ls2k::platform::true_ls2k0300::AssistantBridgeState::kUnconfigured);
     max_target_speed_ = params.running_speed_target;
-    inbound_buffer_.clear();
+    protocol_decoder_ = std::make_unique<AssistantProtocolDecoder>(max_target_speed_);
     if (!params.assistant_enabled) {
         return false;
     }
@@ -87,7 +84,7 @@ AssistantPollResult AssistantLink::Poll(port::DiagnosticSink& diagnostics) {
     poll_result.became_ready = !was_ready && ready_;
     poll_result.connection_lost = disconnect_pending || (was_ready && !ready_);
     if (poll_result.became_ready || poll_result.connection_lost) {
-        inbound_buffer_.clear();
+        protocol_decoder_->Reset();
     }
     if (result.state_changed || last_state_code_ != static_cast<int>(result.state)) {
         last_state_code_ = static_cast<int>(result.state);
@@ -97,7 +94,9 @@ AssistantPollResult AssistantLink::Poll(port::DiagnosticSink& diagnostics) {
                           port::NowMs()});
     }
     if (!poll_result.connection_lost && !result.received_bytes.empty()) {
-        DecodeReceivedBytes(result.received_bytes, poll_result.inbound_messages);
+        poll_result.inbound_messages = protocol_decoder_->PushBytes(
+            reinterpret_cast<const std::uint8_t*>(result.received_bytes.data()),
+            result.received_bytes.size());
     }
     return poll_result;
 }
@@ -110,8 +109,7 @@ bool AssistantLink::PublishJsonLine(const std::string& line,
     }
 
     const bool was_ready = ready_;
-    std::string payload = line;
-    payload.push_back('\n');
+    const std::string payload = EncodeAssistantJsonFrame(line);
     std::string detail;
     const bool ok = ::ls2k::platform::true_ls2k0300::SendAssistantBytes(
         reinterpret_cast<const std::uint8_t*>(payload.data()),
@@ -133,33 +131,6 @@ bool AssistantLink::PublishJsonLine(const std::string& line,
 
 bool AssistantLink::Ready() const {
     return ready_;
-}
-
-void AssistantLink::DecodeReceivedBytes(const std::string& bytes,
-                                        std::vector<AssistantInboundMessage>& inbound_messages) {
-    inbound_buffer_.append(bytes);
-    while (true) {
-        const std::size_t newline_index = inbound_buffer_.find('\n');
-        if (newline_index == std::string::npos) {
-            break;
-        }
-
-        std::string line = inbound_buffer_.substr(0, newline_index);
-        inbound_buffer_.erase(0, newline_index + 1);
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        inbound_messages.push_back(DecodeAssistantJsonLine(line, max_target_speed_));
-    }
-
-    if (inbound_buffer_.size() > kMaxInboundLineBytes) {
-        inbound_messages.push_back(
-            AssistantInboundMessage{AssistantInboundMessageType::kInputRejected,
-                                    {},
-                                    0,
-                                    "input line too long"});
-        inbound_buffer_.clear();
-    }
 }
 
 }  // namespace ls2k::transport

@@ -26,7 +26,8 @@ option(LS2K_PERF_USE_CYCLE_COUNTER "Use LoongArch cycle counter for performance 
 set(CMAKE_PREFIX_PATH "/opt/ls_2k0300_env/opencv_4_10_build")
 find_package(OpenCV REQUIRED)
 
-include_directories(
+add_library(ls2k_project_headers INTERFACE)
+target_include_directories(ls2k_project_headers INTERFACE
     ${OpenCV_INCLUDE_DIRS}
     ../user
     ../code
@@ -34,49 +35,81 @@ include_directories(
     ../code/platform
     ../code/platform/true_ls2k0300
     ../code/runtime
-    ${LS2K_LIB_ROOT}/zf_common
-    ${LS2K_LIB_ROOT}/zf_device
-    ${LS2K_LIB_ROOT}/zf_driver
-    ${LS2K_LIB_ROOT}/zf_components/seekfree_assistant
-    ${LS2K_LIB_ROOT}/zf_components/ncnn/include
-    ${LS2K_LIB_ROOT}/zf_components/tflm
-    ${LS2K_LIB_ROOT}/zf_components/tflm/third_party/flatbuffers/include
-    ${LS2K_LIB_ROOT}/zf_components/tflm/third_party/gemmlowp
-    ${LS2K_LIB_ROOT}/zf_components/tflm/third_party/gemmlowp/fixedpoint
-    ${LS2K_LIB_ROOT}/zf_components/tflm/third_party/ruy
-    ${LS2K_LIB_ROOT}/zf_components/tflm/third_party/ruy/ruy
-    ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro
-    ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro/kernels
-    ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/kernels/internal
-    ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/core/api
-    ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/core/c
-    ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/schema
 )
+
+add_library(vendor_tflm STATIC IMPORTED GLOBAL)
+set_target_properties(vendor_tflm PROPERTIES
+    IMPORTED_LOCATION ${LS2K_LIB_ROOT}/zf_components/tflm/lib/libtflm.a
+    INTERFACE_INCLUDE_DIRECTORIES "${LS2K_LIB_ROOT}/zf_components/tflm;${LS2K_LIB_ROOT}/zf_components/tflm/third_party/flatbuffers/include;${LS2K_LIB_ROOT}/zf_components/tflm/third_party/gemmlowp;${LS2K_LIB_ROOT}/zf_components/tflm/third_party/gemmlowp/fixedpoint;${LS2K_LIB_ROOT}/zf_components/tflm/third_party/ruy;${LS2K_LIB_ROOT}/zf_components/tflm/third_party/ruy/ruy;${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro;${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro/kernels;${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/kernels/internal;${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/core/api;${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/core/c;${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/schema"
+)
+
+add_library(vendor_ncnn STATIC IMPORTED GLOBAL)
+set_target_properties(vendor_ncnn PROPERTIES
+    IMPORTED_LOCATION ${LS2K_LIB_ROOT}/zf_components/ncnn/lib/libncnn.a
+    INTERFACE_INCLUDE_DIRECTORIES ${LS2K_LIB_ROOT}/zf_components/ncnn/include
+)
+
+add_library(ls2k_linux_io STATIC
+    ../code/platform/linux/linux_io.cpp
+)
+target_link_libraries(ls2k_linux_io PUBLIC ls2k_project_headers)
+
+add_library(ls2k_platform_timer STATIC
+    ../code/platform/true_ls2k0300/timer_bridge.cpp
+)
+target_link_libraries(ls2k_platform_timer PUBLIC ls2k_project_headers ls2k_linux_io pthread)
+
+add_library(ls2k_platform_adc STATIC
+    ../code/platform/true_ls2k0300/adc_bridge.cpp
+    ../code/platform/power_adapter.cpp
+)
+target_link_libraries(ls2k_platform_adc PUBLIC ls2k_project_headers ls2k_linux_io)
+
+add_library(ls2k_platform_encoder STATIC
+    ../code/platform/true_ls2k0300/encoder_bridge.cpp
+    ../code/platform/encoder_adapter.cpp
+)
+target_link_libraries(ls2k_platform_encoder PUBLIC ls2k_project_headers ls2k_linux_io)
+
+add_library(ls2k_platform_imu STATIC
+    ../code/platform/true_ls2k0300/imu_bridge.cpp
+    ../code/platform/imu_adapter.cpp
+)
+target_link_libraries(ls2k_platform_imu PUBLIC ls2k_project_headers ls2k_linux_io pthread)
+
+add_library(ls2k_platform_camera STATIC
+    ../code/platform/true_ls2k0300/camera_bridge.cpp
+    ../code/platform/camera_adapter.cpp
+    ../code/platform/camera_frame_source.cpp
+)
+target_link_libraries(ls2k_platform_camera PUBLIC ls2k_project_headers ls2k_linux_io)
+
+add_library(ls2k_platform_motor STATIC
+    ../code/platform/true_ls2k0300/motor_bridge.cpp
+    ../code/platform/actuator_adapter.cpp
+)
+target_link_libraries(ls2k_platform_motor PUBLIC ls2k_project_headers ls2k_linux_io)
+
+add_library(ls2k_assistant_protocol STATIC
+    ../code/transport/assistant_protocol.cpp
+)
+target_link_libraries(ls2k_assistant_protocol PUBLIC ls2k_project_headers)
+
+add_library(ls2k_assistant_transport STATIC
+    ../code/transport/assistant_link.cpp
+    ../code/platform/true_ls2k0300/assistant_bridge.cpp
+)
+target_link_libraries(ls2k_assistant_transport PUBLIC ls2k_project_headers ls2k_assistant_protocol pthread)
 
 set(NEW_SRCS
     ../user/main.cpp
     ../code/platform/bootstrap.cpp
-    ../code/platform/camera_adapter.cpp
-    ../code/platform/imu_adapter.cpp
-    ../code/platform/encoder_adapter.cpp
-    ../code/platform/actuator_adapter.cpp
-    ../code/platform/power_adapter.cpp
     ../code/platform/param_store.cpp
     ../code/platform/hardware_profile.cpp
-    ../code/transport/assistant_link.cpp
-    ../code/transport/assistant_protocol.cpp
     ../code/transport/steering_media_link.cpp
     ../code/transport/steering_media_protocol.cpp
-    ../code/platform/camera_frame_source.cpp
     ../code/port/perf_counter.cpp
     ../code/port/thread_scheduling.cpp
-    ../code/platform/true_ls2k0300/camera_bridge.cpp
-    ../code/platform/true_ls2k0300/imu_bridge.cpp
-    ../code/platform/true_ls2k0300/encoder_bridge.cpp
-    ../code/platform/true_ls2k0300/motor_bridge.cpp
-    ../code/platform/true_ls2k0300/adc_bridge.cpp
-    ../code/platform/true_ls2k0300/timer_bridge.cpp
-    ../code/platform/true_ls2k0300/assistant_bridge.cpp
     ../code/platform/true_ls2k0300/steering_media_bridge.cpp
     ../code/control/steering_yaw_controller.cpp
     ../code/control/actuator_command_builder.cpp
@@ -125,44 +158,10 @@ set(NEW_SRCS
     ../code/control/tuning_state.cpp
     ../code/runtime/lifecycle/shutdown.cpp
 )
-set(LS2K_COMMON_SRCS
-    ${LS2K_LIB_ROOT}/zf_common/zf_common_fifo.cpp
-    ${LS2K_LIB_ROOT}/zf_common/zf_common_font.cpp
-    ${LS2K_LIB_ROOT}/zf_common/zf_common_function.cpp
-)
-
-set(LS2K_DEVICE_SRCS
-    ${LS2K_LIB_ROOT}/zf_device/zf_device_imu_core.cpp
-    ${LS2K_LIB_ROOT}/zf_device/zf_device_imu660ra.cpp
-    ${LS2K_LIB_ROOT}/zf_device/zf_device_imu660rb.cpp
-    ${LS2K_LIB_ROOT}/zf_device/zf_device_imu963ra.cpp
-    ${LS2K_LIB_ROOT}/zf_device/zf_device_ips200_fb.cpp
-    ${LS2K_LIB_ROOT}/zf_device/zf_device_uvc.cpp
-)
-
-set(LS2K_DRIVER_SRCS
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_adc.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_delay.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_encoder.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_file.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_gpio.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_pit.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_pwm.cpp
-    ${LS2K_LIB_ROOT}/zf_driver/zf_driver_udp.cpp
-)
-
-set(LS2K_ASSISTANT_SRCS
-    ${LS2K_LIB_ROOT}/zf_components/seekfree_assistant/seekfree_assistant.cpp
-    ${LS2K_LIB_ROOT}/zf_components/seekfree_assistant/seekfree_assistant_interface.cpp
-)
 
 add_executable(
     ${PROJ_NAME}
     ${NEW_SRCS}
-    ${LS2K_COMMON_SRCS}
-    ${LS2K_DEVICE_SRCS}
-    ${LS2K_DRIVER_SRCS}
-    ${LS2K_ASSISTANT_SRCS}
 )
 target_compile_definitions(${PROJ_NAME} PRIVATE
     LS2K_PERF_ENABLED=$<BOOL:${LS2K_PERF_ENABLED}>
@@ -175,6 +174,14 @@ set_target_properties(${PROJ_NAME} PROPERTIES
 
 target_link_libraries(
     ${PROJ_NAME}
+    ls2k_project_headers
+    ls2k_platform_timer
+    ls2k_platform_adc
+    ls2k_platform_encoder
+    ls2k_platform_imu
+    ls2k_platform_camera
+    ls2k_platform_motor
+    ls2k_assistant_transport
     ${OpenCV_LIBS}
     pthread
     m
@@ -352,6 +359,89 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         pthread
         m
     )
+
+    add_executable(
+        camera_device_board_test
+        ../verification/tests/camera_device_board_test.cpp
+    )
+    target_link_libraries(
+        camera_device_board_test
+        ls2k_project_headers
+        ls2k_platform_camera
+        pthread
+        m
+    )
+
+    add_executable(
+        timer_device_board_test
+        ../verification/tests/timer_device_board_test.cpp
+        ../code/port/thread_scheduling.cpp
+    )
+    target_link_libraries(
+        timer_device_board_test
+        ls2k_project_headers
+        ls2k_platform_timer
+        pthread
+        m
+    )
+
+    add_executable(
+        motor_device_board_test
+        ../verification/tests/motor_device_board_test.cpp
+    )
+    target_link_libraries(
+        motor_device_board_test
+        ls2k_project_headers
+        ls2k_platform_adc
+        ls2k_platform_encoder
+        ls2k_platform_motor
+        pthread
+        m
+    )
+
+    add_executable(
+        encoder_pair_board_test
+        ../verification/tests/encoder_pair_board_test.cpp
+    )
+    target_link_libraries(
+        encoder_pair_board_test
+        ls2k_project_headers
+        ls2k_platform_encoder
+        pthread
+        m
+    )
+
+    add_executable(
+        assistant_bridge_board_test
+        ../verification/tests/assistant_bridge_contract_test.cpp
+    )
+    target_link_libraries(
+        assistant_bridge_board_test
+        ls2k_project_headers
+        ls2k_assistant_transport
+        pthread
+        m
+    )
+    set_target_properties(assistant_bridge_board_test PROPERTIES
+        LINK_FLAGS "-Wl,--wrap=send"
+    )
+
+    foreach(verification_target
+            bev_simple_perception_test
+            reference_usability_lateral_error_test
+            reference_tracking_geometry_test
+            visual_reference_orchestration_test
+            cross_exit_element_evidence_test
+            steering_circle_v2_scene_test
+            assistant_telemetry_selftest
+            param_store_load_runtime_parameters_test
+            power_adapter_threshold_test
+            startup_low_voltage_order_test
+            steering_media_selftest)
+        target_link_libraries(${verification_target} ls2k_project_headers)
+    endforeach()
+
+    target_link_libraries(power_adapter_threshold_test ls2k_linux_io)
 
 endif()
 

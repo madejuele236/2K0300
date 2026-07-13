@@ -1,0 +1,584 @@
+== runtime smoke 2026-07-13T12:58:00Z ==
+board=root@192.168.137.100
+binary=/home/root/new
+params_source=/home/madejuele/projects/2K0300/new/config/default_params.json
+profile_source=/home/madejuele/projects/2K0300/new/config/hardware_profile.json
+smoke_enable_actuator=0
+true_vendor_root=/home/madejuele/projects/2K0300/true_LS2K0300_Library/Seekfree_LS2K0300_Opensource_Library
+harness_context_begin
+LS2K_AUTO_START=1
+LS2K_AUTO_START_DELAY_MS=200
+LS2K_AUTO_STOP_AFTER_MS=0
+LS2K_AUTO_RESET_FAULT=0
+SMOKE_MAX_FRAMES=400
+LS2K_FAULT_INJECT_DROP_FRAME_EVERY_N=0
+LS2K_FAULT_INJECT_IMU_INVALID_EVERY_N=0
+LS2K_FAULT_INJECT_ENCODER_INVALID_EVERY_N=0
+LS2K_FORCE_LOW_VOLTAGE=unset
+harness_context_end
+[INFO][thread.scheduling][2391185] applied SCHED_FIFO for role=main_loop priority=89
+[INFO][main.start][2391185] starting ls2k migration runtime
+[INFO][profile.loaded][2391195] hardware profile loaded from /home/root/hardware_profile.smoke.json
+[INFO][params.loaded][2391200] runtime parameters loaded from /home/root/default_params.smoke.json
+[INFO][profile.camera][2391201] direct-match:parameterized-direct-gray-no-exp-light-control
+[INFO][profile.imu][2391201] direct-match:imu-core-device-detect
+[INFO][profile.encoder][2391201] direct-match:absolute-count-delta-baseline
+[INFO][profile.actuator][2391201] disabled:smoke-actuator-disabled
+[INFO][profile.timer][2391201] direct-match:pit-timer-bridge
+[WARN][startup.mode.degraded][2391201] degraded startup mode enabled: non-direct-match profiles may pass startup for diagnostics only
+[WARN][startup.profile.actuator.degraded][2391201] actuator profile is disabled:smoke-actuator-disabled (allowed only in degraded startup mode)
+[INFO][params.critical.apply][2391201] applied startup-critical exp_light before adapter bring-up
+[INFO][power.init][2391201] power monitor initialized with true_ls2k0300 adc device path=/sys/bus/iio/devices/iio:device0/in_voltage7_raw
+[INFO][startup.low_voltage.clear][2391201] startup low-voltage check is clear
+[INFO][camera.init][2391201] camera adapter validated; capture ownership is delegated to CameraCaptureWorker
+[INFO][imu.init][2391203] imu initialized: mode=persistent
+[INFO][imu.detect][2391203] imu detection path selected: imu660ra source=/sys/bus/iio/devices/iio:device1/name
+[INFO][imu.calibration.ready][2391219] imu gyro zero-bias calibrated from 32 startup sample(s)
+[INFO][encoder.init][2391219] encoder initialized: left=/dev/zf_encoder_1, right=/dev/zf_encoder_2, mode=open-read-close
+[INFO][encoder.normalization][2391219] encoder direct-match normalization keeps logical left=raw_left and logical right=-raw_right for direct speed samples
+[INFO][actuator.disabled][2391219] actuator subsystem disabled by hardware profile
+[WARN][startup.actuator.disabled.degraded][2391219] actuator is disabled by profile and degraded startup mode is enabled
+[INFO][startup.complete][2391220] startup validated required adapters and applied critical params
+[WARN][control.start.degraded.actuator_disabled][2391220] degraded startup keeps control loop running with actuator disabled; actuators stay disarmed
+[INFO][timer.start.pit][2391220] timer started with true_ls2k0300 timerfd bridge
+[FAIL_SAFE][control.arm.actuator_disabled][2391220] actuator profile is disabled; control loop stays diagnostics-only with actuators disarmed
+[INFO][control.start][2391220] control loop started with gate -> motion supervisor -> shaping/apply sequencing
+[FAIL_SAFE][control.veto][2391225] vetoing actuator update due to perception_stale
+[FAIL_SAFE][control.veto.perception_stale][2391225] dominant control veto reason: perception_stale
+[WARN][control.apply.suppressed][2391225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][imu.continuity.ready][2391376] imu sample stream stayed valid for 32 consecutive reads after bridge normalization
+[WARN][control.veto.sustained][2391425] control remained vetoed for 200 ms with dominant reason=perception_stale
+[INFO][camera_source.device.start][2391563] CameraDevice started on /dev/video0
+[INFO][camera_capture_worker.start][2391564] camera capture worker started
+[INFO][perception.projector.configured][2391564] BEV projector configured once for runtime perception
+[INFO][assistant.configured][2391564] assistant sidecar configured for TCP endpoint 192.168.137.1:43011
+[INFO][steering_media.configured][2391564] steering media configured for TCP endpoint 192.168.137.1:43012
+[INFO][main.harness_context][2391564] automation_context auto_start=true auto_start_delay_ms=200 auto_stop_after_ms=0 auto_reset_fault=false emit_frame_progress=true
+[INFO][assistant.connecting][2391566] assistant TCP connecting to 192.168.137.1:43011
+[INFO][thread.scheduling][2391567] applied SCHED_FIFO for role=camera_capture priority=87
+[INFO][thread.scheduling][2391567] applied SCHED_FIFO for role=steering_media priority=85
+[INFO][steering_media_worker.start][2391567] steering media worker started
+[INFO][steering_media.connecting][2391568] steering media TCP connecting to 192.168.137.1:43012
+[WARN][assistant.backoff][2391573] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2391573] steering media TCP connect failed: Connection refused
+[WARN][camera_source.device.empty][2391617] CameraDevice returned no complete YUYV frame
+[INFO][main.frame.processed][2391623] processed_frames=1
+[FAIL_SAFE][control.veto.reference_control_not_ready][2391635] dominant control veto reason: reference_control_not_ready
+[INFO][control.veto.interval.closed][2391635] previous veto interval closed after 410 ms (reason=perception_stale)
+[INFO][main.frame.processed][2391638] processed_frames=2
+[INFO][main.frame.processed][2391654] processed_frames=3
+[INFO][main.frame.processed][2391670] processed_frames=4
+[INFO][control.veto.interval.closed][2391680] previous veto interval closed after 45 ms (reason=reference_control_not_ready)
+[INFO][main.frame.processed][2391686] processed_frames=5
+[INFO][main.frame.processed][2391702] processed_frames=6
+[INFO][main.frame.processed][2391722] processed_frames=7
+[INFO][main.frame.processed][2391738] processed_frames=8
+[INFO][main.frame.processed][2391753] processed_frames=9
+[INFO][motion.start.requested][2391766] motion start requested by LS2K_AUTO_START
+[INFO][motion.phase.transition][2391770] motion phase transitioned from DISARMED to START_REQUESTED
+[INFO][main.frame.processed][2391769] processed_frames=10
+[INFO][motion.phase.transition][2391785] motion phase transitioned from START_REQUESTED to SPINUP
+[INFO][motion.spinup.enter][2391785] motion start request cleared the gate-confirmation boundary and entered spinup
+[INFO][control.command.requested_nonzero][2391790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2391784] processed_frames=11
+[INFO][main.frame.processed][2391802] processed_frames=12
+[INFO][main.frame.processed][2391822] processed_frames=13
+[INFO][main.frame.processed][2391838] processed_frames=14
+[INFO][main.frame.processed][2391853] processed_frames=15
+[INFO][main.frame.processed][2391869] processed_frames=16
+[INFO][control.unveto.sustained][2391880] control remained non-veto for 200 ms; actuator path stayed eligible for lifecycle evaluation
+[INFO][main.frame.processed][2391886] processed_frames=17
+[INFO][main.frame.processed][2391902] processed_frames=18
+[INFO][main.frame.processed][2391922] processed_frames=19
+[INFO][main.frame.processed][2391937] processed_frames=20
+[INFO][main.frame.processed][2391953] processed_frames=21
+[INFO][main.frame.processed][2391968] processed_frames=22
+[INFO][main.frame.processed][2391985] processed_frames=23
+[INFO][main.frame.processed][2392002] processed_frames=24
+[INFO][main.frame.processed][2392022] processed_frames=25
+[INFO][main.frame.processed][2392037] processed_frames=26
+[INFO][main.frame.processed][2392053] processed_frames=27
+[INFO][main.frame.processed][2392069] processed_frames=28
+[INFO][main.frame.processed][2392086] processed_frames=29
+[INFO][main.frame.processed][2392102] processed_frames=30
+[INFO][main.frame.processed][2392123] processed_frames=31
+[INFO][main.frame.processed][2392137] processed_frames=32
+[INFO][main.frame.processed][2392154] processed_frames=33
+[INFO][main.frame.processed][2392169] processed_frames=34
+[INFO][main.frame.processed][2392184] processed_frames=35
+[INFO][main.frame.processed][2392202] processed_frames=36
+[WARN][control.apply.suppressed][2392225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2392222] processed_frames=37
+[INFO][main.frame.processed][2392237] processed_frames=38
+[INFO][main.frame.processed][2392253] processed_frames=39
+[INFO][main.frame.processed][2392269] processed_frames=40
+[INFO][main.frame.processed][2392287] processed_frames=41
+[INFO][main.frame.processed][2392302] processed_frames=42
+[INFO][main.frame.processed][2392317] processed_frames=43
+[INFO][main.frame.processed][2392337] processed_frames=44
+[INFO][main.frame.processed][2392354] processed_frames=45
+[INFO][main.frame.processed][2392369] processed_frames=46
+[INFO][main.frame.processed][2392385] processed_frames=47
+[INFO][main.frame.processed][2392402] processed_frames=48
+[INFO][main.frame.processed][2392418] processed_frames=49
+[INFO][main.frame.processed][2392437] processed_frames=50
+[INFO][main.frame.processed][2392453] processed_frames=51
+[INFO][main.frame.processed][2392469] processed_frames=52
+[INFO][main.frame.processed][2392484] processed_frames=53
+[INFO][main.frame.processed][2392502] processed_frames=54
+[INFO][main.frame.processed][2392518] processed_frames=55
+[INFO][main.frame.processed][2392537] processed_frames=56
+[INFO][main.frame.processed][2392553] processed_frames=57
+[INFO][assistant.connecting][2392579] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2392569] processed_frames=58
+[INFO][steering_media.connecting][2392580] steering media TCP connecting to 192.168.137.1:43012
+[INFO][motion.phase.transition][2392585] motion phase transitioned from SPINUP to RUNNING
+[INFO][motion.spinup.complete][2392585] spinup timer completed and running authority is now released
+[INFO][main.frame.processed][2392587] processed_frames=59
+[WARN][assistant.backoff][2392598] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2392599] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2392603] processed_frames=60
+[INFO][main.frame.processed][2392618] processed_frames=61
+[INFO][main.frame.processed][2392638] processed_frames=62
+[INFO][main.frame.processed][2392653] processed_frames=63
+[INFO][main.frame.processed][2392670] processed_frames=64
+[INFO][main.frame.processed][2392686] processed_frames=65
+[INFO][main.frame.processed][2392703] processed_frames=66
+[INFO][main.frame.processed][2392718] processed_frames=67
+[INFO][main.frame.processed][2392737] processed_frames=68
+[INFO][main.frame.processed][2392754] processed_frames=69
+[INFO][main.frame.processed][2392770] processed_frames=70
+[INFO][control.command.requested_nonzero][2392790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2392787] processed_frames=71
+[INFO][main.frame.processed][2392803] processed_frames=72
+[INFO][main.frame.processed][2392817] processed_frames=73
+[INFO][main.frame.processed][2392837] processed_frames=74
+[INFO][main.frame.processed][2392854] processed_frames=75
+[INFO][main.frame.processed][2392869] processed_frames=76
+[INFO][main.frame.processed][2392884] processed_frames=77
+[INFO][main.frame.processed][2392902] processed_frames=78
+[INFO][main.frame.processed][2392917] processed_frames=79
+[INFO][main.frame.processed][2392937] processed_frames=80
+[INFO][main.frame.processed][2392953] processed_frames=81
+[INFO][main.frame.processed][2392969] processed_frames=82
+[INFO][main.frame.processed][2392984] processed_frames=83
+[INFO][main.frame.processed][2393002] processed_frames=84
+[INFO][main.frame.processed][2393018] processed_frames=85
+[INFO][main.frame.processed][2393038] processed_frames=86
+[INFO][main.frame.processed][2393053] processed_frames=87
+[INFO][main.frame.processed][2393069] processed_frames=88
+[INFO][main.frame.processed][2393086] processed_frames=89
+[INFO][main.frame.processed][2393102] processed_frames=90
+[INFO][main.frame.processed][2393118] processed_frames=91
+[INFO][main.frame.processed][2393138] processed_frames=92
+[INFO][main.frame.processed][2393153] processed_frames=93
+[INFO][main.frame.processed][2393169] processed_frames=94
+[INFO][main.frame.processed][2393184] processed_frames=95
+[INFO][main.frame.processed][2393202] processed_frames=96
+[WARN][control.apply.suppressed][2393225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2393218] processed_frames=97
+[INFO][main.frame.processed][2393238] processed_frames=98
+[INFO][main.frame.processed][2393253] processed_frames=99
+[INFO][main.frame.processed][2393269] processed_frames=100
+[INFO][main.frame.processed][2393284] processed_frames=101
+[INFO][main.frame.processed][2393302] processed_frames=102
+[INFO][main.frame.processed][2393318] processed_frames=103
+[INFO][main.frame.processed][2393337] processed_frames=104
+[INFO][main.frame.processed][2393353] processed_frames=105
+[INFO][main.frame.processed][2393370] processed_frames=106
+[INFO][main.frame.processed][2393386] processed_frames=107
+[INFO][main.frame.processed][2393402] processed_frames=108
+[INFO][main.frame.processed][2393418] processed_frames=109
+[INFO][main.frame.processed][2393438] processed_frames=110
+[INFO][main.frame.processed][2393453] processed_frames=111
+[INFO][main.frame.processed][2393469] processed_frames=112
+[INFO][main.frame.processed][2393486] processed_frames=113
+[INFO][main.frame.processed][2393502] processed_frames=114
+[INFO][main.frame.processed][2393518] processed_frames=115
+[INFO][main.frame.processed][2393537] processed_frames=116
+[INFO][main.frame.processed][2393554] processed_frames=117
+[INFO][main.frame.processed][2393569] processed_frames=118
+[INFO][main.frame.processed][2393586] processed_frames=119
+[INFO][assistant.connecting][2393598] assistant TCP connecting to 192.168.137.1:43011
+[INFO][steering_media.connecting][2393602] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2393602] processed_frames=120
+[WARN][assistant.backoff][2393613] assistant TCP connect failed: Connection refused
+[INFO][main.frame.processed][2393618] processed_frames=121
+[WARN][steering_media.backoff][2393630] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2393638] processed_frames=122
+[INFO][main.frame.processed][2393653] processed_frames=123
+[INFO][main.frame.processed][2393670] processed_frames=124
+[INFO][main.frame.processed][2393686] processed_frames=125
+[INFO][main.frame.processed][2393702] processed_frames=126
+[INFO][main.frame.processed][2393718] processed_frames=127
+[INFO][main.frame.processed][2393737] processed_frames=128
+[INFO][main.frame.processed][2393753] processed_frames=129
+[INFO][main.frame.processed][2393770] processed_frames=130
+[INFO][control.command.requested_nonzero][2393790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2393787] processed_frames=131
+[INFO][main.frame.processed][2393803] processed_frames=132
+[INFO][main.frame.processed][2393817] processed_frames=133
+[INFO][main.frame.processed][2393837] processed_frames=134
+[INFO][main.frame.processed][2393853] processed_frames=135
+[INFO][main.frame.processed][2393869] processed_frames=136
+[INFO][main.frame.processed][2393884] processed_frames=137
+[INFO][main.frame.processed][2393902] processed_frames=138
+[INFO][main.frame.processed][2393917] processed_frames=139
+[INFO][main.frame.processed][2393937] processed_frames=140
+[INFO][main.frame.processed][2393953] processed_frames=141
+[INFO][main.frame.processed][2393969] processed_frames=142
+[INFO][main.frame.processed][2393987] processed_frames=143
+[INFO][main.frame.processed][2394003] processed_frames=144
+[INFO][main.frame.processed][2394018] processed_frames=145
+[INFO][main.frame.processed][2394038] processed_frames=146
+[INFO][main.frame.processed][2394053] processed_frames=147
+[INFO][main.frame.processed][2394069] processed_frames=148
+[INFO][main.frame.processed][2394084] processed_frames=149
+[INFO][main.frame.processed][2394102] processed_frames=150
+[INFO][main.frame.processed][2394118] processed_frames=151
+[INFO][main.frame.processed][2394137] processed_frames=152
+[INFO][main.frame.processed][2394153] processed_frames=153
+[INFO][main.frame.processed][2394168] processed_frames=154
+[INFO][main.frame.processed][2394186] processed_frames=155
+[INFO][main.frame.processed][2394203] processed_frames=156
+[INFO][main.frame.processed][2394217] processed_frames=157
+[WARN][control.apply.suppressed][2394225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2394237] processed_frames=158
+[INFO][main.frame.processed][2394254] processed_frames=159
+[INFO][main.frame.processed][2394269] processed_frames=160
+[INFO][main.frame.processed][2394286] processed_frames=161
+[INFO][main.frame.processed][2394302] processed_frames=162
+[INFO][main.frame.processed][2394317] processed_frames=163
+[INFO][main.frame.processed][2394337] processed_frames=164
+[INFO][main.frame.processed][2394354] processed_frames=165
+[INFO][main.frame.processed][2394369] processed_frames=166
+[INFO][main.frame.processed][2394387] processed_frames=167
+[INFO][main.frame.processed][2394402] processed_frames=168
+[INFO][main.frame.processed][2394417] processed_frames=169
+[INFO][main.frame.processed][2394434] processed_frames=170
+[INFO][main.frame.processed][2394453] processed_frames=171
+[INFO][main.frame.processed][2394470] processed_frames=172
+[INFO][main.frame.processed][2394486] processed_frames=173
+[INFO][main.frame.processed][2394502] processed_frames=174
+[INFO][main.frame.processed][2394518] processed_frames=175
+[INFO][main.frame.processed][2394533] processed_frames=176
+[INFO][main.frame.processed][2394553] processed_frames=177
+[INFO][main.frame.processed][2394569] processed_frames=178
+[INFO][main.frame.processed][2394585] processed_frames=179
+[INFO][main.frame.processed][2394602] processed_frames=180
+[INFO][assistant.connecting][2394614] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2394618] processed_frames=181
+[WARN][assistant.backoff][2394627] assistant TCP connect failed: Connection refused
+[INFO][steering_media.connecting][2394633] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2394633] processed_frames=182
+[WARN][steering_media.backoff][2394644] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2394653] processed_frames=183
+[INFO][main.frame.processed][2394670] processed_frames=184
+[INFO][main.frame.processed][2394686] processed_frames=185
+[INFO][main.frame.processed][2394702] processed_frames=186
+[INFO][main.frame.processed][2394718] processed_frames=187
+[INFO][main.frame.processed][2394733] processed_frames=188
+[INFO][main.frame.processed][2394753] processed_frames=189
+[INFO][main.frame.processed][2394769] processed_frames=190
+[INFO][control.command.requested_nonzero][2394790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2394786] processed_frames=191
+[INFO][main.frame.processed][2394802] processed_frames=192
+[INFO][main.frame.processed][2394818] processed_frames=193
+[INFO][main.frame.processed][2394834] processed_frames=194
+[INFO][main.frame.processed][2394853] processed_frames=195
+[INFO][main.frame.processed][2394868] processed_frames=196
+[INFO][main.frame.processed][2394886] processed_frames=197
+[INFO][main.frame.processed][2394902] processed_frames=198
+[INFO][main.frame.processed][2394918] processed_frames=199
+[INFO][main.frame.processed][2394934] processed_frames=200
+[INFO][main.frame.processed][2394953] processed_frames=201
+[INFO][main.frame.processed][2394969] processed_frames=202
+[INFO][main.frame.processed][2394985] processed_frames=203
+[INFO][main.frame.processed][2395002] processed_frames=204
+[INFO][main.frame.processed][2395018] processed_frames=205
+[INFO][main.frame.processed][2395033] processed_frames=206
+[INFO][main.frame.processed][2395053] processed_frames=207
+[INFO][main.frame.processed][2395069] processed_frames=208
+[INFO][main.frame.processed][2395086] processed_frames=209
+[INFO][main.frame.processed][2395102] processed_frames=210
+[INFO][main.frame.processed][2395118] processed_frames=211
+[INFO][main.frame.processed][2395133] processed_frames=212
+[INFO][main.frame.processed][2395153] processed_frames=213
+[INFO][main.frame.processed][2395170] processed_frames=214
+[INFO][main.frame.processed][2395186] processed_frames=215
+[INFO][main.frame.processed][2395203] processed_frames=216
+[WARN][control.apply.suppressed][2395225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2395218] processed_frames=217
+[INFO][main.frame.processed][2395233] processed_frames=218
+[INFO][main.frame.processed][2395253] processed_frames=219
+[INFO][main.frame.processed][2395270] processed_frames=220
+[INFO][main.frame.processed][2395286] processed_frames=221
+[INFO][main.frame.processed][2395302] processed_frames=222
+[INFO][main.frame.processed][2395317] processed_frames=223
+[INFO][main.frame.processed][2395333] processed_frames=224
+[INFO][main.frame.processed][2395353] processed_frames=225
+[INFO][main.frame.processed][2395370] processed_frames=226
+[INFO][main.frame.processed][2395387] processed_frames=227
+[INFO][main.frame.processed][2395403] processed_frames=228
+[INFO][main.frame.processed][2395417] processed_frames=229
+[INFO][main.frame.processed][2395434] processed_frames=230
+[INFO][main.frame.processed][2395453] processed_frames=231
+[INFO][main.frame.processed][2395469] processed_frames=232
+[INFO][main.frame.processed][2395486] processed_frames=233
+[INFO][main.frame.processed][2395502] processed_frames=234
+[INFO][main.frame.processed][2395518] processed_frames=235
+[INFO][main.frame.processed][2395534] processed_frames=236
+[INFO][main.frame.processed][2395554] processed_frames=237
+[INFO][main.frame.processed][2395569] processed_frames=238
+[INFO][main.frame.processed][2395584] processed_frames=239
+[INFO][main.frame.processed][2395602] processed_frames=240
+[INFO][main.frame.processed][2395618] processed_frames=241
+[INFO][assistant.connecting][2395627] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2395633] processed_frames=242
+[WARN][assistant.backoff][2395643] assistant TCP connect failed: Connection refused
+[INFO][steering_media.connecting][2395645] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2395654] processed_frames=243
+[WARN][steering_media.backoff][2395666] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2395669] processed_frames=244
+[INFO][main.frame.processed][2395686] processed_frames=245
+[INFO][main.frame.processed][2395702] processed_frames=246
+[INFO][main.frame.processed][2395717] processed_frames=247
+[INFO][main.frame.processed][2395733] processed_frames=248
+[INFO][main.frame.processed][2395753] processed_frames=249
+[INFO][main.frame.processed][2395769] processed_frames=250
+[INFO][control.command.requested_nonzero][2395790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2395787] processed_frames=251
+[INFO][main.frame.processed][2395802] processed_frames=252
+[INFO][main.frame.processed][2395817] processed_frames=253
+[INFO][main.frame.processed][2395834] processed_frames=254
+[INFO][main.frame.processed][2395853] processed_frames=255
+[INFO][main.frame.processed][2395869] processed_frames=256
+[INFO][main.frame.processed][2395886] processed_frames=257
+[INFO][main.frame.processed][2395902] processed_frames=258
+[INFO][main.frame.processed][2395917] processed_frames=259
+[INFO][main.frame.processed][2395934] processed_frames=260
+[INFO][main.frame.processed][2395953] processed_frames=261
+[INFO][main.frame.processed][2395970] processed_frames=262
+[INFO][main.frame.processed][2395986] processed_frames=263
+[INFO][main.frame.processed][2396002] processed_frames=264
+[INFO][main.frame.processed][2396018] processed_frames=265
+[INFO][main.frame.processed][2396034] processed_frames=266
+[INFO][main.frame.processed][2396054] processed_frames=267
+[INFO][main.frame.processed][2396069] processed_frames=268
+[INFO][main.frame.processed][2396086] processed_frames=269
+[INFO][main.frame.processed][2396102] processed_frames=270
+[INFO][main.frame.processed][2396118] processed_frames=271
+[INFO][main.frame.processed][2396133] processed_frames=272
+[INFO][main.frame.processed][2396154] processed_frames=273
+[INFO][main.frame.processed][2396169] processed_frames=274
+[INFO][main.frame.processed][2396187] processed_frames=275
+[INFO][main.frame.processed][2396203] processed_frames=276
+[WARN][control.apply.suppressed][2396225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2396217] processed_frames=277
+[INFO][main.frame.processed][2396233] processed_frames=278
+[INFO][main.frame.processed][2396253] processed_frames=279
+[INFO][main.frame.processed][2396270] processed_frames=280
+[INFO][main.frame.processed][2396287] processed_frames=281
+[INFO][main.frame.processed][2396303] processed_frames=282
+[INFO][main.frame.processed][2396317] processed_frames=283
+[INFO][main.frame.processed][2396333] processed_frames=284
+[INFO][main.frame.processed][2396354] processed_frames=285
+[INFO][main.frame.processed][2396369] processed_frames=286
+[INFO][main.frame.processed][2396384] processed_frames=287
+[INFO][main.frame.processed][2396402] processed_frames=288
+[INFO][main.frame.processed][2396418] processed_frames=289
+[INFO][main.frame.processed][2396433] processed_frames=290
+[INFO][main.frame.processed][2396454] processed_frames=291
+[INFO][main.frame.processed][2396469] processed_frames=292
+[INFO][main.frame.processed][2396484] processed_frames=293
+[INFO][main.frame.processed][2396502] processed_frames=294
+[INFO][main.frame.processed][2396518] processed_frames=295
+[INFO][main.frame.processed][2396533] processed_frames=296
+[INFO][main.frame.processed][2396554] processed_frames=297
+[INFO][main.frame.processed][2396569] processed_frames=298
+[INFO][main.frame.processed][2396586] processed_frames=299
+[INFO][main.frame.processed][2396602] processed_frames=300
+[INFO][main.frame.processed][2396617] processed_frames=301
+[INFO][main.frame.processed][2396633] processed_frames=302
+[INFO][assistant.connecting][2396643] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2396649] processed_frames=303
+[WARN][assistant.backoff][2396659] assistant TCP connect failed: Connection refused
+[INFO][steering_media.connecting][2396666] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2396670] processed_frames=304
+[WARN][steering_media.backoff][2396681] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2396686] processed_frames=305
+[INFO][main.frame.processed][2396702] processed_frames=306
+[INFO][main.frame.processed][2396717] processed_frames=307
+[INFO][main.frame.processed][2396734] processed_frames=308
+[INFO][main.frame.processed][2396749] processed_frames=309
+[INFO][main.frame.processed][2396769] processed_frames=310
+[INFO][control.command.requested_nonzero][2396790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2396786] processed_frames=311
+[INFO][main.frame.processed][2396802] processed_frames=312
+[INFO][main.frame.processed][2396817] processed_frames=313
+[INFO][main.frame.processed][2396833] processed_frames=314
+[INFO][main.frame.processed][2396848] processed_frames=315
+[INFO][main.frame.processed][2396869] processed_frames=316
+[INFO][main.frame.processed][2396884] processed_frames=317
+[INFO][main.frame.processed][2396902] processed_frames=318
+[INFO][main.frame.processed][2396918] processed_frames=319
+[INFO][main.frame.processed][2396934] processed_frames=320
+[INFO][main.frame.processed][2396950] processed_frames=321
+[INFO][main.frame.processed][2396969] processed_frames=322
+[INFO][main.frame.processed][2396986] processed_frames=323
+[INFO][main.frame.processed][2397002] processed_frames=324
+[INFO][main.frame.processed][2397018] processed_frames=325
+[INFO][main.frame.processed][2397033] processed_frames=326
+[INFO][main.frame.processed][2397049] processed_frames=327
+[INFO][main.frame.processed][2397070] processed_frames=328
+[INFO][main.frame.processed][2397086] processed_frames=329
+[INFO][main.frame.processed][2397102] processed_frames=330
+[INFO][main.frame.processed][2397118] processed_frames=331
+[INFO][main.frame.processed][2397134] processed_frames=332
+[INFO][main.frame.processed][2397149] processed_frames=333
+[INFO][main.frame.processed][2397170] processed_frames=334
+[INFO][main.frame.processed][2397187] processed_frames=335
+[INFO][main.frame.processed][2397203] processed_frames=336
+[WARN][control.apply.suppressed][2397225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2397217] processed_frames=337
+[INFO][main.frame.processed][2397234] processed_frames=338
+[INFO][main.frame.processed][2397250] processed_frames=339
+[INFO][main.frame.processed][2397269] processed_frames=340
+[INFO][main.frame.processed][2397286] processed_frames=341
+[INFO][main.frame.processed][2397302] processed_frames=342
+[INFO][main.frame.processed][2397317] processed_frames=343
+[INFO][main.frame.processed][2397333] processed_frames=344
+[INFO][main.frame.processed][2397348] processed_frames=345
+[INFO][main.frame.processed][2397369] processed_frames=346
+[INFO][main.frame.processed][2397386] processed_frames=347
+[INFO][main.frame.processed][2397402] processed_frames=348
+[INFO][main.frame.processed][2397417] processed_frames=349
+[INFO][main.frame.processed][2397434] processed_frames=350
+[INFO][main.frame.processed][2397449] processed_frames=351
+[INFO][main.frame.processed][2397470] processed_frames=352
+[INFO][main.frame.processed][2397486] processed_frames=353
+[INFO][main.frame.processed][2397502] processed_frames=354
+[INFO][main.frame.processed][2397517] processed_frames=355
+[INFO][main.frame.processed][2397534] processed_frames=356
+[INFO][main.frame.processed][2397549] processed_frames=357
+[INFO][main.frame.processed][2397570] processed_frames=358
+[INFO][main.frame.processed][2397587] processed_frames=359
+[INFO][main.frame.processed][2397603] processed_frames=360
+[INFO][main.frame.processed][2397617] processed_frames=361
+[INFO][main.frame.processed][2397633] processed_frames=362
+[INFO][assistant.connecting][2397659] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2397650] processed_frames=363
+[INFO][main.frame.processed][2397670] processed_frames=364
+[INFO][steering_media.connecting][2397682] steering media TCP connecting to 192.168.137.1:43012
+[WARN][assistant.backoff][2397683] assistant TCP connect failed: Connection refused
+[INFO][main.frame.processed][2397687] processed_frames=365
+[WARN][steering_media.backoff][2397698] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2397703] processed_frames=366
+[INFO][main.frame.processed][2397717] processed_frames=367
+[INFO][main.frame.processed][2397734] processed_frames=368
+[INFO][main.frame.processed][2397749] processed_frames=369
+[INFO][main.frame.processed][2397769] processed_frames=370
+[INFO][control.command.requested_nonzero][2397790] non-zero differential-drive command requested
+[INFO][main.frame.processed][2397787] processed_frames=371
+[INFO][main.frame.processed][2397802] processed_frames=372
+[INFO][main.frame.processed][2397818] processed_frames=373
+[INFO][main.frame.processed][2397834] processed_frames=374
+[INFO][main.frame.processed][2397849] processed_frames=375
+[INFO][main.frame.processed][2397870] processed_frames=376
+[INFO][main.frame.processed][2397886] processed_frames=377
+[INFO][main.frame.processed][2397902] processed_frames=378
+[INFO][main.frame.processed][2397917] processed_frames=379
+[INFO][main.frame.processed][2397933] processed_frames=380
+[INFO][main.frame.processed][2397950] processed_frames=381
+[INFO][main.frame.processed][2397970] processed_frames=382
+[INFO][main.frame.processed][2397987] processed_frames=383
+[INFO][main.frame.processed][2398002] processed_frames=384
+[INFO][main.frame.processed][2398017] processed_frames=385
+[INFO][main.frame.processed][2398034] processed_frames=386
+[INFO][main.frame.processed][2398049] processed_frames=387
+[INFO][main.frame.processed][2398069] processed_frames=388
+[INFO][main.frame.processed][2398086] processed_frames=389
+[INFO][main.frame.processed][2398102] processed_frames=390
+[INFO][main.frame.processed][2398118] processed_frames=391
+[INFO][main.frame.processed][2398134] processed_frames=392
+[INFO][main.frame.processed][2398149] processed_frames=393
+[INFO][main.frame.processed][2398169] processed_frames=394
+[INFO][main.frame.processed][2398187] processed_frames=395
+[INFO][main.frame.processed][2398203] processed_frames=396
+[WARN][control.apply.suppressed][2398225] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][2398218] processed_frames=397
+[INFO][main.frame.processed][2398233] processed_frames=398
+[INFO][main.frame.processed][2398249] processed_frames=399
+[INFO][main.frame.processed][2398271] processed_frames=400
+[INFO][main.frame.processed][2398286] processed_frames=401
+[INFO][main.frame.processed][2398302] processed_frames=402
+[INFO][main.frame.processed][2398318] processed_frames=403
+[INFO][main.frame.processed][2398333] processed_frames=404
+[INFO][main.frame.processed][2398350] processed_frames=405
+[INFO][main.frame.processed][2398370] processed_frames=406
+[INFO][main.frame.processed][2398386] processed_frames=407
+[INFO][main.frame.processed][2398402] processed_frames=408
+[INFO][main.frame.processed][2398418] processed_frames=409
+[INFO][main.frame.processed][2398433] processed_frames=410
+[INFO][main.frame.processed][2398449] processed_frames=411
+[INFO][main.frame.processed][2398470] processed_frames=412
+[INFO][main.frame.processed][2398486] processed_frames=413
+[INFO][main.frame.processed][2398502] processed_frames=414
+[INFO][main.frame.processed][2398518] processed_frames=415
+[INFO][main.frame.processed][2398533] processed_frames=416
+[INFO][main.frame.processed][2398549] processed_frames=417
+[INFO][main.frame.processed][2398570] processed_frames=418
+[INFO][main.frame.processed][2398586] processed_frames=419
+[INFO][main.frame.processed][2398602] processed_frames=420
+[INFO][main.frame.processed][2398618] processed_frames=421
+[INFO][main.frame.processed][2398633] processed_frames=422
+[INFO][main.frame.processed][2398649] processed_frames=423
+[INFO][main.frame.processed][2398669] processed_frames=424
+[INFO][assistant.connecting][2398683] assistant TCP connecting to 192.168.137.1:43011
+[INFO][main.frame.processed][2398686] processed_frames=425
+[INFO][steering_media.connecting][2398698] steering media TCP connecting to 192.168.137.1:43012
+[INFO][main.frame.processed][2398703] processed_frames=426
+[WARN][assistant.backoff][2398714] assistant TCP connect failed: Connection refused
+[WARN][steering_media.backoff][2398714] steering media TCP connect failed: Connection refused
+[INFO][main.frame.processed][2398717] processed_frames=427
+[INFO][main.frame.processed][2398734] processed_frames=428
+[INFO][main.frame.processed][2398749] processed_frames=429
+[INFO][main.frame.processed][2398767] processed_frames=430
+[INFO][motion.stop.requested][2398784] controlled stop requested by signal
+[INFO][main.frame.processed][2398786] processed_frames=431
+[INFO][main.frame.processed][2398802] processed_frames=432
+[INFO][main.frame.processed][2398818] processed_frames=433
+[INFO][main.frame.processed][2398833] processed_frames=434
+[INFO][main.frame.processed][2398849] processed_frames=435
+[INFO][main.frame.processed][2398864] processed_frames=436
+[INFO][main.frame.processed][2398886] processed_frames=437
+[INFO][main.frame.processed][2398903] processed_frames=438
+[INFO][main.frame.processed][2398917] processed_frames=439
+[INFO][main.frame.processed][2398933] processed_frames=440
+[INFO][main.frame.processed][2398949] processed_frames=441
+[INFO][main.frame.processed][2398965] processed_frames=442
+[INFO][main.frame.processed][2398986] processed_frames=443
+[INFO][main.frame.processed][2399002] processed_frames=444
+[INFO][main.frame.processed][2399017] processed_frames=445
+[INFO][main.frame.processed][2399033] processed_frames=446
+[INFO][main.frame.processed][2399049] processed_frames=447
+[INFO][main.frame.processed][2399064] processed_frames=448
+[INFO][motion.phase.transition][2399085] motion phase transitioned from STOPPING to DISARMED
+[INFO][motion.stop.complete][2399085] controlled stop completed and runtime returned to DISARMED
+[INFO][main.frame.processed][2399086] processed_frames=449
+[INFO][main.exit.ready][2399095] controlled stop reached DISARMED; process may now exit
+[FAIL_SAFE][control.veto][2399095] vetoing actuator update due to reference_control_not_ready
+[FAIL_SAFE][control.veto.reference_control_not_ready][2399095] dominant control veto reason: reference_control_not_ready
+[WARN][control.unveto.interval.closed][2399095] previous non-veto interval closed after 7415 ms (reason=none)
+[INFO][steering_media_worker.stop][2399097] steering media worker stopped
+[INFO][camera_source.device.stop][2399159] CameraDevice released stream, mappings, buffers, and fd
+[INFO][timer.stop][2399160] timer bridge stopped
+[INFO][camera.shutdown][2399160] camera adapter shutdown complete
+[INFO][imu.shutdown][2399160] imu adapter shutdown complete
+[INFO][encoder.shutdown][2399160] encoder adapter shutdown complete
+[INFO][actuator.shutdown][2399160] actuator adapter shutdown complete
+[INFO][shutdown.complete][2399160] actuators disabled and resources released
+[INFO][main.exit][2399160] runtime exit complete
+remote_runtime_exit=0
+remote_log_copy_exit=0
+remote_runtime_invoked=1

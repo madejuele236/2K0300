@@ -1,6 +1,4 @@
 #include "port/platform_adapter.hpp"
-#include "platform/true_ls2k0300/bridge.hpp"
-#include "platform/true_ls2k0300/vendor_paths.hpp"
 
 // 相机适配器实现 —— 平台级相机硬件适配层。
 // 负责初始化相机硬件、采集帧视图并交给运行时立即消费。
@@ -130,29 +128,10 @@ public:
             return out;
         }
 
-        out.capture_time_ms = port::NowMs();
-        const true_ls2k0300::CameraFrameView frame = true_ls2k0300::CaptureCameraFrame();
-        if (!frame.valid || frame.gray == nullptr) {
-            out.marker = port::CameraGeometryMarker::kEmptyFrame;
-            return out;
-        }
-        out.capture_time_ms = port::NowMs();
-
-        out.source_width = frame.width;
-        out.source_height = frame.height;
-        if (frame.width != expected_width_ || frame.height != expected_height_) {
-            out.marker = port::CameraGeometryMarker::kNonPhase1Geometry;
-            return out;
-        }
-
-        out.has_frame = true;
-        out.view.gray = frame.gray;
-        out.view.width = frame.width;
-        out.view.height = frame.height;
-        out.view.stride = frame.width;
-        out.view.frame_id = out.frame_id;
-        out.view.capture_time_ms = out.capture_time_ms;
-        out.marker = port::CameraGeometryMarker::kPhase1Adapted;
+        // Runtime capture ownership belongs exclusively to CameraCaptureWorker's
+        // ICameraFrameSource. This legacy adapter must not open or consume the
+        // same V4L2 queue independently.
+        out.marker = port::CameraGeometryMarker::kAdapterNotReady;
         return out;
     }
 
@@ -160,7 +139,6 @@ public:
     /// @param diagnostics 诊断输出接口
     void Shutdown(port::DiagnosticSink& diagnostics) override {
         ready_ = false;
-        true_ls2k0300::ShutdownCamera();
         diagnostics.Emit({port::DiagnosticLevel::kInfo,
                           "camera.shutdown",
                           "camera adapter shutdown complete",

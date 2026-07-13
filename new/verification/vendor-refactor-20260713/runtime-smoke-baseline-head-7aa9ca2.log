@@ -1,0 +1,644 @@
+== runtime smoke 2026-07-13T06:06:40Z ==
+board=root@192.168.137.100
+binary=/home/root/new_baseline
+params_source=/home/madejuele/projects/2K0300/new/config/default_params.json
+profile_source=/home/madejuele/projects/2K0300/new/config/hardware_profile.json
+smoke_enable_actuator=0
+true_vendor_root=/home/madejuele/projects/2K0300/true_LS2K0300_Library/Seekfree_LS2K0300_Opensource_Library
+harness_context_begin
+LS2K_AUTO_START=1
+LS2K_AUTO_START_DELAY_MS=200
+LS2K_AUTO_STOP_AFTER_MS=0
+LS2K_AUTO_RESET_FAULT=0
+SMOKE_MAX_FRAMES=400
+LS2K_FAULT_INJECT_DROP_FRAME_EVERY_N=0
+LS2K_FAULT_INJECT_IMU_INVALID_EVERY_N=0
+LS2K_FAULT_INJECT_ENCODER_INVALID_EVERY_N=0
+LS2K_FORCE_LOW_VOLTAGE=unset
+harness_context_end
+[INFO][thread.scheduling][6854701] applied SCHED_FIFO for role=main_loop priority=89
+[INFO][main.start][6854701] starting ls2k migration runtime
+[INFO][profile.loaded][6854706] hardware profile loaded from /home/root/hardware_profile.smoke.json
+[INFO][params.loaded][6854712] runtime parameters loaded from /home/root/default_params.smoke.json
+[INFO][profile.camera][6854712] direct-match:parameterized-direct-gray-no-exp-light-control
+[INFO][profile.imu][6854712] direct-match:imu-core-device-detect
+[INFO][profile.encoder][6854712] direct-match:absolute-count-delta-baseline
+[INFO][profile.actuator][6854712] disabled:smoke-actuator-disabled
+[INFO][profile.timer][6854712] direct-match:pit-timer-bridge
+[WARN][startup.mode.degraded][6854712] degraded startup mode enabled: non-direct-match profiles may pass startup for diagnostics only
+[WARN][startup.profile.actuator.degraded][6854712] actuator profile is disabled:smoke-actuator-disabled (allowed only in degraded startup mode)
+[INFO][params.critical.apply][6854712] applied startup-critical exp_light before adapter bring-up
+[INFO][power.init][6854712] power monitor initialized with true_ls2k0300 adc bridge path=/sys/bus/iio/devices/iio:device0/in_voltage7_raw
+[INFO][startup.low_voltage.clear][6854713] startup low-voltage check is clear
+[INFO][camera.init][6854713] camera adapter validated; capture ownership is delegated to CameraCaptureWorker
+[INFO][imu.init][6854714] imu initialized through true_ls2k0300 bridge: resolved IMU resource at /sys/bus/iio/devices/iio:device1 with persistent fd
+[INFO][imu.detect][6854714] imu detection path selected: imu660ra source=/sys/bus/iio/devices/iio:device1/name
+[INFO][imu.calibration.ready][6854730] imu gyro zero-bias calibrated from 32 startup sample(s)
+[INFO][encoder.init][6854730] encoder initialized through true_ls2k0300 bridge: left=/dev/zf_encoder_1, right=/dev/zf_encoder_2
+[INFO][encoder.normalization][6854730] encoder direct-match normalization keeps logical left=raw_left and logical right=-raw_right for direct speed samples
+[INFO][actuator.disabled][6854730] actuator subsystem disabled by hardware profile
+[WARN][startup.actuator.disabled.degraded][6854730] actuator is disabled by profile and degraded startup mode is enabled
+[INFO][startup.complete][6854731] startup validated required adapters and applied critical params
+[WARN][control.start.degraded.actuator_disabled][6854731] degraded startup keeps control loop running with actuator disabled; actuators stay disarmed
+[INFO][timer.start.pit][6854731] timer started with true_ls2k0300 timerfd bridge
+[FAIL_SAFE][control.arm.actuator_disabled][6854731] actuator profile is disabled; control loop stays diagnostics-only with actuators disarmed
+[INFO][control.start][6854731] control loop started with gate -> motion supervisor -> shaping/apply sequencing
+[FAIL_SAFE][control.veto][6854736] vetoing actuator update due to perception_stale
+[FAIL_SAFE][control.veto.perception_stale][6854736] dominant control veto reason: perception_stale
+[WARN][control.apply.suppressed][6854736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][imu.continuity.ready][6854887] imu sample stream stayed valid for 32 consecutive reads after bridge normalization
+[WARN][control.veto.sustained][6854936] control remained vetoed for 200 ms with dominant reason=perception_stale
+[INFO][camera_source.v4l2.start][6855081] V4L2 YUYV camera source started on /dev/video0
+[INFO][camera_capture_worker.start][6855082] camera capture worker started
+[INFO][perception.projector.configured][6855083] BEV projector configured once for runtime perception
+[INFO][assistant.configured][6855083] assistant sidecar configured for TCP endpoint 192.168.137.1:43011
+[INFO][steering_media.configured][6855083] steering media configured for TCP endpoint 192.168.137.1:43012
+[INFO][main.harness_context][6855083] automation_context auto_start=true auto_start_delay_ms=200 auto_stop_after_ms=0 auto_reset_fault=false emit_frame_progress=true
+[INFO][assistant.connecting][6855084] assistant TCP connecting to 192.168.137.1:43011
+[INFO][perf_report_worker.start][6855085] perf report worker started
+[INFO][thread.scheduling][6855085] applied SCHED_FIFO for role=camera_capture priority=87
+[INFO][thread.scheduling][6855085] applied SCHED_FIFO for role=steering_media priority=85
+[INFO][steering_media_worker.start][6855085] steering media worker started
+[INFO][steering_media.connecting][6855085] steering media TCP connecting to 192.168.137.1:43012
+[INFO][steering_media.connected][6855100] steering media TCP connected to 192.168.137.1:43012 last_send_bytes=0 last_send_age_ms=0 total_sent_bytes=0 local=192.168.137.100:37472 peer=192.168.137.1:43012 tcp_state=ESTABLISHED unacked=0 retrans=0 probes=0 backoff=0 rto_us=336000 snd_mss=1448 outq_bytes=0
+[INFO][assistant.connected][6855104] assistant TCP connected to 192.168.137.1:43011
+[INFO][main.frame.processed][6855130] processed_frames=1
+[FAIL_SAFE][control.veto.reference_control_not_ready][6855141] dominant control veto reason: reference_control_not_ready
+[INFO][control.veto.interval.closed][6855141] previous veto interval closed after 405 ms (reason=perception_stale)
+[INFO][main.frame.processed][6855147] processed_frames=2
+[INFO][control.veto.interval.closed][6855156] previous veto interval closed after 15 ms (reason=reference_control_not_ready)
+[INFO][main.frame.processed][6855163] processed_frames=3
+[INFO][main.frame.processed][6855183] processed_frames=4
+[INFO][main.frame.processed][6855199] processed_frames=5
+[INFO][main.frame.processed][6855214] processed_frames=6
+[INFO][main.frame.processed][6855230] processed_frames=7
+[INFO][main.frame.processed][6855247] processed_frames=8
+[INFO][main.frame.processed][6855263] processed_frames=9
+[INFO][motion.start.requested][6855284] motion start requested by LS2K_AUTO_START
+[INFO][motion.phase.transition][6855286] motion phase transitioned from DISARMED to START_REQUESTED
+[INFO][main.frame.processed][6855284] processed_frames=10
+[INFO][motion.phase.transition][6855301] motion phase transitioned from START_REQUESTED to SPINUP
+[INFO][motion.spinup.enter][6855301] motion start request cleared the gate-confirmation boundary and entered spinup
+[INFO][main.frame.processed][6855299] processed_frames=11
+[INFO][control.command.requested_nonzero][6855306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6855314] processed_frames=12
+[INFO][main.frame.processed][6855330] processed_frames=13
+[INFO][main.frame.processed][6855346] processed_frames=14
+[INFO][control.unveto.sustained][6855356] control remained non-veto for 200 ms; actuator path stayed eligible for lifecycle evaluation
+[INFO][main.frame.processed][6855363] processed_frames=15
+[INFO][main.frame.processed][6855383] processed_frames=16
+[INFO][main.frame.processed][6855399] processed_frames=17
+[INFO][main.frame.processed][6855414] processed_frames=18
+[INFO][main.frame.processed][6855430] processed_frames=19
+[INFO][main.frame.processed][6855447] processed_frames=20
+[INFO][main.frame.processed][6855463] processed_frames=21
+[INFO][main.frame.processed][6855483] processed_frames=22
+[INFO][main.frame.processed][6855499] processed_frames=23
+[INFO][main.frame.processed][6855514] processed_frames=24
+[INFO][main.frame.processed][6855531] processed_frames=25
+[INFO][main.frame.processed][6855546] processed_frames=26
+[INFO][main.frame.processed][6855563] processed_frames=27
+[INFO][main.frame.processed][6855579] processed_frames=28
+[INFO][main.frame.processed][6855599] processed_frames=29
+[INFO][main.frame.processed][6855614] processed_frames=30
+[INFO][main.frame.processed][6855630] processed_frames=31
+[INFO][main.frame.processed][6855647] processed_frames=32
+[INFO][main.frame.processed][6855663] processed_frames=33
+[INFO][main.frame.processed][6855679] processed_frames=34
+[INFO][main.frame.processed][6855698] processed_frames=35
+[INFO][main.frame.processed][6855714] processed_frames=36
+[WARN][control.apply.suppressed][6855736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6855731] processed_frames=37
+[INFO][main.frame.processed][6855748] processed_frames=38
+[INFO][main.frame.processed][6855763] processed_frames=39
+[INFO][main.frame.processed][6855779] processed_frames=40
+[INFO][main.frame.processed][6855799] processed_frames=41
+[INFO][main.frame.processed][6855814] processed_frames=42
+[INFO][main.frame.processed][6855830] processed_frames=43
+[INFO][main.frame.processed][6855847] processed_frames=44
+[INFO][main.frame.processed][6855863] processed_frames=45
+[INFO][main.frame.processed][6855879] processed_frames=46
+[INFO][main.frame.processed][6855899] processed_frames=47
+[INFO][main.frame.processed][6855914] processed_frames=48
+[INFO][main.frame.processed][6855930] processed_frames=49
+[INFO][main.frame.processed][6855947] processed_frames=50
+[INFO][main.frame.processed][6855963] processed_frames=51
+[INFO][main.frame.processed][6855979] processed_frames=52
+[INFO][main.frame.processed][6855999] processed_frames=53
+[INFO][main.frame.processed][6856014] processed_frames=54
+[INFO][main.frame.processed][6856030] processed_frames=55
+[INFO][main.frame.processed][6856047] processed_frames=56
+[INFO][main.frame.processed][6856063] processed_frames=57
+[INFO][main.frame.processed][6856078] processed_frames=58
+[INFO][perf.window][6856087] stage=low_voltage.sample count=1 avg_us=529 max_us=529 last_us=529 max_event=639 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=perception.frame count=58 avg_us=5825 max_us=7095 last_us=5443 max_event=170 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=camera.v4l2_dequeue count=58 avg_us=37 max_us=48 last_us=35 max_event=270 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=camera.frame_age count=58 avg_us=2 max_us=3 last_us=2 max_event=805 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=perception.bev count=58 avg_us=5468 max_us=6693 last_us=5126 max_event=169 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=bev.simple count=58 avg_us=5016 max_us=6389 last_us=4737 max_event=167 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=bev.simple.lut count=58 avg_us=25 max_us=831 last_us=9 max_event=163 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=bev.simple.scan_rows count=58 avg_us=3200 max_us=3415 last_us=2976 max_event=521 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=reference.hold count=2 avg_us=14 max_us=15 last_us=15 max_event=811 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=control.tick count=271 avg_us=943 max_us=1631 last_us=920 max_event=172 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6856087] stage=control.imu_read count=271 avg_us=9 max_us=82 last_us=10 max_event=63 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][motion.phase.transition][6856101] motion phase transitioned from SPINUP to RUNNING
+[INFO][motion.spinup.complete][6856101] spinup timer completed and running authority is now released
+[INFO][main.frame.processed][6856098] processed_frames=59
+[INFO][main.frame.processed][6856114] processed_frames=60
+[INFO][main.frame.processed][6856130] processed_frames=61
+[INFO][main.frame.processed][6856147] processed_frames=62
+[INFO][main.frame.processed][6856163] processed_frames=63
+[INFO][main.frame.processed][6856179] processed_frames=64
+[INFO][main.frame.processed][6856199] processed_frames=65
+[INFO][main.frame.processed][6856215] processed_frames=66
+[INFO][main.frame.processed][6856231] processed_frames=67
+[INFO][main.frame.processed][6856247] processed_frames=68
+[INFO][main.frame.processed][6856263] processed_frames=69
+[INFO][main.frame.processed][6856279] processed_frames=70
+[INFO][control.command.requested_nonzero][6856306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6856299] processed_frames=71
+[INFO][main.frame.processed][6856314] processed_frames=72
+[INFO][main.frame.processed][6856330] processed_frames=73
+[INFO][main.frame.processed][6856347] processed_frames=74
+[INFO][main.frame.processed][6856363] processed_frames=75
+[INFO][main.frame.processed][6856379] processed_frames=76
+[INFO][main.frame.processed][6856399] processed_frames=77
+[INFO][main.frame.processed][6856414] processed_frames=78
+[INFO][main.frame.processed][6856430] processed_frames=79
+[INFO][main.frame.processed][6856447] processed_frames=80
+[INFO][main.frame.processed][6856463] processed_frames=81
+[INFO][main.frame.processed][6856479] processed_frames=82
+[INFO][main.frame.processed][6856499] processed_frames=83
+[INFO][main.frame.processed][6856514] processed_frames=84
+[INFO][main.frame.processed][6856530] processed_frames=85
+[INFO][main.frame.processed][6856547] processed_frames=86
+[INFO][main.frame.processed][6856563] processed_frames=87
+[INFO][main.frame.processed][6856579] processed_frames=88
+[INFO][main.frame.processed][6856599] processed_frames=89
+[INFO][main.frame.processed][6856614] processed_frames=90
+[INFO][main.frame.processed][6856631] processed_frames=91
+[INFO][main.frame.processed][6856685] processed_frames=92
+[INFO][main.frame.processed][6856715] processed_frames=93
+[WARN][control.apply.suppressed][6856736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6856730] processed_frames=94
+[INFO][main.frame.processed][6856747] processed_frames=95
+[INFO][main.frame.processed][6856763] processed_frames=96
+[INFO][main.frame.processed][6856779] processed_frames=97
+[INFO][main.frame.processed][6856799] processed_frames=98
+[INFO][main.frame.processed][6856814] processed_frames=99
+[INFO][main.frame.processed][6856830] processed_frames=100
+[INFO][main.frame.processed][6856847] processed_frames=101
+[INFO][main.frame.processed][6856863] processed_frames=102
+[INFO][main.frame.processed][6856879] processed_frames=103
+[INFO][main.frame.processed][6856899] processed_frames=104
+[INFO][main.frame.processed][6856914] processed_frames=105
+[INFO][main.frame.processed][6856930] processed_frames=106
+[INFO][main.frame.processed][6856947] processed_frames=107
+[INFO][main.frame.processed][6856963] processed_frames=108
+[INFO][main.frame.processed][6856978] processed_frames=109
+[INFO][main.frame.processed][6856998] processed_frames=110
+[INFO][main.frame.processed][6857015] processed_frames=111
+[INFO][main.frame.processed][6857031] processed_frames=112
+[INFO][main.frame.processed][6857047] processed_frames=113
+[INFO][main.frame.processed][6857063] processed_frames=114
+[INFO][main.frame.processed][6857079] processed_frames=115
+[INFO][perf.window][6857087] stage=low_voltage.sample count=1 avg_us=505 max_us=505 last_us=505 max_event=1424 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=perception.frame count=57 avg_us=5763 max_us=6171 last_us=5689 max_event=1404 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=camera.v4l2_dequeue count=57 avg_us=37 max_us=55 last_us=34 max_event=1405 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=camera.frame_age count=57 avg_us=2 max_us=3 last_us=2 max_event=1672 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=perception.bev count=57 avg_us=5413 max_us=5789 last_us=5383 max_event=1706 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=bev.simple count=57 avg_us=4952 max_us=5417 last_us=4691 max_event=1705 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=bev.simple.lut count=57 avg_us=9 max_us=13 last_us=11 max_event=1081 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=bev.simple.scan_rows count=57 avg_us=3187 max_us=3601 last_us=2973 max_event=1384 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=control.tick count=192 avg_us=942 max_us=1289 last_us=851 max_event=979 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6857087] stage=control.imu_read count=192 avg_us=8 max_us=15 last_us=7 max_event=1401 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][main.frame.processed][6857100] processed_frames=116
+[INFO][main.frame.processed][6857114] processed_frames=117
+[INFO][main.frame.processed][6857130] processed_frames=118
+[INFO][main.frame.processed][6857147] processed_frames=119
+[INFO][main.frame.processed][6857163] processed_frames=120
+[INFO][main.frame.processed][6857178] processed_frames=121
+[INFO][main.frame.processed][6857198] processed_frames=122
+[INFO][main.frame.processed][6857215] processed_frames=123
+[INFO][main.frame.processed][6857230] processed_frames=124
+[INFO][main.frame.processed][6857247] processed_frames=125
+[INFO][main.frame.processed][6857263] processed_frames=126
+[INFO][main.frame.processed][6857279] processed_frames=127
+[INFO][control.command.requested_nonzero][6857306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6857299] processed_frames=128
+[INFO][main.frame.processed][6857314] processed_frames=129
+[INFO][main.frame.processed][6857330] processed_frames=130
+[INFO][main.frame.processed][6857347] processed_frames=131
+[INFO][main.frame.processed][6857363] processed_frames=132
+[INFO][main.frame.processed][6857379] processed_frames=133
+[INFO][main.frame.processed][6857399] processed_frames=134
+[INFO][main.frame.processed][6857414] processed_frames=135
+[INFO][main.frame.processed][6857430] processed_frames=136
+[INFO][main.frame.processed][6857447] processed_frames=137
+[INFO][main.frame.processed][6857463] processed_frames=138
+[INFO][main.frame.processed][6857479] processed_frames=139
+[INFO][main.frame.processed][6857499] processed_frames=140
+[INFO][main.frame.processed][6857514] processed_frames=141
+[INFO][main.frame.processed][6857530] processed_frames=142
+[INFO][main.frame.processed][6857547] processed_frames=143
+[INFO][main.frame.processed][6857563] processed_frames=144
+[INFO][main.frame.processed][6857578] processed_frames=145
+[INFO][main.frame.processed][6857598] processed_frames=146
+[INFO][main.frame.processed][6857614] processed_frames=147
+[INFO][main.frame.processed][6857630] processed_frames=148
+[INFO][main.frame.processed][6857684] processed_frames=149
+[INFO][main.frame.processed][6857715] processed_frames=150
+[WARN][control.apply.suppressed][6857736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6857731] processed_frames=151
+[INFO][main.frame.processed][6857747] processed_frames=152
+[INFO][main.frame.processed][6857763] processed_frames=153
+[INFO][main.frame.processed][6857779] processed_frames=154
+[INFO][main.frame.processed][6857795] processed_frames=155
+[INFO][main.frame.processed][6857815] processed_frames=156
+[INFO][main.frame.processed][6857830] processed_frames=157
+[INFO][main.frame.processed][6857847] processed_frames=158
+[INFO][main.frame.processed][6857863] processed_frames=159
+[INFO][main.frame.processed][6857878] processed_frames=160
+[INFO][main.frame.processed][6857895] processed_frames=161
+[INFO][main.frame.processed][6857914] processed_frames=162
+[INFO][main.frame.processed][6857930] processed_frames=163
+[INFO][main.frame.processed][6857947] processed_frames=164
+[INFO][main.frame.processed][6857963] processed_frames=165
+[INFO][main.frame.processed][6857979] processed_frames=166
+[INFO][main.frame.processed][6857994] processed_frames=167
+[INFO][main.frame.processed][6858015] processed_frames=168
+[INFO][main.frame.processed][6858031] processed_frames=169
+[INFO][main.frame.processed][6858047] processed_frames=170
+[INFO][main.frame.processed][6858064] processed_frames=171
+[INFO][main.frame.processed][6858078] processed_frames=172
+[INFO][perf.window][6858087] stage=low_voltage.sample count=1 avg_us=505 max_us=505 last_us=505 max_event=2211 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=perception.frame count=57 avg_us=5784 max_us=6162 last_us=5652 max_event=2022 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=camera.v4l2_dequeue count=57 avg_us=38 max_us=137 last_us=34 max_event=2192 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=camera.frame_age count=57 avg_us=2 max_us=3 last_us=2 max_event=2500 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=perception.bev count=57 avg_us=5402 max_us=5837 last_us=4975 max_event=2021 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=bev.simple count=57 avg_us=4960 max_us=5441 last_us=4584 max_event=2020 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=bev.simple.lut count=57 avg_us=9 max_us=11 last_us=11 max_event=2514 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=bev.simple.scan_rows count=57 avg_us=3214 max_us=3440 last_us=2965 max_event=2045 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=reference.hold count=1 avg_us=16 max_us=16 last_us=16 max_event=2170 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=control.tick count=193 avg_us=947 max_us=1283 last_us=878 max_event=2189 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6858087] stage=control.imu_read count=193 avg_us=8 max_us=15 last_us=7 max_event=2190 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][main.frame.processed][6858094] processed_frames=173
+[INFO][main.frame.processed][6858114] processed_frames=174
+[INFO][main.frame.processed][6858130] processed_frames=175
+[INFO][main.frame.processed][6858147] processed_frames=176
+[INFO][main.frame.processed][6858163] processed_frames=177
+[INFO][main.frame.processed][6858179] processed_frames=178
+[INFO][main.frame.processed][6858195] processed_frames=179
+[INFO][main.frame.processed][6858215] processed_frames=180
+[INFO][main.frame.processed][6858232] processed_frames=181
+[INFO][main.frame.processed][6858246] processed_frames=182
+[INFO][main.frame.processed][6858263] processed_frames=183
+[INFO][main.frame.processed][6858278] processed_frames=184
+[INFO][main.frame.processed][6858294] processed_frames=185
+[INFO][control.command.requested_nonzero][6858306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6858314] processed_frames=186
+[INFO][main.frame.processed][6858330] processed_frames=187
+[INFO][main.frame.processed][6858347] processed_frames=188
+[INFO][main.frame.processed][6858363] processed_frames=189
+[INFO][main.frame.processed][6858378] processed_frames=190
+[INFO][main.frame.processed][6858394] processed_frames=191
+[INFO][main.frame.processed][6858414] processed_frames=192
+[INFO][main.frame.processed][6858430] processed_frames=193
+[INFO][main.frame.processed][6858448] processed_frames=194
+[INFO][main.frame.processed][6858464] processed_frames=195
+[INFO][main.frame.processed][6858479] processed_frames=196
+[INFO][main.frame.processed][6858494] processed_frames=197
+[INFO][main.frame.processed][6858514] processed_frames=198
+[INFO][main.frame.processed][6858530] processed_frames=199
+[INFO][main.frame.processed][6858547] processed_frames=200
+[INFO][main.frame.processed][6858563] processed_frames=201
+[INFO][main.frame.processed][6858579] processed_frames=202
+[INFO][main.frame.processed][6858594] processed_frames=203
+[INFO][main.frame.processed][6858615] processed_frames=204
+[INFO][main.frame.processed][6858631] processed_frames=205
+[INFO][main.frame.processed][6858684] processed_frames=206
+[INFO][main.frame.processed][6858715] processed_frames=207
+[WARN][control.apply.suppressed][6858736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6858730] processed_frames=208
+[INFO][main.frame.processed][6858747] processed_frames=209
+[INFO][main.frame.processed][6858763] processed_frames=210
+[INFO][main.frame.processed][6858779] processed_frames=211
+[INFO][main.frame.processed][6858794] processed_frames=212
+[INFO][main.frame.processed][6858814] processed_frames=213
+[INFO][main.frame.processed][6858830] processed_frames=214
+[INFO][main.frame.processed][6858846] processed_frames=215
+[INFO][main.frame.processed][6858863] processed_frames=216
+[INFO][main.frame.processed][6858879] processed_frames=217
+[INFO][main.frame.processed][6858895] processed_frames=218
+[INFO][main.frame.processed][6858915] processed_frames=219
+[INFO][main.frame.processed][6858930] processed_frames=220
+[INFO][main.frame.processed][6858946] processed_frames=221
+[INFO][main.frame.processed][6858963] processed_frames=222
+[INFO][main.frame.processed][6858978] processed_frames=223
+[INFO][main.frame.processed][6858994] processed_frames=224
+[INFO][main.frame.processed][6859014] processed_frames=225
+[INFO][main.frame.processed][6859030] processed_frames=226
+[INFO][main.frame.processed][6859047] processed_frames=227
+[INFO][main.frame.processed][6859063] processed_frames=228
+[INFO][main.frame.processed][6859078] processed_frames=229
+[INFO][perf.window][6859087] stage=low_voltage.sample count=1 avg_us=431 max_us=431 last_us=431 max_event=2996 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=perception.frame count=57 avg_us=5797 max_us=6129 last_us=5809 max_event=2727 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=camera.v4l2_dequeue count=57 avg_us=37 max_us=65 last_us=34 max_event=2975 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=camera.frame_age count=57 avg_us=2 max_us=3 last_us=3 max_event=3298 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=perception.bev count=57 avg_us=5436 max_us=5807 last_us=5127 max_event=2726 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=bev.simple count=57 avg_us=4998 max_us=5451 last_us=4740 max_event=3263 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=bev.simple.lut count=57 avg_us=9 max_us=15 last_us=10 max_event=2652 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=bev.simple.scan_rows count=57 avg_us=3251 max_us=3460 last_us=2985 max_event=2668 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=reference.hold count=1 avg_us=16 max_us=16 last_us=16 max_event=3264 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=control.tick count=192 avg_us=952 max_us=1271 last_us=875 max_event=3034 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6859087] stage=control.imu_read count=192 avg_us=8 max_us=17 last_us=7 max_event=2974 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][main.frame.processed][6859095] processed_frames=230
+[INFO][main.frame.processed][6859115] processed_frames=231
+[INFO][main.frame.processed][6859131] processed_frames=232
+[INFO][main.frame.processed][6859147] processed_frames=233
+[INFO][main.frame.processed][6859163] processed_frames=234
+[INFO][main.frame.processed][6859178] processed_frames=235
+[INFO][main.frame.processed][6859194] processed_frames=236
+[INFO][main.frame.processed][6859214] processed_frames=237
+[INFO][main.frame.processed][6859232] processed_frames=238
+[INFO][main.frame.processed][6859247] processed_frames=239
+[INFO][main.frame.processed][6859263] processed_frames=240
+[INFO][main.frame.processed][6859278] processed_frames=241
+[INFO][main.frame.processed][6859294] processed_frames=242
+[INFO][control.command.requested_nonzero][6859306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6859314] processed_frames=243
+[INFO][main.frame.processed][6859330] processed_frames=244
+[INFO][main.frame.processed][6859347] processed_frames=245
+[INFO][main.frame.processed][6859363] processed_frames=246
+[INFO][main.frame.processed][6859379] processed_frames=247
+[INFO][main.frame.processed][6859394] processed_frames=248
+[INFO][main.frame.processed][6859414] processed_frames=249
+[INFO][main.frame.processed][6859430] processed_frames=250
+[INFO][main.frame.processed][6859447] processed_frames=251
+[INFO][main.frame.processed][6859463] processed_frames=252
+[INFO][main.frame.processed][6859479] processed_frames=253
+[INFO][main.frame.processed][6859495] processed_frames=254
+[INFO][main.frame.processed][6859515] processed_frames=255
+[INFO][main.frame.processed][6859531] processed_frames=256
+[INFO][main.frame.processed][6859547] processed_frames=257
+[INFO][main.frame.processed][6859563] processed_frames=258
+[INFO][main.frame.processed][6859579] processed_frames=259
+[INFO][main.frame.processed][6859594] processed_frames=260
+[INFO][main.frame.processed][6859614] processed_frames=261
+[INFO][main.frame.processed][6859630] processed_frames=262
+[INFO][main.frame.processed][6859685] processed_frames=263
+[INFO][main.frame.processed][6859715] processed_frames=264
+[WARN][control.apply.suppressed][6859736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6859730] processed_frames=265
+[INFO][main.frame.processed][6859747] processed_frames=266
+[INFO][main.frame.processed][6859763] processed_frames=267
+[INFO][main.frame.processed][6859778] processed_frames=268
+[INFO][main.frame.processed][6859794] processed_frames=269
+[INFO][main.frame.processed][6859814] processed_frames=270
+[INFO][main.frame.processed][6859830] processed_frames=271
+[INFO][main.frame.processed][6859847] processed_frames=272
+[INFO][main.frame.processed][6859864] processed_frames=273
+[INFO][main.frame.processed][6859878] processed_frames=274
+[INFO][main.frame.processed][6859894] processed_frames=275
+[INFO][main.frame.processed][6859910] processed_frames=276
+[INFO][main.frame.processed][6859932] processed_frames=277
+[INFO][main.frame.processed][6859946] processed_frames=278
+[INFO][main.frame.processed][6859963] processed_frames=279
+[INFO][main.frame.processed][6859978] processed_frames=280
+[INFO][main.frame.processed][6859995] processed_frames=281
+[INFO][main.frame.processed][6860010] processed_frames=282
+[INFO][main.frame.processed][6860031] processed_frames=283
+[INFO][main.frame.processed][6860047] processed_frames=284
+[INFO][main.frame.processed][6860063] processed_frames=285
+[INFO][main.frame.processed][6860079] processed_frames=286
+[INFO][perf.window][6860087] stage=low_voltage.sample count=1 avg_us=437 max_us=437 last_us=437 max_event=3783 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=perception.frame count=57 avg_us=5790 max_us=6211 last_us=5631 max_event=3676 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=camera.v4l2_dequeue count=57 avg_us=37 max_us=60 last_us=34 max_event=3763 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=camera.frame_age count=57 avg_us=2 max_us=3 last_us=2 max_event=3907 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=perception.bev count=57 avg_us=5447 max_us=5900 last_us=5276 max_event=3675 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=bev.simple count=57 avg_us=5023 max_us=5521 last_us=4585 max_event=3674 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=bev.simple.lut count=57 avg_us=11 max_us=108 last_us=9 max_event=3614 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=bev.simple.scan_rows count=57 avg_us=3241 max_us=3403 last_us=3006 max_event=3699 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=control.tick count=193 avg_us=950 max_us=1391 last_us=848 max_event=3706 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6860087] stage=control.imu_read count=193 avg_us=8 max_us=15 last_us=7 max_event=3761 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][main.frame.processed][6860094] processed_frames=287
+[INFO][main.frame.processed][6860110] processed_frames=288
+[INFO][main.frame.processed][6860130] processed_frames=289
+[INFO][main.frame.processed][6860147] processed_frames=290
+[INFO][main.frame.processed][6860163] processed_frames=291
+[INFO][main.frame.processed][6860179] processed_frames=292
+[INFO][main.frame.processed][6860194] processed_frames=293
+[INFO][main.frame.processed][6860210] processed_frames=294
+[INFO][main.frame.processed][6860231] processed_frames=295
+[INFO][main.frame.processed][6860248] processed_frames=296
+[INFO][main.frame.processed][6860263] processed_frames=297
+[INFO][main.frame.processed][6860279] processed_frames=298
+[INFO][main.frame.processed][6860294] processed_frames=299
+[INFO][control.command.requested_nonzero][6860306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6860310] processed_frames=300
+[INFO][main.frame.processed][6860331] processed_frames=301
+[INFO][main.frame.processed][6860346] processed_frames=302
+[INFO][main.frame.processed][6860363] processed_frames=303
+[INFO][main.frame.processed][6860379] processed_frames=304
+[INFO][main.frame.processed][6860394] processed_frames=305
+[INFO][main.frame.processed][6860411] processed_frames=306
+[INFO][main.frame.processed][6860431] processed_frames=307
+[INFO][main.frame.processed][6860446] processed_frames=308
+[INFO][main.frame.processed][6860463] processed_frames=309
+[INFO][main.frame.processed][6860479] processed_frames=310
+[INFO][main.frame.processed][6860494] processed_frames=311
+[INFO][main.frame.processed][6860510] processed_frames=312
+[INFO][main.frame.processed][6860530] processed_frames=313
+[INFO][main.frame.processed][6860547] processed_frames=314
+[INFO][main.frame.processed][6860563] processed_frames=315
+[INFO][main.frame.processed][6860578] processed_frames=316
+[INFO][main.frame.processed][6860594] processed_frames=317
+[INFO][main.frame.processed][6860610] processed_frames=318
+[INFO][main.frame.processed][6860630] processed_frames=319
+[INFO][main.frame.processed][6860685] processed_frames=320
+[INFO][main.frame.processed][6860710] processed_frames=321
+[WARN][control.apply.suppressed][6860736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6860731] processed_frames=322
+[INFO][main.frame.processed][6860746] processed_frames=323
+[INFO][main.frame.processed][6860763] processed_frames=324
+[INFO][main.frame.processed][6860779] processed_frames=325
+[INFO][main.frame.processed][6860795] processed_frames=326
+[INFO][main.frame.processed][6860810] processed_frames=327
+[INFO][main.frame.processed][6860830] processed_frames=328
+[INFO][main.frame.processed][6860846] processed_frames=329
+[INFO][main.frame.processed][6860863] processed_frames=330
+[INFO][main.frame.processed][6860879] processed_frames=331
+[INFO][main.frame.processed][6860894] processed_frames=332
+[INFO][main.frame.processed][6860911] processed_frames=333
+[INFO][main.frame.processed][6860930] processed_frames=334
+[INFO][main.frame.processed][6860947] processed_frames=335
+[INFO][main.frame.processed][6860963] processed_frames=336
+[INFO][main.frame.processed][6860978] processed_frames=337
+[INFO][main.frame.processed][6860994] processed_frames=338
+[INFO][main.frame.processed][6861010] processed_frames=339
+[INFO][main.frame.processed][6861031] processed_frames=340
+[INFO][main.frame.processed][6861047] processed_frames=341
+[INFO][main.frame.processed][6861063] processed_frames=342
+[INFO][main.frame.processed][6861079] processed_frames=343
+[INFO][perf.window][6861087] stage=low_voltage.sample count=1 avg_us=376 max_us=376 last_us=376 max_event=4578 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=perception.frame count=57 avg_us=5819 max_us=6210 last_us=5543 max_event=4134 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=camera.v4l2_dequeue count=57 avg_us=38 max_us=60 last_us=34 max_event=4550 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=camera.frame_age count=57 avg_us=2 max_us=12 last_us=2 max_event=4356 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=perception.bev count=57 avg_us=5452 max_us=5855 last_us=4914 max_event=4133 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=bev.simple count=57 avg_us=5024 max_us=5485 last_us=4525 max_event=4132 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=bev.simple.lut count=57 avg_us=9 max_us=12 last_us=10 max_event=4587 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=bev.simple.scan_rows count=57 avg_us=3231 max_us=3437 last_us=3016 max_event=4321 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=reference.hold count=1 avg_us=15 max_us=15 last_us=15 max_event=4461 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=control.tick count=193 avg_us=954 max_us=1246 last_us=869 max_event=4729 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6861087] stage=control.imu_read count=193 avg_us=8 max_us=17 last_us=8 max_event=4548 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][main.frame.processed][6861095] processed_frames=344
+[INFO][main.frame.processed][6861111] processed_frames=345
+[INFO][main.frame.processed][6861130] processed_frames=346
+[INFO][main.frame.processed][6861147] processed_frames=347
+[INFO][main.frame.processed][6861163] processed_frames=348
+[INFO][main.frame.processed][6861179] processed_frames=349
+[INFO][main.frame.processed][6861194] processed_frames=350
+[INFO][main.frame.processed][6861210] processed_frames=351
+[INFO][main.frame.processed][6861230] processed_frames=352
+[INFO][main.frame.processed][6861247] processed_frames=353
+[INFO][main.frame.processed][6861263] processed_frames=354
+[INFO][main.frame.processed][6861278] processed_frames=355
+[INFO][main.frame.processed][6861294] processed_frames=356
+[INFO][control.command.requested_nonzero][6861306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6861310] processed_frames=357
+[INFO][main.frame.processed][6861332] processed_frames=358
+[INFO][main.frame.processed][6861346] processed_frames=359
+[INFO][main.frame.processed][6861363] processed_frames=360
+[INFO][main.frame.processed][6861379] processed_frames=361
+[INFO][main.frame.processed][6861394] processed_frames=362
+[INFO][main.frame.processed][6861413] processed_frames=363
+[INFO][main.frame.processed][6861430] processed_frames=364
+[INFO][main.frame.processed][6861449] processed_frames=365
+[INFO][main.frame.processed][6861463] processed_frames=366
+[INFO][main.frame.processed][6861478] processed_frames=367
+[INFO][main.frame.processed][6861495] processed_frames=368
+[INFO][main.frame.processed][6861510] processed_frames=369
+[INFO][main.frame.processed][6861530] processed_frames=370
+[INFO][main.frame.processed][6861547] processed_frames=371
+[INFO][main.frame.processed][6861563] processed_frames=372
+[INFO][main.frame.processed][6861579] processed_frames=373
+[INFO][main.frame.processed][6861594] processed_frames=374
+[INFO][main.frame.processed][6861610] processed_frames=375
+[INFO][main.frame.processed][6861631] processed_frames=376
+[INFO][main.frame.processed][6861685] processed_frames=377
+[INFO][main.frame.processed][6861711] processed_frames=378
+[WARN][control.apply.suppressed][6861736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6861731] processed_frames=379
+[INFO][main.frame.processed][6861747] processed_frames=380
+[INFO][main.frame.processed][6861763] processed_frames=381
+[INFO][main.frame.processed][6861779] processed_frames=382
+[INFO][main.frame.processed][6861795] processed_frames=383
+[INFO][main.frame.processed][6861810] processed_frames=384
+[INFO][main.frame.processed][6861831] processed_frames=385
+[INFO][main.frame.processed][6861847] processed_frames=386
+[INFO][main.frame.processed][6861863] processed_frames=387
+[INFO][main.frame.processed][6861879] processed_frames=388
+[INFO][main.frame.processed][6861894] processed_frames=389
+[INFO][main.frame.processed][6861910] processed_frames=390
+[INFO][main.frame.processed][6861930] processed_frames=391
+[INFO][main.frame.processed][6861947] processed_frames=392
+[INFO][main.frame.processed][6861963] processed_frames=393
+[INFO][main.frame.processed][6861979] processed_frames=394
+[INFO][main.frame.processed][6861994] processed_frames=395
+[INFO][main.frame.processed][6862010] processed_frames=396
+[INFO][main.frame.processed][6862026] processed_frames=397
+[INFO][main.frame.processed][6862047] processed_frames=398
+[INFO][main.frame.processed][6862063] processed_frames=399
+[INFO][main.frame.processed][6862079] processed_frames=400
+[INFO][perf.window][6862087] stage=low_voltage.sample count=1 avg_us=440 max_us=440 last_us=440 max_event=5363 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=perception.frame count=57 avg_us=5832 max_us=6187 last_us=5661 max_event=5391 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=camera.v4l2_dequeue count=57 avg_us=37 max_us=59 last_us=32 max_event=5335 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=camera.frame_age count=57 avg_us=2 max_us=42 last_us=2 max_event=5355 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=perception.bev count=57 avg_us=5464 max_us=5852 last_us=4992 max_event=5390 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=bev.simple count=57 avg_us=5009 max_us=5479 last_us=4602 max_event=5389 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=bev.simple.lut count=57 avg_us=11 max_us=55 last_us=10 max_event=5188 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=bev.simple.scan_rows count=57 avg_us=3230 max_us=3376 last_us=2984 max_event=5217 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=reference.hold count=1 avg_us=21 max_us=21 last_us=21 max_event=4892 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=control.tick count=192 avg_us=948 max_us=1260 last_us=870 max_event=5413 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6862087] stage=control.imu_read count=192 avg_us=8 max_us=17 last_us=8 max_event=5546 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][main.frame.processed][6862094] processed_frames=401
+[INFO][main.frame.processed][6862110] processed_frames=402
+[INFO][main.frame.processed][6862127] processed_frames=403
+[INFO][main.frame.processed][6862147] processed_frames=404
+[INFO][main.frame.processed][6862163] processed_frames=405
+[INFO][main.frame.processed][6862178] processed_frames=406
+[INFO][main.frame.processed][6862194] processed_frames=407
+[INFO][main.frame.processed][6862210] processed_frames=408
+[INFO][main.frame.processed][6862228] processed_frames=409
+[INFO][main.frame.processed][6862248] processed_frames=410
+[INFO][main.frame.processed][6862263] processed_frames=411
+[INFO][main.frame.processed][6862279] processed_frames=412
+[INFO][main.frame.processed][6862294] processed_frames=413
+[INFO][control.command.requested_nonzero][6862306] non-zero differential-drive command requested
+[INFO][main.frame.processed][6862310] processed_frames=414
+[INFO][main.frame.processed][6862327] processed_frames=415
+[INFO][main.frame.processed][6862346] processed_frames=416
+[INFO][main.frame.processed][6862363] processed_frames=417
+[INFO][main.frame.processed][6862379] processed_frames=418
+[INFO][main.frame.processed][6862395] processed_frames=419
+[INFO][main.frame.processed][6862410] processed_frames=420
+[INFO][main.frame.processed][6862426] processed_frames=421
+[INFO][main.frame.processed][6862447] processed_frames=422
+[INFO][main.frame.processed][6862463] processed_frames=423
+[INFO][main.frame.processed][6862479] processed_frames=424
+[INFO][main.frame.processed][6862495] processed_frames=425
+[INFO][main.frame.processed][6862510] processed_frames=426
+[INFO][main.frame.processed][6862527] processed_frames=427
+[INFO][main.frame.processed][6862547] processed_frames=428
+[INFO][main.frame.processed][6862563] processed_frames=429
+[INFO][main.frame.processed][6862579] processed_frames=430
+[INFO][main.frame.processed][6862594] processed_frames=431
+[INFO][main.frame.processed][6862611] processed_frames=432
+[INFO][main.frame.processed][6862627] processed_frames=433
+[INFO][motion.stop.requested][6862682] controlled stop requested by signal
+[INFO][main.frame.processed][6862684] processed_frames=434
+[INFO][main.frame.processed][6862710] processed_frames=435
+[INFO][main.frame.processed][6862727] processed_frames=436
+[WARN][control.apply.suppressed][6862736] drive command suppressed because the active actuator profile is diagnostics-only
+[INFO][main.frame.processed][6862748] processed_frames=437
+[INFO][main.frame.processed][6862763] processed_frames=438
+[INFO][main.frame.processed][6862779] processed_frames=439
+[INFO][main.frame.processed][6862794] processed_frames=440
+[INFO][main.frame.processed][6862810] processed_frames=441
+[INFO][main.frame.processed][6862827] processed_frames=442
+[INFO][main.frame.processed][6862846] processed_frames=443
+[INFO][main.frame.processed][6862863] processed_frames=444
+[INFO][main.frame.processed][6862879] processed_frames=445
+[INFO][main.frame.processed][6862894] processed_frames=446
+[INFO][main.frame.processed][6862911] processed_frames=447
+[INFO][main.frame.processed][6862928] processed_frames=448
+[INFO][main.frame.processed][6862948] processed_frames=449
+[INFO][main.frame.processed][6862963] processed_frames=450
+[INFO][main.frame.processed][6862979] processed_frames=451
+[INFO][motion.phase.transition][6862986] motion phase transitioned from STOPPING to DISARMED
+[INFO][motion.stop.complete][6862986] controlled stop completed and runtime returned to DISARMED
+[INFO][main.exit.ready][6862988] controlled stop reached DISARMED; process may now exit
+[INFO][perf_report_worker.stop][6862998] perf report worker stopped
+[INFO][steering_media_worker.stop][6862999] steering media worker stopped
+[INFO][camera_source.v4l2.stop][6863070] V4L2 YUYV camera source stopped
+[INFO][timer.stop][6863071] timer bridge stopped
+[INFO][perf.window][6863071] stage=low_voltage.sample count=1 avg_us=523 max_us=523 last_us=523 max_event=6152 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=perception.frame count=51 avg_us=5811 max_us=6123 last_us=5447 max_event=5883 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=camera.v4l2_dequeue count=53 avg_us=37 max_us=54 last_us=36 max_event=6122 max_thread=12471165490589197261 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=camera.frame_age count=51 avg_us=2 max_us=3 last_us=3 max_event=6361 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=perception.bev count=51 avg_us=5443 max_us=5763 last_us=4815 max_event=5772 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=bev.simple count=51 avg_us=4968 max_us=5373 last_us=4433 max_event=6353 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=bev.simple.lut count=51 avg_us=9 max_us=12 last_us=9 max_event=6239 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=bev.simple.scan_rows count=51 avg_us=3213 max_us=3438 last_us=2927 max_event=5919 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=reference.hold count=1 avg_us=17 max_us=17 last_us=17 max_event=5923 max_thread=7212946851596495009 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=control.tick count=189 avg_us=949 max_us=1305 last_us=895 max_event=6249 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][perf.window][6863071] stage=control.imu_read count=189 avg_us=8 max_us=16 last_us=14 max_event=6120 max_thread=5303431254588572010 clock=thread_cpu arch_counter=true ticks_per_us_x1000=119943
+[INFO][camera.shutdown][6863071] camera adapter shutdown complete
+[INFO][imu.shutdown][6863072] imu adapter shutdown complete
+[INFO][encoder.shutdown][6863072] encoder adapter shutdown complete
+[INFO][actuator.shutdown][6863072] actuator adapter shutdown complete
+[INFO][shutdown.complete][6863072] actuators disabled and resources released
+[INFO][main.exit][6863072] runtime exit complete
+remote_runtime_exit=0
+remote_log_copy_exit=0
+remote_runtime_invoked=1

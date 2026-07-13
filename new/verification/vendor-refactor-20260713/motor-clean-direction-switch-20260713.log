@@ -1,0 +1,18 @@
+motor_board_test WARNING: real wheels will move at low duty; ESC PWM remains 0
+motor_board_test encoder_io_mode=open-read-close
+motor_board_test step=initialize status=ok errno=0
+motor_board_test io_mode=open-write-close
+motor_board_test step=safe_zero status=ok errno=0
+motor_board_test motion step=forward_low_duty samples=250
+motor_board_test counts step=forward_low_duty raw_left_count=710 raw_right_count=-826
+motor_board_test logical step=forward_low_duty left_count=710 right_count=826
+motor_board_test timing step=forward_low_duty motor_apply_us=52 encoder_read_us=56
+motor_board_test battery step=forward_low_duty adc_samples=250 adc_errors=0 adc_min=358 adc_max=536
+motor_board_test step=zero_before_reverse status=ok errno=0
+motor_board_test motion step=reverse_low_duty samples=250
+motor_board_test counts step=reverse_low_duty raw_left_count=-758 raw_right_count=870
+motor_board_test logical step=reverse_low_duty left_count=-758 right_count=-870
+motor_board_test timing step=reverse_low_duty motor_apply_us=74 encoder_read_us=58
+motor_board_test battery step=reverse_low_duty adc_samples=250 adc_errors=0 adc_min=512 adc_max=536
+motor_board_test step=final_stop status=ok errno=0
+motor_board_test PASS final_pwm=0

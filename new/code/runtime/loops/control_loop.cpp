@@ -915,7 +915,10 @@ void ControlLoop::Tick() {
         imu = platform_.imu->Read(diagnostics_);
     }
     port::EncoderDelta encoder{};
-    encoder = platform_.encoder->ReadDelta(diagnostics_);
+    {
+        LS2K_PERF_SCOPE(port::PerfStage::kControlEncoderRead);
+        encoder = platform_.encoder->ReadDelta(diagnostics_);
+    }
 
     const uint64_t now_ms = port::NowMs();
     port::PerceptionResult perception{};

@@ -1,166 +1,187 @@
-// 编码器桥接实现 —— 从字符设备读取左右轮编码器计数值。
+#include "platform/true_ls2k0300/encoder_pair.hpp"
 
-#include "platform/true_ls2k0300/bridge.hpp"
-
-#include <cstdint>
+#include <cerrno>
+#include <cstring>
 #include <fcntl.h>
-#include <string>
-#include <unistd.h>
-
-#include "platform/true_ls2k0300/vendor_paths.hpp"
+#include <limits>
+#include <utility>
 
 namespace ls2k::platform::true_ls2k0300 {
 namespace {
 
-// 编码器单次读取结果
-struct EncoderReadResult {
-    bool ok = false;        // 读取是否成功
-    int32_t count = 0;      // 编码器计数值
+EncoderStatus StatusFromIo(const linux_io::IoResult& result) noexcept {
+    return result.ok() ? EncoderStatus::kOk : EncoderStatus::kReadFailed;
+}
+
+// The board character driver has been observed writing one 32-bit word even
+// when userspace requests the historical 16-bit count. Keep the syscall count
+// unchanged, but isolate that device write inside a suitably sized/aligned
+// owner-side object before explicitly decoding the contracted low 16 bits.
+struct alignas(std::uint32_t) EncoderReadStorage final {
+    std::uint32_t word{0xa5a50000U};
 };
+static_assert(sizeof(EncoderReadStorage) >= sizeof(std::uint32_t),
+              "encoder driver isolation storage must accept a 32-bit write");
+static_assert(alignof(EncoderReadStorage) >= alignof(std::uint32_t),
+              "encoder driver isolation storage must be 32-bit aligned");
 
-// 编码器设备上下文 —— 包含设备路径和已打开的文件描述符
-struct EncoderDevice {
-    const char* path = nullptr;   // 设备字符文件路径
-    int fd = -1;                   // 已打开的文件描述符（-1 表示未打开）
-};
-
-EncoderDevice g_left_encoder{kLeftEncoderPath, -1};
-EncoderDevice g_right_encoder{kRightEncoderPath, -1};
-bool g_use_persistent_fd = false;
-
-// 判断编码器读取是否成功 —— 供应商驱动仅将 read() == -1 视为失败，
-// 字符设备可能返回 0 字节但仍更新缓冲区，因此 bytes >= 0 即视为成功
-bool AcceptedEncoderRead(ssize_t bytes) {
-    return bytes >= 0;
-}
-
-// 从已打开的文件描述符读取编码器 16 位计数值
-EncoderReadResult ReadEncoderCountFromFd(int fd) {
-    EncoderReadResult result{};
-    if (fd < 0) {
-        return result;
-    }
-    (void)lseek(fd, 0, SEEK_SET);
-    int16_t raw = 0;
-    const ssize_t bytes = read(fd, &raw, sizeof(raw));
-    if (!AcceptedEncoderRead(bytes)) {
-        return result;
-    }
-
-    result.ok = true;
-    result.count = static_cast<int32_t>(raw);
-    return result;
-}
-
-// 从编码器字符设备读取 16 位计数值
-EncoderReadResult ReadEncoderCountOpenClose(const char* path) {
-    EncoderReadResult result{};
-    const int fd = open(path, O_RDONLY);
-    if (fd < 0) {
-        return result;
-    }
-    int16_t raw = 0;
-    const ssize_t bytes = read(fd, &raw, sizeof(raw));
-    const int close_rc = close(fd);
-
-    if (!AcceptedEncoderRead(bytes) || close_rc != 0) {
-        return result;
-    }
-
-    result.ok = true;
-    result.count = static_cast<int32_t>(raw);
-    return result;
-}
-
-// 关闭持久打开的编码器设备文件描述符
-void ClosePersistentEncoderFds() {
-    if (g_left_encoder.fd >= 0) {
-        (void)close(g_left_encoder.fd);
-        g_left_encoder.fd = -1;
-    }
-    if (g_right_encoder.fd >= 0) {
-        (void)close(g_right_encoder.fd);
-        g_right_encoder.fd = -1;
-    }
-    g_use_persistent_fd = false;
-}
-
-// 探测单个编码器设备是否支持持久 fd 模式（打开、读取、lseek 回到起点、再次读取均成功）
-bool ProbePersistentEncoderDevice(EncoderDevice& device) {
-    device.fd = open(device.path, O_RDONLY);
-    if (device.fd < 0) {
-        return false;
-    }
-    if (!ReadEncoderCountFromFd(device.fd).ok) {
-        return false;
-    }
-    if (lseek(device.fd, 0, SEEK_SET) < 0) {
-        return false;
-    }
-    return ReadEncoderCountFromFd(device.fd).ok;
-}
-
-// 探测左右编码器是否都支持持久 fd 模式，均成功则启用持久 fd
-bool ProbePersistentEncoderFds() {
-    ClosePersistentEncoderFds();
-    if (!ProbePersistentEncoderDevice(g_left_encoder) ||
-        !ProbePersistentEncoderDevice(g_right_encoder)) {
-        ClosePersistentEncoderFds();
-        return false;
-    }
-    g_use_persistent_fd = true;
-    return true;
-}
-
-// 读取指定编码器设备计数值 —— 优先使用持久 fd，退化时回退到 open/read/close 模式
-EncoderReadResult ReadEncoderCount(EncoderDevice& device) {
-    if (g_use_persistent_fd && device.fd >= 0) {
-        EncoderReadResult result = ReadEncoderCountFromFd(device.fd);
-        if (result.ok) {
-            return result;
-        }
-        ClosePersistentEncoderFds();
-    }
-    return ReadEncoderCountOpenClose(device.path);
+std::int32_t DecodeLowInt16(const EncoderReadStorage& storage) noexcept {
+    const std::uint16_t low_bits =
+        static_cast<std::uint16_t>(storage.word & std::numeric_limits<std::uint16_t>::max());
+    std::int16_t signed_count = 0;
+    static_assert(sizeof(signed_count) == sizeof(low_bits), "encoder count must remain 16-bit");
+    std::memcpy(&signed_count, &low_bits, sizeof(signed_count));
+    return static_cast<std::int32_t>(signed_count);
 }
 
 }  // namespace
 
-// 初始化编码器 —— 探测左右轮编码器设备可访问性
-BridgeStatus InitializeEncoder() {
-    BridgeStatus status{};
-    const bool persistent_ok = ProbePersistentEncoderFds();
-    if (!ReadEncoderCountOpenClose(kLeftEncoderPath).ok) {
-        status.detail = std::string("encoder resource unavailable: ") + kLeftEncoderPath;
-        return status;
+EncoderPair::EncoderPair(std::string left_path,
+                         std::string right_path,
+                         const linux_io::SyscallApi& syscalls,
+                         EncoderIoPolicy io_policy)
+    : left_path_(std::move(left_path)),
+      right_path_(std::move(right_path)),
+      syscalls_(&syscalls),
+      left_fd_(-1, syscalls),
+      right_fd_(-1, syscalls),
+      io_policy_(io_policy) {}
+
+EncoderChannelResult EncoderPair::ReadPersistent(linux_io::UniqueFd& fd) noexcept {
+    EncoderChannelResult result{};
+    if (!fd) {
+        result.status = EncoderStatus::kNotInitialized;
+        return result;
     }
-    if (!ReadEncoderCountOpenClose(kRightEncoderPath).ok) {
-        status.detail = std::string("encoder resource unavailable: ") + kRightEncoderPath;
-        return status;
+    if (syscalls_->functions().lseek(fd.get(), 0, SEEK_SET) < 0) {
+        result.status = EncoderStatus::kSeekFailed;
+        return result;
     }
-    status.ok = true;
-    status.detail = persistent_ok ? "encoder resources probed successfully with persistent fd"
-                                  : "encoder resources probed successfully with open/read/close fallback";
-    return status;
+
+    EncoderReadStorage storage{};
+    const linux_io::IoResult read =
+        linux_io::ReadOnce(*syscalls_, fd.get(), &storage.word, sizeof(std::int16_t));
+    // The board encoder driver may update the buffer while returning zero bytes.
+    // ReadOnce therefore succeeds for every non-negative syscall result, including zero.
+    result.status = StatusFromIo(read);
+    if (result.ok()) {
+        result.count = DecodeLowInt16(storage);
+    }
+    return result;
 }
 
-// 读取左右编码器计数值
-EncoderCounts ReadEncoderCounts() {
-    EncoderCounts counts{};
-    const EncoderReadResult left = ReadEncoderCount(g_left_encoder);
-    if (!left.ok) {
-        counts.detail = std::string("encoder read failed: ") + kLeftEncoderPath;
-        return counts;
+EncoderChannelResult EncoderPair::ReadOpenClose(const std::string& path) noexcept {
+    EncoderChannelResult result{};
+    errno = 0;
+    linux_io::UniqueFd fd(syscalls_->functions().open(path.c_str(), O_RDONLY | O_CLOEXEC, 0), *syscalls_);
+    if (!fd) {
+        result.status = EncoderStatus::kOpenFailed;
+        return result;
     }
-    const EncoderReadResult right = ReadEncoderCount(g_right_encoder);
-    if (!right.ok) {
-        counts.detail = std::string("encoder read failed: ") + kRightEncoderPath;
-        return counts;
+
+    EncoderReadStorage storage{};
+    const linux_io::IoResult read =
+        linux_io::ReadOnce(*syscalls_, fd.get(), &storage.word, sizeof(std::int16_t));
+    const linux_io::IoResult close = fd.Reset();
+    if (!read.ok()) {
+        result.status = EncoderStatus::kReadFailed;
+        return result;
     }
-    counts.left = static_cast<int>(left.count);
-    counts.right = static_cast<int>(right.count);
-    counts.valid = true;
-    return counts;
+    if (!close.ok()) {
+        result.status = EncoderStatus::kCloseFailed;
+        return result;
+    }
+    result.status = EncoderStatus::kOk;
+    result.count = DecodeLowInt16(storage);
+    return result;
+}
+
+bool EncoderPair::ProbePersistent(const std::string& path, linux_io::UniqueFd& fd) noexcept {
+    static_cast<void>(fd.Reset());
+    const int opened = syscalls_->functions().open(path.c_str(), O_RDONLY | O_CLOEXEC, 0);
+    if (opened < 0) {
+        return false;
+    }
+    static_cast<void>(fd.Reset(opened));
+    if (!ReadPersistent(fd).ok()) {
+        return false;
+    }
+    return ReadPersistent(fd).ok();
+}
+
+EncoderInitResult EncoderPair::Initialize() noexcept {
+    ready_ = false;
+    mode_ = EncoderIoMode::kUninitialized;
+    static_cast<void>(left_fd_.Reset());
+    static_cast<void>(right_fd_.Reset());
+
+    if (io_policy_ == EncoderIoPolicy::kPreferPersistent &&
+        ProbePersistent(left_path_, left_fd_) &&
+        ProbePersistent(right_path_, right_fd_)) {
+        mode_ = EncoderIoMode::kPersistent;
+        ready_ = true;
+        return {true, mode_, EncoderStatus::kOk};
+    }
+
+    static_cast<void>(left_fd_.Reset());
+    static_cast<void>(right_fd_.Reset());
+    const EncoderChannelResult left = ReadOpenClose(left_path_);
+    if (!left.ok()) {
+        return {false, mode_, left.status};
+    }
+    const EncoderChannelResult right = ReadOpenClose(right_path_);
+    if (!right.ok()) {
+        return {false, mode_, right.status};
+    }
+
+    mode_ = EncoderIoMode::kOpenReadClose;
+    ready_ = true;
+    return {true, mode_, EncoderStatus::kOk};
+}
+
+EncoderPairResult EncoderPair::ReadCounts() noexcept {
+    EncoderPairResult result{};
+    if (!ready_) {
+        return result;
+    }
+    if (mode_ == EncoderIoMode::kPersistent) {
+        result.left = ReadPersistent(left_fd_);
+        result.right = ReadPersistent(right_fd_);
+        return result;
+    }
+    if (mode_ == EncoderIoMode::kOpenReadClose) {
+        result.left = ReadOpenClose(left_path_);
+        result.right = ReadOpenClose(right_path_);
+    }
+    return result;
+}
+
+void EncoderPair::Shutdown() noexcept {
+    ready_ = false;
+    mode_ = EncoderIoMode::kUninitialized;
+    static_cast<void>(left_fd_.Reset());
+    static_cast<void>(right_fd_.Reset());
+}
+
+const char* EncoderStatusName(EncoderStatus status) noexcept {
+    switch (status) {
+        case EncoderStatus::kOk: return "ok";
+        case EncoderStatus::kNotInitialized: return "not-initialized";
+        case EncoderStatus::kOpenFailed: return "open-failed";
+        case EncoderStatus::kSeekFailed: return "seek-failed";
+        case EncoderStatus::kReadFailed: return "read-failed";
+        case EncoderStatus::kCloseFailed: return "close-failed";
+    }
+    return "unknown";
+}
+
+const char* EncoderIoModeName(EncoderIoMode mode) noexcept {
+    switch (mode) {
+        case EncoderIoMode::kUninitialized: return "uninitialized";
+        case EncoderIoMode::kPersistent: return "persistent";
+        case EncoderIoMode::kOpenReadClose: return "open-read-close";
+    }
+    return "unknown";
 }
 
 }  // namespace ls2k::platform::true_ls2k0300

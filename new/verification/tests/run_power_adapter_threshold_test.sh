@@ -12,6 +12,7 @@ compile_test_binary \
   "${OUT_DIR}/power_adapter_threshold_test" \
   "${REPO_ROOT}/new/verification/tests/power_adapter_threshold_test.cpp" \
   "${REPO_ROOT}/new/code/platform/power_adapter.cpp" \
-  "${REPO_ROOT}/new/code/platform/true_ls2k0300/adc_bridge.cpp"
+  "${REPO_ROOT}/new/code/platform/true_ls2k0300/adc_bridge.cpp" \
+  "${REPO_ROOT}/new/code/platform/linux/linux_io.cpp"
 
 "${OUT_DIR}/power_adapter_threshold_test"

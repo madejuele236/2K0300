@@ -1,0 +1,25 @@
+run_id=timer-ab-20260713
+board=root@192.168.137.100
+period_ms=5
+sample_count_per_run=1000
+timestamp_clock=CLOCK_MONOTONIC
+
+baseline_source_commit=7aa9ca284ae681651de9d9f3c3781b15f5a73ff5
+baseline_max_absolute_jitter_us_runs=37,21,21,94,102,22,28,111,25
+baseline_worst_absolute_jitter_us=111
+
+final_max_absolute_jitter_us_runs=54,22,110,18,20,56,22,21,73
+final_worst_absolute_jitter_us=110
+
+final_cold_boot_helper_sha256=07a1d9f0b33c7d332b4ef2635b89c36c535dcfd39368fba926fbb4919f853931
+final_cold_boot_min_interval_us=4957
+final_cold_boot_max_interval_us=5105
+final_cold_boot_max_absolute_jitter_us=105
+final_cold_boot_missed_or_overrun=false
+final_cold_boot_missed_expirations=0
+final_cold_boot_max_expirations_per_callback=1
+final_cold_boot_timer_failure=false
+final_cold_boot_clock_read_failure=false
+final_cold_boot_result=PASS
+
+assessment=final worst across the nine-run A/B set does not exceed the baseline worst; the additional cold-boot run also remains below the baseline worst
