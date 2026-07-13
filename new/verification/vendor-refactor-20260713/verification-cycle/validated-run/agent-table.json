@@ -9,8 +9,8 @@
       "coverage_status": "complete",
       "exhaustive": true,
       "scope": "Source-first review of `git-diff:7aa9ca284ae681651de9d9f3c3781b15f5a73ff5..c9e2277e7a56f86dffacd6786c06c65b8cfad6f0`, covering the LS2K0300 replacement owners, test surface, build graph, archive/report artifacts, and supplied acceptance evidence. The archived vendor payload was reviewed for integrity and build exclusion rather than runtime semantics.",
-      "findings_path": "attempt-2/findings.json",
-      "verifier_evidence_path": "attempt-2/verifier-evidence.json",
+      "findings_path": "attempt-1/findings.json",
+      "verifier_evidence_path": "attempt-1/verifier-evidence.json",
       "updated_at": "2026-07-13T22:45:17+09:00"
     }
   ]

@@ -1,0 +1,6 @@
+{
+  "contract": "verification-cycle-orchestrator-decision-v1",
+  "decision": "terminate",
+  "reason": "latest_result is a valid pass for the active agent",
+  "agent_id": "/root/final_source_first_verify"
+}

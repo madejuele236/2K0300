@@ -1,0 +1,42 @@
+{
+  "target_ref": "repo:2K0300-ls2k0300-vendor-refactor-2026-07-13",
+  "review_goal": "implementation_correctness",
+  "review_phase": "source_first",
+  "template_id": "verify-reviewer-inline-v3",
+  "findings_contract": "shared-findings-v1",
+  "agent_id": "/root/final_source_first_verify",
+  "start_at": "2026-07-13T22:45:17+09:00",
+  "end_at": "2026-07-13T22:45:17+09:00",
+  "final_state": "completed",
+  "review_scope": {
+    "scope": "Source-first review of `git-diff:7aa9ca284ae681651de9d9f3c3781b15f5a73ff5..c9e2277e7a56f86dffacd6786c06c65b8cfad6f0`, covering the LS2K0300 replacement owners, test surface, build graph, archive/report artifacts, and supplied acceptance evidence. The archived vendor payload was reviewed for integrity and build exclusion rather than runtime semantics."
+  },
+  "review_coverage": {
+    "coverage_status": "complete",
+    "exhaustive": true
+  },
+  "reviewed_paths": [
+    "/home/madejuele/projects/2K0300/plan-20260713.md",
+    "/home/madejuele/projects/2K0300/new/user/CMakeLists.txt",
+    "/home/madejuele/projects/2K0300/new/code/platform/linux",
+    "/home/madejuele/projects/2K0300/new/code/platform/true_ls2k0300",
+    "/home/madejuele/projects/2K0300/new/code/platform",
+    "/home/madejuele/projects/2K0300/new/code/transport",
+    "/home/madejuele/projects/2K0300/new/code/runtime/capture",
+    "/home/madejuele/projects/2K0300/new/code/runtime/loops/control_loop.cpp",
+    "/home/madejuele/projects/2K0300/new/verification/tests",
+    "/home/madejuele/projects/2K0300/new/verification/vendor-refactor-20260713/EVIDENCE.md",
+    "/home/madejuele/projects/2K0300/archive/true_ls2k0300_vendor_drivers_20260713/ARCHIVE_REPORT.md",
+    "/home/madejuele/projects/2K0300/archive/true_ls2k0300_vendor_drivers_20260713/metadata/MANIFEST.tsv"
+  ],
+  "skipped_paths": [
+    "/home/madejuele/projects/2K0300/archive/true_ls2k0300_vendor_drivers_20260713/true_LS2K0300_Library/Seekfree_LS2K0300_Opensource_Library/libraries (43 archived source snapshots were integrity-checked and verified absent from final build inputs; they were not re-reviewed as live runtime owners)."
+  ],
+  "reviewed_axes": [
+    "Completeness",
+    "Correctness",
+    "Coherence"
+  ],
+  "unreviewed_axes": [],
+  "notes": "Reran the 15 host gates named in `EVIDENCE.md`; all exited 0 (`linux_io`, `timer_device`, `adc_device`, `assistant_protocol_contract`, `assistant_bridge_contract`, `encoder_pair`, `imu_device`, `camera_device`, `motor_device`, `power_adapter_threshold`, `camera_frame_source`, `camera_frame_store`, `assistant_telemetry_selftest`, `startup_low_voltage_order`, `hot_path_allocation_contract`). Re-ran the declared cross-build configure/build commands for `new/out-final-evidence`; all requested outputs built successfully and `rtk file` identified the five binaries as 64-bit LoongArch ELF executables. Rechecked retirement audits: legacy include/call grep returned no matches, legacy object count remained baseline `19` vs final `0`, and the final `nm -C` legacy-symbol grep returned no matches. Counted 43 manifest rows in `MANIFEST.tsv` and verified the archive contents by transforming the manifest into standard checksum input; the contents validate, but the evidence text overstates the direct `sha256sum -c` command. Current HEAD is `3c467b120b82736712fa1ae42194fa5c716caa99`; compared with `c9e2277e7a56f86dffacd6786c06c65b8cfad6f0`, only plan/verification bookkeeping changed, with no post-tip source drift in the reviewed implementation surface."
+}

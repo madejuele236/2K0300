@@ -1,0 +1,16 @@
+{
+  "target_ref": "repo:2K0300-ls2k0300-vendor-refactor-2026-07-13",
+  "verdict": "pass",
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "WARNING",
+      "dimension": "Correctness",
+      "problem": "The archive-integrity evidence states that a direct `sha256sum -c` over `metadata/MANIFEST.tsv` succeeded, but the committed manifest is a three-column TSV and is not itself valid `sha256sum -c` input.",
+      "evidence": "`new/verification/vendor-refactor-20260713/EVIDENCE.md:130-133` claims the manifest-to-archive `sha256sum -c` check returned OK for all 43 files. `archive/true_ls2k0300_vendor_drivers_20260713/metadata/MANIFEST.tsv:1-2` shows a three-column `sha256/original_path/archive_path` layout. Reproduced during review: direct `rtk sha256sum -c metadata/MANIFEST.tsv` failed with path-format errors, while transforming columns 1 and 3 into standard checksum input verified the archived files successfully.",
+      "recommendation": "Correct the evidence text to describe the required manifest-to-checksum transform, or add a separate two-column checksum file that works directly with `sha256sum -c`. This keeps the acceptance artifact factually accurate without changing the archived contents.",
+      "blocking": false,
+      "auto_fixable": false
+    }
+  ]
+}
