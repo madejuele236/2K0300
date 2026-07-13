@@ -1,0 +1,6 @@
+{
+  "agent_type": "verify-reviewer",
+  "fork_turns": "none",
+  "planned_task_name": "/root/final_source_first_verify",
+  "message": "{\"target_ref\":\"repo:2K0300-ls2k0300-vendor-refactor-2026-07-13\",\"review_goal\":\"implementation_correctness\",\"review_phase\":\"source_first\",\"risk_tier\":\"STRICT\",\"evidence_paths_or_diff_scope\":[\"/home/madejuele/projects/2K0300/plan-20260713.md\",\"git-diff:7aa9ca284ae681651de9d9f3c3781b15f5a73ff5..c9e2277e7a56f86dffacd6786c06c65b8cfad6f0\",\"/home/madejuele/projects/2K0300/new/verification/vendor-refactor-20260713/EVIDENCE.md\",\"/home/madejuele/projects/2K0300/archive/true_ls2k0300_vendor_drivers_20260713/metadata/MANIFEST.tsv\"],\"findings_contract\":\"shared-findings-v1\",\"output_paths\":{\"findings_path\":\"/home/madejuele/projects/2K0300/new/verification/vendor-refactor-20260713/verification-cycle/attempt-2/findings.json\",\"verifier_evidence_path\":\"/home/madejuele/projects/2K0300/new/verification/vendor-refactor-20260713/verification-cycle/attempt-2/verifier-evidence.json\",\"agent_table_path\":\"/home/madejuele/projects/2K0300/new/verification/vendor-refactor-20260713/verification-cycle/agent-table.json\"}}"
+}

@@ -1,0 +1,8 @@
+{
+  "agent_type": "verify-reviewer",
+  "fork_turns": "none",
+  "message": "/home/madejuele/projects/2K0300/plan-20260713.md",
+  "review_outcome": "block",
+  "contract_valid_for_source_first": false,
+  "contract_invalid_reason": "The path-only invocation lacked the required structured standalone fields and therefore ran as docs_first instead of auditing implementation source."
+}

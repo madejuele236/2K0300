@@ -1,0 +1,36 @@
+{
+  "target_ref": "/home/madejuele/projects/2K0300/plan-20260713.md",
+  "verdict": "block",
+  "findings": [
+    {
+      "id": "F001",
+      "severity": "CRITICAL",
+      "dimension": "Coherence",
+      "problem": "Phase12 path-only prompt conflicts with active verify-reviewer-inline-v3 structured standalone bundle/output_paths contract.",
+      "evidence": "plan lines 249-255",
+      "recommendation": "Rewrite to a minimal structured source_first bundle.",
+      "blocking": true,
+      "auto_fixable": false
+    },
+    {
+      "id": "F002",
+      "severity": "WARNING",
+      "dimension": "Completeness",
+      "problem": "Completion evidence index lacks final independent verification artifact/run/scope/verdict/fresh/fork-none audit.",
+      "evidence": "plan Phase11/12",
+      "recommendation": "Extend the completion evidence index.",
+      "blocking": true,
+      "auto_fixable": false
+    },
+    {
+      "id": "F003",
+      "severity": "WARNING",
+      "dimension": "Completeness",
+      "problem": "Phase1 build-only exit under-proves target split runtime equivalence.",
+      "evidence": "plan Phase1 exit condition",
+      "recommendation": "Add a board smoke A/B and link/initialization-order gate.",
+      "blocking": true,
+      "auto_fixable": false
+    }
+  ]
+}

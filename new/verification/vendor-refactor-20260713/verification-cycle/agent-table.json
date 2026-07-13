@@ -1,0 +1,17 @@
+{
+  "contract": "verification-cycle-agent-table-v1",
+  "target_ref": "repo:2K0300-ls2k0300-vendor-refactor-2026-07-13",
+  "agents": [
+    {
+      "agent_id": "/root/final_source_first_verify",
+      "status": "active",
+      "last_verdict": "unknown",
+      "coverage_status": "unknown",
+      "exhaustive": false,
+      "scope": "source_first STRICT review of implementation diff 7aa9ca284ae681651de9d9f3c3781b15f5a73ff5..c9e2277e7a56f86dffacd6786c06c65b8cfad6f0, with plan, EVIDENCE.md, and archive manifest as supporting evidence; fresh verify-reviewer with fork_turns=none",
+      "findings_path": "attempt-2/findings.json",
+      "verifier_evidence_path": "attempt-2/verifier-evidence.json",
+      "updated_at": "2026-07-13T22:22:48+09:00"
+    }
+  ]
+}
