@@ -456,64 +456,38 @@ CenterCandidateRows BuildOrdinaryCenterCandidates(
     return candidate_rows;
 }
 
-bool RowHasBoundaryJumpBetween(const BEVSimpleRowScan& row,
-                               float lhs_lateral_m,
-                               float rhs_lateral_m) {
-    const float low = std::min(lhs_lateral_m, rhs_lateral_m);
-    const float high = std::max(lhs_lateral_m, rhs_lateral_m);
-    for (const BEVBoundaryJump& jump : row.jumps) {
-        if (jump.lateral_m > low && jump.lateral_m < high) {
-            return true;
-        }
-    }
-    return false;
-}
-
-const CenterCandidate* ChooseCenterCandidate(const BEVSimpleRowScan& row,
-                                             const std::vector<CenterCandidate>& candidates,
-                                             bool have_previous,
-                                             float previous_lateral) {
-    const CenterCandidate* best = nullptr;
-    float best_cost = 0.0F;
-    for (const CenterCandidate& candidate : candidates) {
-        const float target = have_previous ? previous_lateral : 0.0F;
-        const float cost = std::fabs(candidate.lateral_m - target);
-        if (have_previous &&
-            RowHasBoundaryJumpBetween(row, previous_lateral, candidate.lateral_m)) {
-            continue;
-        }
-        if (best == nullptr || cost < best_cost) {
-            best = &candidate;
-            best_cost = cost;
-        }
-    }
-    return best;
-}
-
 }  // namespace
 
-port::BEVReferencePath ExtractStrictLeadingReferenceSegment(
+port::BEVReferencePath BuildConnectedReferencePath(
     const std::vector<BEVSimpleRowScan>& rows,
-    const port::RuntimeParameters& params) {
+    const port::RuntimeParameters& params,
+    const BEVSegmentConnectivityQuery& connectivity_query) {
     port::BEVReferencePath reference{};
     InitializeReferencePath(reference, params, port::ReferenceMode::kNone);
     const CenterCandidateRows candidate_rows =
         BuildOrdinaryCenterCandidates(rows, params);
-    bool have_previous = false;
-    float previous_lateral = 0.0F;
-    bool segment_started = false;
+    port::BEVPoint predecessor{0.0F, 0.0F};
+    bool have_accepted = false;
     std::size_t output_index = 0U;
 
     for (std::size_t index = 0; index < rows.size() && index < reference.sampled_path.size(); ++index) {
-        const CenterCandidate* candidate =
-            ChooseCenterCandidate(rows[index],
-                                  candidate_rows[index],
-                                  have_previous,
-                                  previous_lateral);
-        if (candidate == nullptr) {
-            if (segment_started) {
+        const CenterCandidate* accepted = nullptr;
+        for (const CenterCandidate& candidate : candidate_rows[index]) {
+            const BEVSegmentVisibilityPolicy policy =
+                have_accepted
+                    ? BEVSegmentVisibilityPolicy::kRequireFullSegment
+                    : BEVSegmentVisibilityPolicy::kAllowFromEndpointClip;
+            const BEVSegmentConnectivityResult connectivity =
+                connectivity_query.Evaluate(
+                    predecessor,
+                    port::BEVPoint{candidate.forward_m, candidate.lateral_m},
+                    policy);
+            if (connectivity.status == BEVSegmentConnectivityStatus::kConnected) {
+                accepted = &candidate;
                 break;
             }
+        }
+        if (accepted == nullptr) {
             continue;
         }
 
@@ -523,21 +497,21 @@ port::BEVReferencePath ExtractStrictLeadingReferenceSegment(
         port::BEVPathSample& sample = reference.sampled_path[output_index];
         reference.mode = port::ReferenceMode::kIntervalCenter;
         sample.present = true;
-        sample.point.forward_m = candidate->forward_m;
-        sample.point.lateral_m = candidate->lateral_m;
+        sample.point.forward_m = accepted->forward_m;
+        sample.point.lateral_m = accepted->lateral_m;
         sample.confidence = 1.0F;
         sample.source = port::BEVPathPointSource::kIntervalCenter;
-        previous_lateral = candidate->lateral_m;
-        have_previous = true;
-        segment_started = true;
+        predecessor = sample.point;
+        have_accepted = true;
         ++output_index;
     }
     return reference;
 }
 
 port::BEVReferencePath BuildReferencePath(const std::vector<BEVSimpleRowScan>& rows,
-                                          const port::RuntimeParameters& params) {
-    return ExtractStrictLeadingReferenceSegment(rows, params);
+                                          const port::RuntimeParameters& params,
+                                          const BEVSegmentConnectivityQuery& connectivity_query) {
+    return BuildConnectedReferencePath(rows, params, connectivity_query);
 }
 
 }  // namespace ls2k::vision

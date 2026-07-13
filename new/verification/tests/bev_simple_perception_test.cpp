@@ -6,10 +6,13 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "vision/bev/bev_projector.hpp"
 #include "vision/bev/bev_boundary_trace_clip.hpp"
+#include "vision/bev/bev_reference_path_builder.hpp"
+#include "vision/bev/bev_segment_connectivity.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
 #include "reference/reference_continuity.hpp"
 #include "reference/reference_usability.hpp"
@@ -191,6 +194,122 @@ void AddSyntheticInterval(ls2k::vision::BEVSimpleRowScan& row,
         right_jump.polarity = ls2k::vision::BEVBoundaryJumpPolarity::kFallingY;
         row.jumps.push_back(right_jump);
     }
+}
+
+class AlwaysConnectedQuery final
+    : public ls2k::vision::BEVSegmentConnectivityQuery {
+public:
+    ls2k::vision::BEVSegmentConnectivityResult Evaluate(
+        const ls2k::port::BEVPoint&,
+        const ls2k::port::BEVPoint&,
+        ls2k::vision::BEVSegmentVisibilityPolicy) const override {
+        return {ls2k::vision::BEVSegmentConnectivityStatus::kConnected, 1U, false};
+    }
+};
+
+class ScriptedConnectivityQuery final
+    : public ls2k::vision::BEVSegmentConnectivityQuery {
+public:
+    explicit ScriptedConnectivityQuery(
+        std::vector<ls2k::vision::BEVSegmentConnectivityStatus> statuses)
+        : statuses_(std::move(statuses)) {}
+
+    ls2k::vision::BEVSegmentConnectivityResult Evaluate(
+        const ls2k::port::BEVPoint& from,
+        const ls2k::port::BEVPoint& to,
+        ls2k::vision::BEVSegmentVisibilityPolicy policy) const override {
+        from_points.push_back(from);
+        to_points.push_back(to);
+        policies.push_back(policy);
+        const std::size_t index = from_points.size() - 1U;
+        const ls2k::vision::BEVSegmentConnectivityStatus status =
+            index < statuses_.size()
+                ? statuses_[index]
+                : ls2k::vision::BEVSegmentConnectivityStatus::kConnected;
+        return {status, 1U, false};
+    }
+
+    mutable std::vector<ls2k::port::BEVPoint> from_points{};
+    mutable std::vector<ls2k::port::BEVPoint> to_points{};
+    mutable std::vector<ls2k::vision::BEVSegmentVisibilityPolicy> policies{};
+
+private:
+    std::vector<ls2k::vision::BEVSegmentConnectivityStatus> statuses_;
+};
+
+ls2k::port::BEVReferencePath BuildSyntheticReferencePath(
+    const std::vector<ls2k::vision::BEVSimpleRowScan>& rows,
+    const ls2k::port::RuntimeParameters& params) {
+    const AlwaysConnectedQuery query{};
+    return ls2k::vision::BuildReferencePath(rows, params, query);
+}
+
+void TestConnectedPathSkipsFailuresAndPreservesPredecessor() {
+    using ls2k::vision::BEVSegmentVisibilityPolicy;
+    using ls2k::vision::BEVSegmentConnectivityStatus;
+
+    ls2k::port::RuntimeParameters params{};
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    for (std::size_t index = 0U; index < 5U; ++index) {
+        rows.push_back(SyntheticRow(
+            params.bev_geometry.forward_samples_m[index], -1.0F, 1.0F));
+        AddSyntheticInterval(rows.back(), -0.20F, 0.20F);
+    }
+    ScriptedConnectivityQuery query({
+        BEVSegmentConnectivityStatus::kBlocked,
+        BEVSegmentConnectivityStatus::kConnected,
+        BEVSegmentConnectivityStatus::kUnobservable,
+        BEVSegmentConnectivityStatus::kBlocked,
+        BEVSegmentConnectivityStatus::kConnected,
+    });
+    const ls2k::port::BEVReferencePath reference =
+        ls2k::vision::BuildConnectedReferencePath(rows, params, query);
+
+    Expect(CountPresentPathPoints(reference,
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 2,
+           "blocked and unobservable rows must be skipped while later connected rows reconnect");
+    ExpectNear(reference.sampled_path[0].point.forward_m, rows[1].forward_m, 1.0e-6F,
+               "leading rejected row must compact the first accepted sample with true forward");
+    ExpectNear(reference.sampled_path[1].point.forward_m, rows[4].forward_m, 1.0e-6F,
+               "reconnected sample after a gap must retain its true forward");
+    ExpectNear(query.from_points[0].forward_m, 0.0F, 1.0e-6F,
+               "first candidate must be tested from the vehicle origin");
+    ExpectNear(query.from_points[1].forward_m, 0.0F, 1.0e-6F,
+               "a rejected leading candidate must not update the origin predecessor");
+    Expect(query.policies[0] == BEVSegmentVisibilityPolicy::kAllowFromEndpointClip &&
+               query.policies[1] == BEVSegmentVisibilityPolicy::kAllowFromEndpointClip,
+           "all candidates before the first acceptance must allow origin endpoint clipping");
+    ExpectNear(query.from_points[2].forward_m, rows[1].forward_m, 1.0e-6F,
+               "post-acceptance checks must start from the last accepted sample");
+    ExpectNear(query.from_points[4].forward_m, rows[1].forward_m, 1.0e-6F,
+               "blocked and unobservable gaps must not update the predecessor");
+    Expect(query.policies[2] == BEVSegmentVisibilityPolicy::kRequireFullSegment &&
+               query.policies[4] == BEVSegmentVisibilityPolicy::kRequireFullSegment,
+           "all checks after first acceptance must require the full segment");
+}
+
+void TestConnectedPathAcceptsFirstPassingCandidateInProductionOrder() {
+    using ls2k::vision::BEVSegmentConnectivityStatus;
+
+    ls2k::port::RuntimeParameters params{};
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        rows.push_back(SyntheticRow(
+            params.bev_geometry.forward_samples_m[index], -1.0F, 1.0F));
+        AddSyntheticInterval(rows.back(), -0.60F, -0.40F);
+        AddSyntheticInterval(rows.back(), 0.30F, 0.50F);
+    }
+    ScriptedConnectivityQuery query({BEVSegmentConnectivityStatus::kBlocked,
+                                     BEVSegmentConnectivityStatus::kConnected});
+    const ls2k::port::BEVReferencePath reference =
+        ls2k::vision::BuildConnectedReferencePath(rows, params, query);
+
+    ExpectNear(query.to_points[0].lateral_m, -0.50F, 1.0e-5F,
+               "candidate inspection must retain existing row production order");
+    ExpectNear(query.to_points[1].lateral_m, 0.40F, 1.0e-5F,
+               "connectivity must inspect the next candidate after a rejection");
+    ExpectNear(reference.sampled_path[0].point.lateral_m, 0.40F, 1.0e-5F,
+               "the first connected candidate in production order must be accepted");
 }
 
 void TestSingleBoundaryOffsetHelperGeometry() {
@@ -416,7 +535,7 @@ void TestHoldIsExplicitNonVisualSource() {
            "sparse row count identity change must reject hold output");
 }
 
-void TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap() {
+void TestReferencePathCompactsLeadingAndInteriorEmptyRows() {
     ls2k::port::RuntimeParameters params{};
     std::vector<ls2k::vision::BEVSimpleRowScan> rows(ls2k::port::kBevReferenceSampleCount);
     for (std::size_t index = 0; index < rows.size(); ++index) {
@@ -432,7 +551,7 @@ void TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap() {
     add_interval(4, 0.0F);
     add_interval(5, 0.0F);
     const ls2k::port::BEVReferencePath no_near =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(ls2k::reference::EvaluateReferenceUsability(no_near, params).usable,
            "near missing rows must not make the first real continuous segment unusable");
     Expect(CountPresentPathPoints(no_near, ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
@@ -451,13 +570,15 @@ void TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap() {
     add_interval(2, 0.0F);
     add_interval(5, 0.0F);
     const ls2k::port::BEVReferencePath stopped =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(ls2k::reference::EvaluateReferenceUsability(stopped, params).usable,
            "first three leading intervals satisfy the configured control minimum");
-    Expect(CountPresentPathPoints(stopped, ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
-           "reference builder must stop at the first gap and not publish far reappearing intervals");
-    Expect(!stopped.sampled_path[5].present,
-           "reference builder must not reconnect far points across a gap");
+    Expect(CountPresentPathPoints(stopped, ls2k::port::BEVPathPointSource::kIntervalCenter) == 4,
+           "reference builder must continue after empty rows and publish later connected candidates");
+    ExpectNear(stopped.sampled_path[3].point.forward_m,
+               params.bev_geometry.forward_samples_m[5],
+               1.0e-6F,
+               "compacted output after an interior gap must preserve true forward");
 }
 
 void TestOrdinaryReferenceInterpretsLostBoundaries() {
@@ -474,7 +595,7 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
         AddSyntheticInterval(rows[index], -0.20F, 0.20F);
     }
     const ls2k::port::BEVReferencePath both_edges =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(both_edges,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
            "both-edge rows must produce leading midpoint reference samples");
@@ -489,7 +610,7 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
         AddSyntheticInterval(rows[index], -0.21F, 1.0F);
     }
     const ls2k::port::BEVReferencePath low_edge =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(low_edge,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
            "low-edge-only rows must produce ordinary visual samples");
@@ -504,7 +625,7 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
         AddSyntheticInterval(rows[index], -1.0F, 0.21F);
     }
     const ls2k::port::BEVReferencePath high_edge =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(high_edge,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
            "high-edge-only rows must produce ordinary visual samples");
@@ -519,7 +640,7 @@ void TestOrdinaryReferenceInterpretsLostBoundaries() {
     AddSyntheticInterval(rows[1], -0.20F, 0.20F);
     AddSyntheticInterval(rows[2], -0.20F, 0.20F);
     const ls2k::port::BEVReferencePath double_lost =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(double_lost,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 2,
            "double-lost leading row must not discard the later real segment");
@@ -538,7 +659,7 @@ void TestSparseRowMidpointUsesSharedConnectivityHelper() {
     }
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
            "boundary span row facts must remain eligible midpoint candidates");
@@ -559,7 +680,7 @@ void TestBoundaryContinuityRejectsDiscontinuousSingleEdge() {
     AddSyntheticInterval(rows[2], 0.80F, 1.0F);
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
            "discontinuous first single-edge row must not bridge into the later trace");
@@ -580,7 +701,7 @@ void TestBoundaryContinuityUsesFartherSupportAfterOutlier() {
     AddSyntheticInterval(rows[2], -0.22F, 1.0F);
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 0,
            "single-edge trace must not skip an outlier row to use farther support");
@@ -601,7 +722,7 @@ void TestBoundaryContinuityRequiresFutureSupportForSingleEdge() {
     AddSyntheticInterval(rows[2], 0.80F, 1.0F);
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
            "single-edge row must not use only a previous kept edge as offset support");
@@ -622,7 +743,7 @@ void TestBoundaryContinuityDegradesOneClippedSide() {
     AddSyntheticInterval(rows[2], -0.21F, 0.90F);
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
            "one clipped side must degrade to existing single-edge semantics");
@@ -646,10 +767,10 @@ void TestBoundaryContinuityRemovesRowWhenBothSidesClip() {
     AddSyntheticInterval(rows[2], -0.20F, 0.20F);
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
-                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
-           "row with both edge facts clipped must create no current-frame candidate");
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 2,
+           "row with both edge facts clipped must create no candidate while later rows remain eligible");
 }
 
 void TestSingleEdgeOffsetMayLeaveSampleableSpan() {
@@ -666,7 +787,7 @@ void TestSingleEdgeOffsetMayLeaveSampleableSpan() {
         AddSyntheticInterval(rows[index], -1.0F, -0.90F);
     }
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
            "visible single-edge rows may offset the center outside the sampleable span");
@@ -691,13 +812,21 @@ void TestOrdinaryReferenceSelectsAfterCandidateInterpretation() {
         AddSyntheticInterval(rows[index], 0.60F, 0.80F);
     }
     AddSyntheticInterval(rows[3], -0.21F, 1.0F);
+    ScriptedConnectivityQuery interpreted_center_query({
+        ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+        ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+        ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+        ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+        ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+        ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+    });
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        ls2k::vision::BuildReferencePath(rows, params, interpreted_center_query);
     Expect(CountPresentPathPoints(reference,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
-           "multi-interval one-side-lost rows must still produce a strict leading trace");
+           "multi-interval one-side-lost rows must still produce a connected trace");
     ExpectNear(reference.sampled_path[0].point.lateral_m, 0.0F, 1.0e-5F,
-               "candidate selection must use interpreted center candidates, not raw interval midpoint");
+               "connectivity selection must be able to accept an interpreted center after rejecting a midpoint");
 
     const ls2k::port::ReferenceHoldState hold =
         ls2k::reference::MakeReferenceHoldState(reference, params);
@@ -707,7 +836,7 @@ void TestOrdinaryReferenceSelectsAfterCandidateInterpretation() {
     }
     AddSyntheticInterval(rows[0], -1.0F, 1.0F);
     const ls2k::port::BEVReferencePath unavailable =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(unavailable,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) == 0,
            "unavailable current visual reference must remain empty before hold");
@@ -731,10 +860,10 @@ void TestBoundaryJumpConnectivityRejectsLateralCrossing() {
     AddSyntheticInterval(rows[2], 0.30F, 0.50F);
 
     const ls2k::port::BEVReferencePath reference =
-        ls2k::vision::BuildReferencePath(rows, params);
+        BuildSyntheticReferencePath(rows, params);
     Expect(CountPresentPathPoints(reference,
-                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 1,
-           "row-local boundary jump between adjacent center candidates must stop connectivity");
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) == 3,
+           "synthetic candidate generation must not infer image-segment connectivity");
 }
 
 void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
@@ -832,7 +961,9 @@ int main() {
         TestBevLocalBoundaryFacts();
         TestBevGeometryControlsWideImageScan();
         TestHoldIsExplicitNonVisualSource();
-        TestReferencePathStartsAtFirstContinuousSegmentAndStopsAtFirstGap();
+        TestConnectedPathSkipsFailuresAndPreservesPredecessor();
+        TestConnectedPathAcceptsFirstPassingCandidateInProductionOrder();
+        TestReferencePathCompactsLeadingAndInteriorEmptyRows();
         TestOrdinaryReferenceInterpretsLostBoundaries();
         TestSparseRowMidpointUsesSharedConnectivityHelper();
         TestBoundaryContinuityRejectsDiscontinuousSingleEdge();

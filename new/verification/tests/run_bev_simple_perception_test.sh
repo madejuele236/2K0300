@@ -15,6 +15,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/vision/bev/bev_sample_projection_lut.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_sparse_row_scanner.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_reference_path_builder.cpp" \
+  "${REPO_ROOT}/new/code/vision/bev/bev_image_segment_connectivity.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_simple_perception.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_usability.cpp" \

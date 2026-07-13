@@ -84,6 +84,7 @@ set(NEW_SRCS
     ../code/control/wheel_pid.cpp
     ../code/vision/image/luma_sampler.cpp
     ../code/vision/bev/bev_projector.cpp
+    ../code/vision/bev/bev_image_segment_connectivity.cpp
     ../code/vision/bev/single_boundary_offset.cpp
     ../code/vision/bev/bev_boundary_row.cpp
     ../code/vision/bev/bev_sample_projection_lut.cpp
@@ -189,6 +190,7 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         bev_simple_perception_test
         ../verification/tests/bev_simple_perception_test.cpp
         ../code/vision/bev/bev_projector.cpp
+        ../code/vision/bev/bev_image_segment_connectivity.cpp
         ../code/vision/bev/single_boundary_offset.cpp
         ../code/vision/bev/bev_boundary_row.cpp
         ../code/vision/bev/bev_sample_projection_lut.cpp

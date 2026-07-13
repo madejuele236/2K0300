@@ -5,6 +5,7 @@
 
 #include "port/perf_counter.hpp"
 #include "vision/bev/bev_reference_path_builder.hpp"
+#include "vision/bev/bev_image_segment_connectivity.hpp"
 #include "vision/bev/bev_sparse_row_scanner.hpp"
 
 namespace ls2k::vision {
@@ -55,7 +56,8 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
         result.boundary_jump_count += row.jumps.size();
         result.boundary_span_count += row.spans.size();
     }
-    result.reference_path = BuildReferencePath(result.rows, params);
+    const BEVImageSegmentConnectivity connectivity(frame, projector, params.bev_boundary);
+    result.reference_path = BuildReferencePath(result.rows, params, connectivity);
     result.reference_mode = ToString(result.reference_path.mode);
     result.reference_source =
         result.reference_path.mode == port::ReferenceMode::kIntervalCenter ? "simple_interval_center" : "none";

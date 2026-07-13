@@ -117,10 +117,9 @@ debug、overlay、media、assistant telemetry 只能序列化事实，不能参�
 
 ### Reference
 
-- `BEVReferencePath` 表达“从 index 0 开始的近端连续控制路径”。
-- 当前 strict builder 不补点、不插值、不跨 gap、不把远端点接回近端。
-- 当前视觉 reference 只能来自 boundary span/trace 生成的近端连续候选。
-- 中间第一处断点之后全部 `present=false`、`source=kNone`。
+- `BEVReferencePath` 的第一个输出点锚定近端原点，后续点保持真实前向位置并紧凑排列。
+- 当前视觉 reference 只能来自通过原图 `Boundary` 连通性约束的 boundary span/trace 候选。
+- blocked、不可观测或 empty row 会被跳过，不终止后续可用候选的收集；builder 不补点、不插值。
 - hold 只能复制上一帧 leading present 段，source 必须重写为 `hold`。
 - hold 是 continuity 层事实，不是视觉事实。
 - hold 不得覆盖 last visual reference。
@@ -202,7 +201,7 @@ sparse BEV row scans / ROI metric sampler / optional BEV element raster
 - detector 只判断当前帧视觉事实，例如 cross / circle / roadblock / ML grounded evidence 是否存在、置信度、BEV metric 位置范围、投影/采样可用性和 reason。
 - detector 不生成 `BEVReferencePath`，不读 hold memory，不读 safety、IMU、encoder、low voltage、actuator 或 yaw memory。
 - candidate builder 是唯一允许把 element evidence 转成 `VisualReferenceCandidate` 的元素层组件。
-- candidate builder 必须构造从 index 0 开始的近端连续 `BEVReferencePath`；不能跨 gap、不能补远端点、不能把 unknown / image border / FOV boundary 当路径事实。
+- candidate builder 必须构造首点锚定近端原点、紧凑排列且保留真实前向位置的 `BEVReferencePath`；不能补造路径点，也不能把 unknown / image border / FOV boundary 当路径事实。
 - candidate 的 `source` / `reason` / `confidence` 只用于 orchestration debug 和仲裁解释，不能被 usability / tracking geometry / readiness / safety / yaw 读取。
 - 第一版新增元素必须默认只进入 evidence/debug；candidate 可以构造但 takeover 默认关闭，直到对应 detector、candidate builder、离线帧和受控发车证据都稳定。
 - ML 只能落成 BEV metric visual evidence；不得绕过 candidate builder 直接输出模式、路径接管结论、速度、转角或 actuator 意图。
