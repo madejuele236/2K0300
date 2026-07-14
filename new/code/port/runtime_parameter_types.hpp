@@ -94,6 +94,8 @@ struct MlRoiParameters {
     int red_v_max = 255;
     double expected_long_edge_m = 0.0;
     double expected_short_edge_m = 0.0;
+    double crop_long_offset_m = 0.0;
+    double crop_forward_offset_m = 0.0;
     double long_edge_tolerance_m = 0.0;
     double short_edge_tolerance_m = 0.0;
     double max_long_edge_to_lateral_rad = 0.0;

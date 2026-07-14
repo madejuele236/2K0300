@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <charconv>
 #include <chrono>
 #include <cmath>
@@ -143,6 +144,8 @@ bool LoadProbeConfig(const std::string& path, ProbeConfig& out, std::string& rea
     ok = ReadInt(roi, "RED_V_MAX", out.roi.red_v_max) && ok;
     ok = ReadDouble(roi, "EXPECTED_LONG_EDGE_M", out.roi.expected_long_edge_m) && ok;
     ok = ReadDouble(roi, "EXPECTED_SHORT_EDGE_M", out.roi.expected_short_edge_m) && ok;
+    ReadDouble(roi, "CROP_LONG_OFFSET_M", out.roi.crop_long_offset_m);
+    ReadDouble(roi, "CROP_FORWARD_OFFSET_M", out.roi.crop_forward_offset_m);
     ok = ReadDouble(roi, "LONG_EDGE_TOLERANCE_M", out.roi.long_edge_tolerance_m) && ok;
     ok = ReadDouble(roi, "SHORT_EDGE_TOLERANCE_M", out.roi.short_edge_tolerance_m) && ok;
     ok = ReadDouble(roi, "MAX_LONG_EDGE_TO_LATERAL_RAD",
@@ -207,6 +210,154 @@ bool SameReplay(const ls2k::port::V9ReplayResult& first,
     return first.valid == second.valid && first.class_id == second.class_id &&
            first.best_distance == second.best_distance && first.margin == second.margin &&
            first.prototype_index == second.prototype_index;
+}
+
+bool LoadSavedYuyv(const std::string& path, std::vector<std::uint8_t>& bytes) {
+    constexpr std::size_t kWidth = 320U;
+    constexpr std::size_t kHeight = 240U;
+    constexpr std::size_t kBytesPerPixel = 2U;
+    constexpr std::size_t kExpectedBytes = kWidth * kHeight * kBytesPerPixel;
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return false;
+    bytes.resize(kExpectedBytes);
+    input.read(reinterpret_cast<char*>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
+    if (input.gcount() != static_cast<std::streamsize>(bytes.size())) return false;
+    char extra = 0;
+    return !input.get(extra);
+}
+
+int RunSavedYuyvBenchmark(int argc,
+                          char** argv,
+                          const ls2k::port::V9ArtifactView& artifact) {
+    if (argc != 6) {
+        std::cerr << "usage: " << argv[0]
+                  << " --saved-yuyv CONFIG_JSON FRAME_YUYV ROI_OUTPUT_PATH ITERATIONS\n";
+        return 2;
+    }
+    int iterations = 0;
+    if (!ParseNonNegativeInt(argv[5], iterations) || iterations == 0) {
+        std::cerr << "ITERATIONS must be a positive integer\n";
+        return 2;
+    }
+    ProbeConfig probe_config{};
+    std::string config_reason;
+    if (!LoadProbeConfig(argv[2], probe_config, config_reason)) {
+        std::cerr << "config invalid path=" << argv[2]
+                  << " reason=" << config_reason << '\n';
+        return 3;
+    }
+    ls2k::vision::BEVProjector projector;
+    if (!projector.Configure(probe_config.projector)) {
+        std::cerr << "projector configure failed id="
+                  << probe_config.projector.projector_id << '\n';
+        return 4;
+    }
+    std::vector<std::uint8_t> frame_bytes;
+    if (!LoadSavedYuyv(argv[3], frame_bytes)) {
+        std::cerr << "saved YUYV must contain exactly 153600 bytes path="
+                  << argv[3] << '\n';
+        return 10;
+    }
+    const ls2k::port::CameraPixelFrameView frame{
+        true, ls2k::port::CameraFrameFormat::kYuyv, frame_bytes.data(),
+        320, 240, 640, 1U, 0U};
+
+    std::uint64_t detector_ns = 0U;
+    std::uint64_t roi_ns = 0U;
+    std::uint64_t descriptor_ns = 0U;
+    std::uint64_t replay_ns = 0U;
+    std::uint64_t total_ns = 0U;
+    std::vector<std::uint64_t> total_samples_ns;
+    total_samples_ns.reserve(static_cast<std::size_t>(iterations));
+    ls2k::port::MlOrientedRectangle rectangle{};
+    ls2k::port::MlGrayRoi32 roi{};
+    ls2k::port::V9Descriptor descriptor{};
+    ls2k::port::V9ReplayResult replay{};
+    ls2k::vision::ml::MlRedRectangleProjectionLut rectangle_projection_lut{};
+    ls2k::port::V9Descriptor expected_descriptor{};
+    ls2k::port::V9ReplayResult expected_replay{};
+    for (int iteration = 0; iteration < iterations; ++iteration) {
+        const Clock::time_point begin = Clock::now();
+        rectangle = ls2k::vision::ml::DetectRedRectangle(
+            frame, projector, probe_config.roi, &rectangle_projection_lut);
+        const Clock::time_point detector_end = Clock::now();
+        roi = ls2k::vision::ml::SampleSquareRoi32(
+            frame, projector, rectangle, probe_config.roi);
+        const Clock::time_point roi_end = Clock::now();
+        descriptor = ls2k::vision::ml::BuildV9Descriptor(roi);
+        const Clock::time_point descriptor_end = Clock::now();
+        replay = ls2k::vision::ml::ReplayV9Descriptor(descriptor, artifact);
+        const Clock::time_point replay_end = Clock::now();
+        if (!rectangle.valid || !roi.valid || !descriptor.valid || !replay.valid) {
+            std::cerr << "saved YUYV production pipeline invalid iteration="
+                      << iteration << '\n';
+            return 11;
+        }
+        if (iteration == 0) {
+            expected_descriptor = descriptor;
+            expected_replay = replay;
+        } else if (descriptor.bytes != expected_descriptor.bytes ||
+                   !SameReplay(replay, expected_replay)) {
+            std::cerr << "saved YUYV parity failure iteration=" << iteration << '\n';
+            return 12;
+        }
+        detector_ns += Elapsed<std::chrono::nanoseconds>(begin, detector_end);
+        roi_ns += Elapsed<std::chrono::nanoseconds>(detector_end, roi_end);
+        descriptor_ns += Elapsed<std::chrono::nanoseconds>(roi_end, descriptor_end);
+        replay_ns += Elapsed<std::chrono::nanoseconds>(descriptor_end, replay_end);
+        const std::uint64_t iteration_total_ns =
+            Elapsed<std::chrono::nanoseconds>(begin, replay_end);
+        total_ns += iteration_total_ns;
+        total_samples_ns.push_back(iteration_total_ns);
+    }
+    if (!SaveRoi(argv[4], roi)) {
+        std::cerr << "ROI output write failed path=" << argv[4] << '\n';
+        return 9;
+    }
+    std::cout << std::fixed << std::setprecision(6)
+              << "saved_yuyv_detector valid=true"
+              << " center_forward_m=" << rectangle.center.forward_m
+              << " center_lateral_m=" << rectangle.center.lateral_m
+              << " long_edge_m=" << rectangle.long_edge_m
+              << " short_edge_m=" << rectangle.short_edge_m
+              << " long_axis_forward=" << rectangle.long_axis_forward
+              << " long_axis_lateral=" << rectangle.long_axis_lateral
+              << " orientation_rad=" << rectangle.long_edge_to_lateral_rad
+              << " rectangularity=" << rectangle.rectangularity
+              << " red_fill_ratio=" << rectangle.red_fill_ratio
+              << " quality=" << rectangle.quality
+              << " component_cells=" << rectangle.component_cells << '\n';
+    std::cout << "saved_yuyv_roi valid=true bytes=" << roi.gray.size()
+              << " path=" << argv[4]
+              << " long_axis_forward=" << roi.long_axis_forward
+              << " long_axis_lateral=" << roi.long_axis_lateral
+              << " forward_normal_forward=" << roi.forward_normal_forward
+              << " forward_normal_lateral=" << roi.forward_normal_lateral << '\n';
+    PrintDescriptor(descriptor);
+    std::cout << "replay valid=true raw_class=" << replay.class_id
+              << " best_distance=" << replay.best_distance
+              << " margin=" << replay.margin
+              << " prototype_index=" << replay.prototype_index << '\n';
+    const double divisor = static_cast<double>(iterations) * 1000.0;
+    std::sort(total_samples_ns.begin(), total_samples_ns.end());
+    const auto percentile_us = [&total_samples_ns](double quantile) {
+        const std::size_t index = static_cast<std::size_t>(std::ceil(
+            quantile * static_cast<double>(total_samples_ns.size()))) - 1U;
+        return total_samples_ns[index] / 1000.0;
+    };
+    std::cout << std::fixed << std::setprecision(3)
+              << "saved_yuyv_summary iterations=" << iterations
+              << " detector_avg_us=" << detector_ns / divisor
+              << " roi_avg_us=" << roi_ns / divisor
+              << " descriptor_avg_us=" << descriptor_ns / divisor
+              << " replay_avg_us=" << replay_ns / divisor
+              << " algorithm_total_avg_us=" << total_ns / divisor
+              << " algorithm_total_p95_us=" << percentile_us(0.95)
+              << " algorithm_total_p99_us=" << percentile_us(0.99)
+              << " algorithm_total_max_us=" << total_samples_ns.back() / 1000.0
+              << " parity=true camera_opened=false runtime_started=false\n";
+    return 0;
 }
 
 int RunSavedRoiBenchmark(int argc,
@@ -318,6 +469,8 @@ void PrintUsage(const char* program) {
               << "CONFIG_JSON must contain BEV_PROJECTOR and ML.ROI using production field names\n";
     std::cerr << "       " << program
               << " --saved-roi MEASURED_ITERATIONS ROI_PATH [ROI_PATH ...]\n";
+    std::cerr << "       " << program
+              << " --saved-yuyv CONFIG_JSON FRAME_YUYV ROI_OUTPUT_PATH ITERATIONS\n";
 }
 
 }  // namespace
@@ -333,6 +486,14 @@ int main(int argc, char** argv) {
             return 5;
         }
         return RunSavedRoiBenchmark(argc, argv, artifact);
+    }
+    if (argc >= 2 && std::string_view(argv[1]) == "--saved-yuyv") {
+        const ls2k::port::V9ArtifactView artifact = ml::generated::Artifact();
+        if (!ml::ValidateV9Artifact(artifact)) {
+            std::cerr << "generated V9 artifact invalid\n";
+            return 5;
+        }
+        return RunSavedYuyvBenchmark(argc, argv, artifact);
     }
 
     if (argc < 3 || argc > 5) {
@@ -421,7 +582,8 @@ int main(int argc, char** argv) {
     const ls2k::port::MlOrientedRectangle rectangle =
         ml::DetectRedRectangle(frame, projector, probe_config.roi);
     const Clock::time_point detector_end = Clock::now();
-    const ls2k::port::MlGrayRoi32 roi = ml::SampleSquareRoi32(frame, projector, rectangle);
+    const ls2k::port::MlGrayRoi32 roi =
+        ml::SampleSquareRoi32(frame, projector, rectangle, probe_config.roi);
     const Clock::time_point roi_end = Clock::now();
     const ls2k::port::V9Descriptor descriptor = ml::BuildV9Descriptor(roi);
     const Clock::time_point descriptor_end = Clock::now();

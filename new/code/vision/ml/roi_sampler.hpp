@@ -3,13 +3,15 @@
 
 #include "port/camera_frame_types.hpp"
 #include "port/ml_types.hpp"
+#include "port/runtime_parameter_types.hpp"
 #include "vision/bev/bev_projector.hpp"
 
 namespace ls2k::vision::ml {
 
 port::MlGrayRoi32 SampleSquareRoi32(const port::CameraPixelFrameView& frame,
                                     const BEVProjector& projector,
-                                    const port::MlOrientedRectangle& rectangle);
+                                    const port::MlOrientedRectangle& rectangle,
+                                    const port::MlRoiParameters& params);
 
 }  // namespace ls2k::vision::ml
 

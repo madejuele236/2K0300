@@ -51,7 +51,8 @@ ls2k::port::CameraPixelFrameView View(const std::vector<std::uint8_t>& bytes) {
 }
 
 void PaintMarker(std::vector<std::uint8_t>& frame, float center_forward,
-                 float center_lateral, float angle) {
+                 float center_lateral, float angle,
+                 float half_long = 0.15F, float half_short = 0.05F) {
     const float long_f = std::sin(angle);
     const float long_l = std::cos(angle);
     const float short_f = std::cos(angle);
@@ -67,10 +68,10 @@ void PaintMarker(std::vector<std::uint8_t>& frame, float center_forward,
                 const float dl = lateral - center_lateral;
                 const float along_long = df * long_f + dl * long_l;
                 const float along_short = df * short_f + dl * short_l;
-                red = red || (std::fabs(along_long) <= 0.15F &&
-                              std::fabs(along_short) <= 0.05F);
+                red = red || (std::fabs(along_long) <= half_long &&
+                              std::fabs(along_short) <= half_short);
             }
-            if (red) SetYuyvPair(frame, row, pair, 100, 50, 100, 200);
+            if (red) SetYuyvPair(frame, row, pair, 160, 90, 160, 205);
         }
     }
 }
@@ -82,14 +83,14 @@ ls2k::port::MlRoiParameters DetectorParameters() {
     params.search_lateral_limit_m = 0.35;
     params.grid_forward_step_m = 0.01;
     params.grid_lateral_step_m = 0.01;
-    params.red_y_min = 90; params.red_y_max = 110;
-    params.red_u_min = 40; params.red_u_max = 60;
-    params.red_v_min = 190; params.red_v_max = 210;
+    params.red_y_min = 45; params.red_y_max = 230;
+    params.red_u_min = 70; params.red_u_max = 135;
+    params.red_v_min = 140; params.red_v_max = 220;
     params.expected_long_edge_m = 0.30;
     params.expected_short_edge_m = 0.10;
     params.long_edge_tolerance_m = 0.04;
     params.short_edge_tolerance_m = 0.04;
-    params.max_long_edge_to_lateral_rad = 0.35;
+    params.max_long_edge_to_lateral_rad = 0.7853982;
     params.min_component_cells = 100;
     params.min_rectangularity = 0.75;
     params.min_red_fill_ratio = 0.70;
@@ -123,11 +124,66 @@ void TestTiltedDetectionAndTieBreak() {
                      std::atan2(std::fabs(rectangle.long_axis_forward),
                                 std::fabs(rectangle.long_axis_lateral))) < 1.0e-5F,
            "rectangle orientation telemetry mismatch");
+    ls2k::vision::ml::MlRedRectangleProjectionLut projection_lut{};
+    const auto cached_first = ls2k::vision::ml::DetectRedRectangle(
+        View(frame), MakeProjector(), DetectorParameters(), &projection_lut);
+    const auto cached_second = ls2k::vision::ml::DetectRedRectangle(
+        View(frame), MakeProjector(), DetectorParameters(), &projection_lut);
+    Expect(projection_lut.valid && cached_first.valid && cached_second.valid &&
+               cached_first.center.forward_m == rectangle.center.forward_m &&
+               cached_second.center.lateral_m == rectangle.center.lateral_m,
+           "cached ML projection grid must preserve detector output exactly");
     Expect(rectangle.center.forward_m < 0.4F,
            "equal-quality markers must select the nearer forward target");
 }
 
-void TestRoiForwardDirectionAndAxisCanonicalization() {
+void TestPositiveAndNegativeFortyFiveDegreeDetection() {
+    constexpr float kFortyFiveDegrees = 0.7853981633974483F;
+    for (const float angle : {kFortyFiveDegrees, -kFortyFiveDegrees}) {
+        std::vector<std::uint8_t> frame(80U * 160U, 0U);
+        for (int row = 0; row < 80; ++row) {
+            for (int pair = 0; pair < 40; ++pair) {
+                SetYuyvPair(frame, row, pair, 220, 128, 220, 128);
+            }
+        }
+        PaintMarker(frame, 0.38F, 0.0F, angle);
+        const auto rectangle = ls2k::vision::ml::DetectRedRectangle(
+            View(frame), MakeProjector(), DetectorParameters());
+        Expect(rectangle.valid, "plus/minus 45 degree red rectangle should be detected");
+        Expect(std::fabs(rectangle.long_edge_to_lateral_rad - kFortyFiveDegrees) < 0.03F,
+               "detected 45 degree orientation is outside grid tolerance");
+    }
+}
+
+void TestExpandedRedRangeRejectsNonRedAndWrongSizeDistractors() {
+    for (const std::array<std::uint8_t, 3> yuv :
+         {std::array<std::uint8_t, 3>{220, 128, 128},
+          std::array<std::uint8_t, 3>{180, 90, 135},
+          std::array<std::uint8_t, 3>{160, 150, 205}}) {
+        std::vector<std::uint8_t> frame(80U * 160U, 0U);
+        for (int row = 0; row < 80; ++row) {
+            for (int pair = 0; pair < 40; ++pair) {
+                SetYuyvPair(frame, row, pair, yuv[0], yuv[1], yuv[0], yuv[2]);
+            }
+        }
+        const auto rectangle = ls2k::vision::ml::DetectRedRectangle(
+            View(frame), MakeProjector(), DetectorParameters());
+        Expect(!rectangle.valid, "non-red frame must not produce a rectangle");
+    }
+
+    std::vector<std::uint8_t> small_red(80U * 160U, 0U);
+    for (int row = 0; row < 80; ++row) {
+        for (int pair = 0; pair < 40; ++pair) {
+            SetYuyvPair(small_red, row, pair, 220, 128, 220, 128);
+        }
+    }
+    PaintMarker(small_red, 0.38F, 0.0F, 0.0F, 0.03F, 0.01F);
+    const auto rectangle = ls2k::vision::ml::DetectRedRectangle(
+        View(small_red), MakeProjector(), DetectorParameters());
+    Expect(!rectangle.valid, "wrong-size red distractor must not produce a rectangle");
+}
+
+void TestRoiTopRowIsFarthestForwardAndAxisCanonicalization() {
     std::vector<std::uint8_t> frame(80U * 160U, 0U);
     for (int row = 0; row < 80; ++row) {
         for (int pair = 0; pair < 40; ++pair) {
@@ -144,19 +200,27 @@ void TestRoiForwardDirectionAndAxisCanonicalization() {
     marker.short_edge_m = 0.10F;
     marker.long_axis_forward = 0.0F;
     marker.long_axis_lateral = 1.0F;
+    const auto params = DetectorParameters();
     const auto first = ls2k::vision::ml::SampleSquareRoi32(
-        View(frame), MakeProjector(), marker);
+        View(frame), MakeProjector(), marker, params);
     Expect(first.valid, "forward square ROI should be sampleable");
     Expect(first.frame_id == 77 && std::string(first.reason) == "ok",
            "ROI observation must retain frame identity and sampling validity");
     const int first_row = first.gray[16];
     const int last_row = first.gray[31 * 32 + 16];
-    Expect(last_row > first_row + 20, "ROI rows must extend along vehicle forward");
+    Expect(first_row > last_row + 20,
+           "ROI row 0 must sample farther forward than row 31");
     marker.long_axis_lateral = -1.0F;
     const auto reversed = ls2k::vision::ml::SampleSquareRoi32(
-        View(frame), MakeProjector(), marker);
+        View(frame), MakeProjector(), marker, params);
     Expect(reversed.valid && reversed.gray == first.gray,
            "long-axis sign must not mirror classifier input");
+    marker.long_edge_m = 0.34F;
+    marker.short_edge_m = 0.13F;
+    const auto quantized_observation = ls2k::vision::ml::SampleSquareRoi32(
+        View(frame), MakeProjector(), marker, params);
+    Expect(quantized_observation.valid && quantized_observation.gray == first.gray,
+           "ROI crop size must use calibrated marker truth, not grid-quantized box edges");
 }
 
 }  // namespace
@@ -164,7 +228,9 @@ void TestRoiForwardDirectionAndAxisCanonicalization() {
 int main() {
     try {
         TestTiltedDetectionAndTieBreak();
-        TestRoiForwardDirectionAndAxisCanonicalization();
+        TestPositiveAndNegativeFortyFiveDegreeDetection();
+        TestExpandedRedRangeRejectsNonRedAndWrongSizeDistractors();
+        TestRoiTopRowIsFarthestForwardAndAxisCanonicalization();
     } catch (const std::exception& error) {
         std::cerr << "ml_rectangle_roi_test failed: " << error.what() << '\n';
         return 1;

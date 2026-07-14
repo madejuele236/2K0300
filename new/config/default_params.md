@@ -360,6 +360,11 @@ and cooldown may be zero.
 `CONFIRM_FRAMES>=1`. `ML.CLASS_MAPPING` is separate from acceptance. Each class
 maps to one of `straight`, `left`, `right`, or `unmapped`; defaults are class 0
 straight, class 1 left, and class 2 right. Duplicate mappings are permitted.
+The calibrated default uses `CONFIRM_FRAMES=3`: the current live vehicle run
+started with nine consecutive class-1 frames and therefore locks vehicle on
+frame 3 before later isolated class-2 noise; the scene already stops inference
+after this lock, so this is the intended confirmation contract rather than a
+post-classification remap.
 
 The current disabled-by-default ML ROI calibration consumes the corrected BEV
 metric directly. Its marker truth is `EXPECTED_LONG_EDGE_M=0.120` and
@@ -370,6 +375,24 @@ projector scale about vehicle origin `(0,0)` to
 was removed because one value cannot represent two different axis scales;
 the corrected contract is `GRID_FORWARD_STEP_M=0.0039132085` and
 `GRID_LATERAL_STEP_M=0.0033086444`. No ML-only scale compensation exists.
+The calibrated red interval is `Y=[45,230]`, `U=[70,135]`, and `V=[140,220]`.
+It covers the measured illuminated marker envelope (`Y=[61,222]`,
+`U=[75,126]`, `V=[145,210]`) while retaining chroma bounds that reject the
+white paper and non-red search-area background. Rectangle dimensions,
+component size, rectangularity, fill ratio, and orientation remain mandatory
+acceptance gates; color alone never emits an ML rectangle. The long edge may
+rotate by at most `0.7853982rad` (`45deg`, rounded outward to the detector's
+`float` angle representation) from the vehicle lateral
+axis, symmetrically in either direction.
+The classifier crop keeps the calibrated `0.120m` square size and applies two
+explicit marker-frame registration offsets: `CROP_LONG_OFFSET_M=0.0` and
+`CROP_FORWARD_OFFSET_M=-0.00375`. They move the sampled square by one 32x32
+pixel toward the marker with no lateral/long-axis bias. These values were
+selected from a joint replay over 16 earlier, 12 current, and 16 subsequent
+live-board ROIs: this registration classified `43/44` as vehicle and all
+`16/16` most recent live ROIs, whereas the unregistered crop crossed the
+vehicle/weapon boundary. They are
+crop registration, not a class threshold or model/mapping change.
 
 CircleV2's active metric constants were converted at their owner: the center
 sample forward gap is `0.130440284m`, lateral opening threshold is

@@ -847,6 +847,10 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header, ml.roi.expected_long_edge_m);
     header << ",\"EXPECTED_SHORT_EDGE_M\":";
     AppendJsonNumber(header, ml.roi.expected_short_edge_m);
+    header << ",\"CROP_LONG_OFFSET_M\":";
+    AppendJsonNumber(header, ml.roi.crop_long_offset_m);
+    header << ",\"CROP_FORWARD_OFFSET_M\":";
+    AppendJsonNumber(header, ml.roi.crop_forward_offset_m);
     header << ",\"LONG_EDGE_TOLERANCE_M\":";
     AppendJsonNumber(header, ml.roi.long_edge_tolerance_m);
     header << ",\"SHORT_EDGE_TOLERANCE_M\":";

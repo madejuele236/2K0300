@@ -8,6 +8,7 @@
 #include "port/visual_reference_orchestration_types.hpp"
 #include "vision/bev/bev_road_path_facts.hpp"
 #include "vision/bev/bev_projector.hpp"
+#include "vision/ml/red_rectangle_detector.hpp"
 
 namespace ls2k::vision::ml {
 
@@ -16,6 +17,7 @@ struct MlSceneInput {
     const BEVProjector* projector = nullptr;
     const BEVRoadPathFacts* road_path_facts = nullptr;
     const port::MotionHistory* motion_history = nullptr;
+    MlRedRectangleProjectionLut* rectangle_projection_lut = nullptr;
     port::V9ArtifactView artifact{};
     uint64_t capture_time_ms = 0;
 };

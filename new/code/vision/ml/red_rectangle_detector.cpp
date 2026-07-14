@@ -77,6 +77,65 @@ float UnitScore(float error, float tolerance) {
     return std::clamp(1.0F - error / tolerance, 0.0F, 1.0F);
 }
 
+bool SameCalibration(const port::BEVProjectorCalibration& lhs,
+                     const port::BEVProjectorCalibration& rhs) {
+    if (lhs.valid != rhs.valid || lhs.projector_id != rhs.projector_id ||
+        lhs.projector_hash != rhs.projector_hash) return false;
+    for (std::size_t index = 0; index < port::kBevCalibrationPointCount; ++index) {
+        if (lhs.source_points[index].row_px != rhs.source_points[index].row_px ||
+            lhs.source_points[index].col_px != rhs.source_points[index].col_px ||
+            lhs.target_points[index].forward_m != rhs.target_points[index].forward_m ||
+            lhs.target_points[index].lateral_m != rhs.target_points[index].lateral_m) return false;
+    }
+    return true;
+}
+
+bool EnsureProjectionLut(MlRedRectangleProjectionLut& lut,
+                         const port::CameraPixelFrameView& frame,
+                         const BEVProjector& projector,
+                         const port::MlRoiParameters& params,
+                         int rows,
+                         int cols) {
+    const bool matches = lut.valid && lut.frame_width == frame.width &&
+        lut.frame_height == frame.height && lut.rows == rows && lut.cols == cols &&
+        lut.search_forward_min_m == params.search_forward_min_m &&
+        lut.search_forward_max_m == params.search_forward_max_m &&
+        lut.search_lateral_limit_m == params.search_lateral_limit_m &&
+        lut.grid_forward_step_m == params.grid_forward_step_m &&
+        lut.grid_lateral_step_m == params.grid_lateral_step_m &&
+        SameCalibration(lut.calibration, projector.Calibration()) &&
+        lut.entries.size() == static_cast<std::size_t>(rows * cols);
+    if (matches) return true;
+    MlRedRectangleProjectionLut rebuilt{};
+    rebuilt.valid = true;
+    rebuilt.calibration = projector.Calibration();
+    rebuilt.frame_width = frame.width;
+    rebuilt.frame_height = frame.height;
+    rebuilt.rows = rows;
+    rebuilt.cols = cols;
+    rebuilt.search_forward_min_m = params.search_forward_min_m;
+    rebuilt.search_forward_max_m = params.search_forward_max_m;
+    rebuilt.search_lateral_limit_m = params.search_lateral_limit_m;
+    rebuilt.grid_forward_step_m = params.grid_forward_step_m;
+    rebuilt.grid_lateral_step_m = params.grid_lateral_step_m;
+    rebuilt.entries.resize(static_cast<std::size_t>(rows * cols));
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            auto& entry = rebuilt.entries[static_cast<std::size_t>(row * cols + col)];
+            entry.forward_m = static_cast<float>(
+                params.search_forward_min_m + row * params.grid_forward_step_m);
+            entry.lateral_m = static_cast<float>(
+                -params.search_lateral_limit_m + col * params.grid_lateral_step_m);
+            entry.sampleable = projector.ProjectVehicleToImage(
+                {entry.forward_m, entry.lateral_m}, entry.image) &&
+                entry.image.row_px >= 0.0F && entry.image.col_px >= 0.0F &&
+                entry.image.row_px <= frame.height - 1 && entry.image.col_px <= frame.width - 1;
+        }
+    }
+    lut = std::move(rebuilt);
+    return true;
+}
+
 port::MlOrientedRectangle MeasureComponent(const std::vector<int>& indexes,
                                             const std::vector<Cell>& grid,
                                             float forward_step,
@@ -192,7 +251,8 @@ port::MlOrientedRectangle MeasureComponent(const std::vector<int>& indexes,
 
 port::MlOrientedRectangle DetectRedRectangle(const port::CameraPixelFrameView& frame,
                                               const BEVProjector& projector,
-                                              const port::MlRoiParameters& params) {
+                                              const port::MlRoiParameters& params,
+                                              MlRedRectangleProjectionLut* projection_lut) {
     port::MlOrientedRectangle best{};
     best.frame_id = frame.frame_id;
     best.capture_time_ms = frame.capture_time_ms;
@@ -207,18 +267,19 @@ port::MlOrientedRectangle DetectRedRectangle(const port::CameraPixelFrameView& f
     const int cols = static_cast<int>(std::floor(
         (2.0 * params.search_lateral_limit_m) / params.grid_lateral_step_m)) + 1;
     if (rows <= 0 || cols <= 0) return best;
+    MlRedRectangleProjectionLut local_lut{};
+    MlRedRectangleProjectionLut& lut = projection_lut == nullptr ? local_lut : *projection_lut;
+    if (!EnsureProjectionLut(lut, frame, projector, params, rows, cols)) return best;
     std::vector<Cell> grid(static_cast<std::size_t>(rows * cols));
     for (int row = 0; row < rows; ++row) {
         for (int col = 0; col < cols; ++col) {
             Cell& cell = grid[static_cast<std::size_t>(row * cols + col)];
-            cell.forward = static_cast<float>(
-                params.search_forward_min_m + row * params.grid_forward_step_m);
-            cell.lateral = static_cast<float>(
-                -params.search_lateral_limit_m + col * params.grid_lateral_step_m);
-            port::ImagePoint image{};
+            const auto& projection = lut.entries[static_cast<std::size_t>(row * cols + col)];
+            cell.forward = projection.forward_m;
+            cell.lateral = projection.lateral_m;
             CameraColorSample color{};
-            cell.red = projector.ProjectVehicleToImage({cell.forward, cell.lateral}, image) &&
-                       SampleColorAt(frame, image.row_px, image.col_px, color) &&
+            cell.red = projection.sampleable &&
+                       SampleColorAt(frame, projection.image.row_px, projection.image.col_px, color) &&
                        InRange(color.y, params.red_y_min, params.red_y_max) &&
                        InRange(color.u, params.red_u_min, params.red_u_max) &&
                        InRange(color.v, params.red_v_min, params.red_v_max);

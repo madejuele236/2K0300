@@ -19,10 +19,13 @@ port::MlGrayRoi32 InvalidRoi(const port::CameraPixelFrameView& frame,
 
 port::MlGrayRoi32 SampleSquareRoi32(const port::CameraPixelFrameView& frame,
                                     const BEVProjector& projector,
-                                    const port::MlOrientedRectangle& rectangle) {
+                                    const port::MlOrientedRectangle& rectangle,
+                                    const port::MlRoiParameters& params) {
     port::MlGrayRoi32 out{};
     if (!frame.Valid() || frame.format != port::CameraFrameFormat::kYuyv ||
-        !projector.Valid() || !rectangle.valid || rectangle.long_edge_m <= 0.0F) {
+        !projector.Valid() || !rectangle.valid ||
+        !(params.expected_long_edge_m > 0.0) ||
+        !(params.expected_short_edge_m > 0.0)) {
         return InvalidRoi(frame, "invalid_input");
     }
     const float axis_norm = std::hypot(rectangle.long_axis_forward, rectangle.long_axis_lateral);
@@ -45,14 +48,26 @@ port::MlGrayRoi32 SampleSquareRoi32(const port::CameraPixelFrameView& frame,
         nl = -nl;
     }
     const float edge_center_forward =
-        rectangle.center.forward_m + 0.5F * rectangle.short_edge_m * nf;
+        rectangle.center.forward_m +
+        (0.5F * static_cast<float>(params.expected_short_edge_m) +
+         static_cast<float>(params.crop_forward_offset_m)) * nf +
+        static_cast<float>(params.crop_long_offset_m) * lf;
     const float edge_center_lateral =
-        rectangle.center.lateral_m + 0.5F * rectangle.short_edge_m * nl;
+        rectangle.center.lateral_m +
+        (0.5F * static_cast<float>(params.expected_short_edge_m) +
+         static_cast<float>(params.crop_forward_offset_m)) * nl +
+        static_cast<float>(params.crop_long_offset_m) * ll;
+    const float square_edge_m = static_cast<float>(params.expected_long_edge_m);
     for (int row = 0; row < port::kMlRoiSide; ++row) {
+        // Preserve normal raster orientation: the top output row is the
+        // farthest point along the vehicle-forward normal, while the bottom
+        // row is nearest the marker's forward edge.
         const float along_forward =
-            ((row + 0.5F) / port::kMlRoiSide) * rectangle.long_edge_m;
+            ((port::kMlRoiSide - row - 0.5F) / port::kMlRoiSide) *
+            square_edge_m;
         for (int col = 0; col < port::kMlRoiSide; ++col) {
-            const float along_long = ((col + 0.5F) / port::kMlRoiSide - 0.5F) * rectangle.long_edge_m;
+            const float along_long =
+                ((col + 0.5F) / port::kMlRoiSide - 0.5F) * square_edge_m;
             const port::BEVPoint point{
                 edge_center_forward + along_long * lf + along_forward * nf,
                 edge_center_lateral + along_long * ll + along_forward * nl};

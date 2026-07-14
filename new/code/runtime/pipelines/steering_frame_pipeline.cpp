@@ -244,6 +244,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
                                       port::DiagnosticSink& diagnostics) {
     projector_configured_ = projector_.Configure(params.bev_projector);
     sample_lut_ = {};
+    ml_rectangle_lut_ = {};
     diagnostics.Emit({projector_configured_ ? port::DiagnosticLevel::kInfo
                                             : port::DiagnosticLevel::kFailSafe,
                       projector_configured_ ? "perception.projector.configured"
@@ -305,6 +306,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         ml_input.projector = &projector_;
         ml_input.road_path_facts = &current_facts.road_path_facts;
         ml_input.motion_history = &motion_history;
+        ml_input.rectangle_projection_lut = &ml_rectangle_lut_;
         ml_input.artifact = vision::ml::generated::Artifact();
         ml_input.capture_time_ms = capture.capture_time_ms;
         const vision::ml::MlSceneResult ml_result =

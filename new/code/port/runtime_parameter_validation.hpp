@@ -88,6 +88,10 @@ inline bool ValidateMlParameters(const MlParameters& params,
            std::isfinite(roi.expected_long_edge_m) && roi.expected_long_edge_m > 0.0 &&
            std::isfinite(roi.expected_short_edge_m) && roi.expected_short_edge_m > 0.0 &&
            roi.expected_long_edge_m >= roi.expected_short_edge_m &&
+           std::isfinite(roi.crop_long_offset_m) &&
+           std::fabs(roi.crop_long_offset_m) <= roi.expected_long_edge_m &&
+           std::isfinite(roi.crop_forward_offset_m) &&
+           std::fabs(roi.crop_forward_offset_m) <= roi.expected_long_edge_m &&
            std::isfinite(roi.long_edge_tolerance_m) && roi.long_edge_tolerance_m > 0.0 &&
            std::isfinite(roi.short_edge_tolerance_m) && roi.short_edge_tolerance_m > 0.0 &&
            FiniteInRange(roi.max_long_edge_to_lateral_rad, 1.0e-12, 1.5707963267948966) &&

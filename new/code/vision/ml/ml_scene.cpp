@@ -166,14 +166,18 @@ MlSceneResult StepMlScene(const MlSceneInput& input,
     }
     const MlClock::time_point total_start = MlClock::now();
     const MlClock::time_point detector_start = total_start;
-    out.telemetry.detector = DetectRedRectangle(*input.frame, *input.projector, params.ml.roi);
+    out.telemetry.detector = DetectRedRectangle(*input.frame,
+                                                *input.projector,
+                                                params.ml.roi,
+                                                input.rectangle_projection_lut);
     const MlClock::time_point detector_end = MlClock::now();
     out.telemetry.detector_us = ElapsedUs(detector_start, detector_end);
     out.telemetry.detector_valid = out.telemetry.detector.valid;
     const MlClock::time_point roi_start = detector_end;
     if (out.telemetry.detector.valid) {
         out.telemetry.roi = SampleSquareRoi32(*input.frame, *input.projector,
-                                             out.telemetry.detector);
+                                             out.telemetry.detector,
+                                             params.ml.roi);
     }
     const MlClock::time_point roi_end = MlClock::now();
     out.telemetry.roi_us = ElapsedUs(roi_start, roi_end);

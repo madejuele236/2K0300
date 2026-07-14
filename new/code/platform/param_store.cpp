@@ -844,6 +844,8 @@ void ReadMlParams(const cv::FileNode& root,
             ReadOptionalInt(roi, "RED_V_MAX", parsed.ml.roi.red_v_max, optional_malformed);
             ReadOptionalNumber(roi, "EXPECTED_LONG_EDGE_M", parsed.ml.roi.expected_long_edge_m, optional_malformed);
             ReadOptionalNumber(roi, "EXPECTED_SHORT_EDGE_M", parsed.ml.roi.expected_short_edge_m, optional_malformed);
+            ReadOptionalNumber(roi, "CROP_LONG_OFFSET_M", parsed.ml.roi.crop_long_offset_m, optional_malformed);
+            ReadOptionalNumber(roi, "CROP_FORWARD_OFFSET_M", parsed.ml.roi.crop_forward_offset_m, optional_malformed);
             ReadOptionalNumber(roi, "LONG_EDGE_TOLERANCE_M", parsed.ml.roi.long_edge_tolerance_m, optional_malformed);
             ReadOptionalNumber(roi, "SHORT_EDGE_TOLERANCE_M", parsed.ml.roi.short_edge_tolerance_m, optional_malformed);
             ReadOptionalNumber(roi, "MAX_LONG_EDGE_TO_LATERAL_RAD", parsed.ml.roi.max_long_edge_to_lateral_rad, optional_malformed);

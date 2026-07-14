@@ -146,6 +146,7 @@ int main(int argc, char** argv) {
                       "\"RED_U_MIN\": 10,\"RED_U_MAX\": 120,"
                       "\"RED_V_MIN\": 130,\"RED_V_MAX\": 250,"
                       "\"EXPECTED_LONG_EDGE_M\": 0.2,\"EXPECTED_SHORT_EDGE_M\": 0.1,"
+                      "\"CROP_LONG_OFFSET_M\": -0.004,\"CROP_FORWARD_OFFSET_M\": -0.005,"
                       "\"LONG_EDGE_TOLERANCE_M\": 0.05,\"SHORT_EDGE_TOLERANCE_M\": 0.03,"
                       "\"MAX_LONG_EDGE_TO_LATERAL_RAD\": 0.3,"
                       "\"MIN_COMPONENT_CELLS\": 4,\"MIN_RECTANGULARITY\": 0.5,"
@@ -219,6 +220,8 @@ int main(int argc, char** argv) {
         Expect(std::abs(enabled.ml.roi.grid_forward_step_m - 0.02) < 1.0e-9 &&
                    std::abs(enabled.ml.roi.grid_lateral_step_m - 0.03) < 1.0e-9 &&
                    std::abs(enabled.ml.roi.expected_long_edge_m - 0.2) < 1.0e-9 &&
+                   std::abs(enabled.ml.roi.crop_long_offset_m + 0.004) < 1.0e-9 &&
+                   std::abs(enabled.ml.roi.crop_forward_offset_m + 0.005) < 1.0e-9 &&
                    std::abs(enabled.ml.maneuver.speed_target - 100.0) < 1.0e-9,
                "ML ROI and maneuver parameters should parse");
         Expect(std::abs(enabled.bev_geometry.nominal_road_half_width_m - 0.33F) <
