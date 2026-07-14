@@ -90,6 +90,18 @@ void TestDisabledAndEnabledValidation() {
     maneuver.max_duration_ms = 1000; maneuver.max_integration_gap_ms = 20;
     Expect(ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),
            "complete enabled ML parameters must validate");
+    params.ml.tflite_identity.min_margin = 260100;
+    params.ml.tflite_identity.max_best_distance = 260100;
+    Expect(ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),
+           "TFLite identity squared-L2 limits must accept the d4 mathematical maximum");
+    params.ml.tflite_identity.max_best_distance = 260101;
+    Expect(!ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),
+           "TFLite identity distance must reject values beyond the d4 squared-L2 maximum");
+    params.ml.tflite_identity.max_best_distance = 2076;
+    params.ml.tflite_identity.min_margin = 260101;
+    Expect(!ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),
+           "TFLite identity margin must reject values beyond the d4 squared-L2 maximum");
+    params.ml.tflite_identity.min_margin = 1;
     std::swap(roi.expected_long_edge_m, roi.expected_short_edge_m);
     Expect(!ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),
            "enabled ML must reject inverted expected long/short edges");
@@ -154,12 +166,51 @@ void TestDescriptorReplayAcceptanceAndMapping() {
     classification.margin = result.margin;
     classification.distance_valid = true;
     classification.best_distance = result.best_distance;
-    Expect(ls2k::vision::ml::AcceptMlClassification(classification, acceptance),
+    ls2k::port::MlParameters ml_params{};
+    ml_params.v9 = acceptance;
+    const auto v9_policy = ls2k::vision::ml::SelectMlClassificationPolicy(
+        ls2k::port::MlClassifierBackend::kV9Hamming, ml_params);
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, v9_policy),
            "generic acceptance must preserve V9 distance and margin gates");
     classification.distance_valid = false;
     classification.best_distance = 126;
-    Expect(ls2k::vision::ml::AcceptMlClassification(classification, acceptance),
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, v9_policy),
            "non-distance classifier must not inherit the V9 Hamming distance gate");
+
+    ml_params.v9.max_best_distance = 126;
+    ml_params.v9.confirm_frames = 2;
+    ml_params.tflite_identity.min_margin = 1;
+    ml_params.tflite_identity.max_best_distance = 2076;
+    ml_params.tflite_identity.confirm_frames = 3;
+    classification.backend = ls2k::port::MlClassifierBackend::kTfliteInt8;
+    classification.margin = 1;
+    classification.distance_valid = true;
+    classification.best_distance = 2076;
+    const auto tflite_policy = ls2k::vision::ml::SelectMlClassificationPolicy(
+        classification.backend, ml_params);
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, tflite_policy),
+           "TFLite identity must accept the calibrated artifact maximum above 126");
+    Expect(tflite_policy.confirm_frames == 3 && v9_policy.confirm_frames == 2,
+           "confirmation must be selected independently by classifier backend");
+    classification.best_distance = 2077;
+    Expect(!ls2k::vision::ml::AcceptMlClassification(classification, tflite_policy),
+           "TFLite identity must reject distance above its own configured threshold");
+    classification.best_distance = 127;
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, tflite_policy),
+           "TFLite identity distance units must not inherit the V9 126-bit ceiling");
+    classification.backend = ls2k::port::MlClassifierBackend::kV9Hamming;
+    const auto calibrated_v9_policy = ls2k::vision::ml::SelectMlClassificationPolicy(
+        classification.backend, ml_params);
+    classification.best_distance = 126;
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, calibrated_v9_policy),
+           "V9 must continue accepting Hamming distance at 126");
+    classification.best_distance = 127;
+    Expect(!ls2k::vision::ml::AcceptMlClassification(classification, calibrated_v9_policy),
+           "V9 must continue rejecting Hamming distance above 126");
+    classification.backend = ls2k::port::MlClassifierBackend::kTfliteInt8;
+    classification.distance_valid = false;
+    Expect(!ls2k::vision::ml::AcceptMlClassification(classification, tflite_policy),
+           "TFLite identity must not silently bypass its squared-L2 distance gate");
     ls2k::port::MlClassMappingParameters mapping{};
     Expect(ls2k::vision::ml::MapMlClass(0, mapping) == ls2k::port::MlAction::kStraight &&
            ls2k::vision::ml::MapMlClass(1, mapping) == ls2k::port::MlAction::kLeft &&

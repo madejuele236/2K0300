@@ -360,6 +360,18 @@ and cooldown may be zero.
 `CONFIRM_FRAMES>=1`. `ML.CLASS_MAPPING` is separate from acceptance. Each class
 maps to one of `straight`, `left`, `right`, or `unmapped`; defaults are class 0
 straight, class 1 left, and class 2 right. Duplicate mappings are permitted.
+
+`ML.TFLITE_IDENTITY` is an independent startup-only acceptance and confirmation
+contract for the d4 identity backend. Its `MIN_MARGIN` and
+`MAX_BEST_DISTANCE` are squared-L2 values over four signed-int8 coordinates,
+so each validates in `[0,260100]` (`4*255^2`); `CONFIRM_FRAMES` must be at least
+one. The frozen artifact calibration sets `MIN_MARGIN=1`,
+`MAX_BEST_DISTANCE=2076`, and `CONFIRM_FRAMES=3`: the supplied 6688-sample NPZ
+has minimum correct margin 1 and maximum correct winning distance 2076, while
+1226 correct samples exceed the unrelated V9 Hamming ceiling 126. Scene policy
+selects this group explicitly for `tflite_int8` and continues selecting
+`ML.V9` for `v9_hamming`; the two distance units are never shared.
+
 The calibrated default uses `CONFIRM_FRAMES=3`: the current live vehicle run
 started with nine consecutive class-1 frames and therefore locks vehicle on
 frame 3 before later isolated class-2 noise; the scene already stops inference

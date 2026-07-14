@@ -206,6 +206,25 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.frame_id = 7;
     snapshot.steering.capture_time_ms = 88;
     snapshot.steering.threshold = 91;
+    snapshot.steering.ml.enabled = true;
+    snapshot.steering.ml.detector_valid = true;
+    snapshot.steering.ml.detector.frame_id = 7;
+    snapshot.steering.ml.detector.center = {0.15F, -0.03F};
+    snapshot.steering.ml.detector.long_edge_m = 0.12F;
+    snapshot.steering.ml.detector.short_edge_m = 0.05F;
+    snapshot.steering.ml.roi.valid = true;
+    snapshot.steering.ml.roi.frame_id = 7;
+    snapshot.steering.ml.roi.reason = "ok";
+    snapshot.steering.ml.classification.valid = true;
+    snapshot.steering.ml.classification.backend = ls2k::port::MlClassifierBackend::kTfliteInt8;
+    snapshot.steering.ml.classification.class_id = 1;
+    snapshot.steering.ml.classification.margin = 41;
+    snapshot.steering.ml.classification.distance_valid = true;
+    snapshot.steering.ml.classification.best_distance = 127;
+    snapshot.steering.ml.mapped_action = ls2k::port::MlAction::kLeft;
+    snapshot.steering.ml.phase = ls2k::port::MlScenePhase::kCandidate;
+    snapshot.steering.ml.reason = "confirming";
+    snapshot.steering.ml.confirm_count = 2;
     snapshot.steering.perception_health.projector_ok = true;
     snapshot.steering.perception_health.reason = "ok";
     snapshot.steering.element_evidence.cross_exit.present = true;
@@ -326,6 +345,15 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     const std::string& message = diagnostics.events[1].message;
     Require(diagnostics.events[1].code == "control.steering_snapshot",
             "second diagnostic must be control.steering_snapshot");
+    Require(Contains(message, "ml.detector_valid=true") &&
+                Contains(message, "ml.roi.valid=true") &&
+                Contains(message, "ml.classification.backend=tflite_int8") &&
+                Contains(message, "ml.classification.class_id=1") &&
+                Contains(message, "ml.classification.best_distance=127") &&
+                Contains(message, "ml.mapped_action=left") &&
+                Contains(message, "ml.phase=candidate") &&
+                Contains(message, "ml.confirm_count=2"),
+            "steering snapshot must expose the ML detector-to-scene evidence chain");
     Require(Contains(message, "eligibility.leading_min_forward_m=0.061"),
             "steering snapshot must expose leading minimum forward distance");
     Require(Contains(message, "eligibility.leading_max_forward_m=0.25"),
@@ -503,6 +531,9 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.ml.roi.grid_forward_step_m = 0.004;
     config.param_snapshot.ml.roi.grid_lateral_step_m = 0.0035;
     config.param_snapshot.ml.v9.confirm_frames = 4;
+    config.param_snapshot.ml.tflite_identity.min_margin = 7;
+    config.param_snapshot.ml.tflite_identity.max_best_distance = 2076;
+    config.param_snapshot.ml.tflite_identity.confirm_frames = 5;
     config.param_snapshot.ml.class_mapping.class_1_action = "left";
     config.param_snapshot.ml.maneuver.speed_target = 77.0;
 
@@ -638,6 +669,9 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include ML lateral grid step");
     Require(Contains(header_json, "\"CONFIRM_FRAMES\":4"),
             "config snapshot must include ML V9 parameters");
+    Require(Contains(header_json,
+                     "\"TFLITE_IDENTITY\":{\"MIN_MARGIN\":7,\"MAX_BEST_DISTANCE\":2076,\"CONFIRM_FRAMES\":5}"),
+            "config snapshot must include independent TFLite identity policy");
     Require(Contains(header_json, "\"CLASS_1_ACTION\":\"left\""),
             "config snapshot must include ML class mapping");
     Require(Contains(header_json, "\"SPEED_TARGET\":77"),

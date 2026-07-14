@@ -155,6 +155,21 @@ void TestSceneOwnsMappedActionConfirmation() {
            "same mapped right action must confirm on the configured frame");
 }
 
+void TestScenePolicyIsBackendSpecific() {
+    auto params = MakeParams();
+    params.ml.v9.max_best_distance = 126;
+    params.ml.v9.confirm_frames = 2;
+    params.ml.tflite_identity.max_best_distance = 2076;
+    params.ml.tflite_identity.confirm_frames = 3;
+    const auto v9 = ls2k::vision::ml::SelectMlClassificationPolicy(
+        ls2k::port::MlClassifierBackend::kV9Hamming, params.ml);
+    const auto tflite = ls2k::vision::ml::SelectMlClassificationPolicy(
+        ls2k::port::MlClassifierBackend::kTfliteInt8, params.ml);
+    Expect(v9.max_best_distance == 126 && v9.confirm_frames == 2 &&
+               tflite.max_best_distance == 2076 && tflite.confirm_frames == 3,
+           "scene policy must select acceptance and confirmation by backend");
+}
+
 void TestDisabledSceneDoesNoWork() {
     auto params = MakeParams();
     params.ml.enabled = false;
@@ -176,6 +191,7 @@ int main() {
     TestInvalidEncoderExitsTracker();
     TestActiveCompletionEmitsNoCandidate();
     TestSceneOwnsMappedActionConfirmation();
+    TestScenePolicyIsBackendSpecific();
     TestDisabledSceneDoesNoWork();
     std::cout << "ml scene/inertial tests passed\n";
 }

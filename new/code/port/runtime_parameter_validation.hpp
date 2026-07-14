@@ -53,11 +53,17 @@ inline bool IsMlActionToken(const std::string& action) {
 
 inline bool ValidateMlParameters(const MlParameters& params,
                                  const MotionOdometryParameters& odometry) {
+    constexpr int kTfliteIdentitySquaredL2Max = 4 * 255 * 255;
     if (!IsMlActionToken(params.class_mapping.class_0_action) ||
         !IsMlActionToken(params.class_mapping.class_1_action) ||
         !IsMlActionToken(params.class_mapping.class_2_action) ||
         params.v9.min_margin < 0 || params.v9.max_best_distance < 0 ||
-        params.v9.max_best_distance > 126 || params.v9.confirm_frames < 1) {
+        params.v9.max_best_distance > 126 || params.v9.confirm_frames < 1 ||
+        params.tflite_identity.min_margin < 0 ||
+        params.tflite_identity.min_margin > kTfliteIdentitySquaredL2Max ||
+        params.tflite_identity.max_best_distance < 0 ||
+        params.tflite_identity.max_best_distance > kTfliteIdentitySquaredL2Max ||
+        params.tflite_identity.confirm_frames < 1) {
         return false;
     }
     if (!params.enabled) {

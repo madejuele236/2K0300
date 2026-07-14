@@ -93,7 +93,9 @@ int main(int argc, char** argv) {
                 expected = output;
             } else if (output.classification.class_id != expected.classification.class_id ||
                        output.classification.margin != expected.classification.margin ||
-                       output.classification.class_scores != expected.classification.class_scores) {
+                       output.classification.class_scores != expected.classification.class_scores ||
+                       output.tflite_feature.valid != expected.tflite_feature.valid ||
+                       output.tflite_feature.values != expected.tflite_feature.values) {
                 std::cerr << "classification parity failed path=" << argv[argument] << '\n';
                 return 6;
             }
@@ -106,6 +108,14 @@ int main(int argc, char** argv) {
                   << " score0=" << expected.classification.class_scores[0]
                   << " score1=" << expected.classification.class_scores[1]
                   << " score2=" << expected.classification.class_scores[2]
+                  << " feature_valid=" << (expected.tflite_feature.valid ? "true" : "false");
+        if (expected.tflite_feature.valid) {
+            for (std::size_t index = 0; index < expected.tflite_feature.values.size(); ++index) {
+                std::cout << " feature" << index << '='
+                          << static_cast<int>(expected.tflite_feature.values[index]);
+            }
+        }
+        std::cout
                   << " avg_us=" << total_ns / (static_cast<double>(iterations) * 1000.0)
                   << " parity=true\n";
     }

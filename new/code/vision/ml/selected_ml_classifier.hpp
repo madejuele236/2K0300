@@ -52,8 +52,19 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+struct MlClassificationPolicy {
+    int min_margin = 0;
+    int max_best_distance = 0;
+    int confirm_frames = 1;
+    bool require_distance = false;
+};
+
+MlClassificationPolicy SelectMlClassificationPolicy(
+    port::MlClassifierBackend backend,
+    const port::MlParameters& params);
+
 bool AcceptMlClassification(const port::MlClassificationResult& result,
-                            const port::MlV9Parameters& acceptance);
+                            const MlClassificationPolicy& policy);
 
 }  // namespace ls2k::vision::ml
 

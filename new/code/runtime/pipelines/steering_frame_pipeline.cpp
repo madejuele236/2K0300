@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cmath>
+#include <string>
 
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_continuity.hpp"
@@ -245,6 +246,16 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
     sample_lut_ = {};
     ml_rectangle_lut_ = {};
     ml_classifier_ready_ = !params.ml.enabled || ml_classifier_.Initialize();
+    const std::string ml_classifier_identity =
+        !params.ml.enabled
+            ? std::string("disabled backend=") + ml_classifier_.BackendName()
+            : (ml_classifier_ready_
+                   ? std::string("backend=") + ml_classifier_.BackendName() +
+                         " artifact_id=" + ml_classifier_.ArtifactId() +
+                         " artifact_sha256=" + ml_classifier_.ArtifactSha256() +
+                         " artifact_items=" + std::to_string(ml_classifier_.ArtifactItemCount()) +
+                         " working_memory_bytes=" + std::to_string(ml_classifier_.WorkingMemoryBytes())
+                   : "selected ML classifier initialization failed");
     diagnostics.Emit({projector_configured_ ? port::DiagnosticLevel::kInfo
                                             : port::DiagnosticLevel::kFailSafe,
                       projector_configured_ ? "perception.projector.configured"
@@ -256,8 +267,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
                                            : port::DiagnosticLevel::kFailSafe,
                       ml_classifier_ready_ ? "perception.ml_classifier.configured"
                                            : "perception.ml_classifier.invalid",
-                      ml_classifier_ready_ ? ml_classifier_.BackendName()
-                                           : "selected ML classifier initialization failed",
+                      ml_classifier_identity,
                       port::NowMs()});
     return projector_configured_ && ml_classifier_ready_;
 }

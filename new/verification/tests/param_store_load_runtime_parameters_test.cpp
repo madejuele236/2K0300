@@ -154,6 +154,8 @@ int main(int argc, char** argv) {
                       "\"SCORE_RECTANGULARITY_WEIGHT\": 1.0,"
                       "\"SCORE_RED_FILL_WEIGHT\": 1.0,\"SCORE_ORIENTATION_WEIGHT\": 1.0},"
                       "\"V9\": {\"MIN_MARGIN\": 2,\"MAX_BEST_DISTANCE\": 50,\"CONFIRM_FRAMES\": 3},"
+                      "\"TFLITE_IDENTITY\": {\"MIN_MARGIN\": 7,\"MAX_BEST_DISTANCE\": 2076,"
+                      "\"CONFIRM_FRAMES\": 5},"
                       "\"CLASS_MAPPING\": {\"CLASS_0_ACTION\": \"straight\","
                       "\"CLASS_1_ACTION\": \"left\",\"CLASS_2_ACTION\": \"right\"},"
                       "\"MANEUVER\": {\"SPEED_TARGET\": 100,\"MIN_BOUNDARY_SAMPLES\": 3,"
@@ -214,6 +216,10 @@ int main(int argc, char** argv) {
                    enabled.ml.v9.max_best_distance == 50 &&
                    enabled.ml.v9.confirm_frames == 3,
                "ML V9 acceptance and confirmation parameters should parse");
+        Expect(enabled.ml.tflite_identity.min_margin == 7 &&
+                   enabled.ml.tflite_identity.max_best_distance == 2076 &&
+                   enabled.ml.tflite_identity.confirm_frames == 5,
+               "ML TFLITE_IDENTITY acceptance and confirmation parameters should parse");
         Expect(enabled.ml.class_mapping.class_1_action == "left" &&
                    enabled.ml.class_mapping.class_2_action == "right",
                "ML class mapping should parse independently of replay");
@@ -368,6 +374,21 @@ int main(int argc, char** argv) {
                "missing BEV_CONTROL_MODEL should keep lateral offset gain default");
         Expect(absent.bev_control_model.tracking_fit_min_samples == 3,
                "missing BEV_CONTROL_MODEL should keep tracking fit sample default");
+        Expect(absent.ml.tflite_identity.min_margin == 1 &&
+                   absent.ml.tflite_identity.max_best_distance == 2076 &&
+                   absent.ml.tflite_identity.confirm_frames == 3,
+               "missing ML.TFLITE_IDENTITY should keep safe artifact-calibrated startup defaults");
+
+        const std::string invalid_tflite_identity_path = base + "_invalid_tflite_identity.json";
+        WriteText(invalid_tflite_identity_path,
+                  MinimalRuntimeParametersJson(
+                      "  \"ML\": {\"TFLITE_IDENTITY\": {\"MAX_BEST_DISTANCE\": 260101}}"));
+        CaptureDiagnostics invalid_tflite_identity_diagnostics{};
+        const ls2k::port::RuntimeParameters invalid_tflite_identity =
+            LoadFixture(invalid_tflite_identity_path, invalid_tflite_identity_diagnostics);
+        Expect(invalid_tflite_identity.loaded_from_defaults &&
+                   invalid_tflite_identity.parse_failure,
+               "TFLITE_IDENTITY distance above d4 squared-L2 maximum must fail startup parsing");
         const std::string zero_hold_path = base + "_zero_hold.json";
         WriteText(zero_hold_path,
                   MinimalRuntimeParametersJson(

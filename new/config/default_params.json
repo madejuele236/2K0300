@@ -199,6 +199,11 @@
       "MAX_BEST_DISTANCE": 126,
       "CONFIRM_FRAMES": 3
     },
+    "TFLITE_IDENTITY": {
+      "MIN_MARGIN": 1,
+      "MAX_BEST_DISTANCE": 2076,
+      "CONFIRM_FRAMES": 3
+    },
     "CLASS_MAPPING": {
       "CLASS_0_ACTION": "straight",
       "CLASS_1_ACTION": "left",

@@ -14,9 +14,9 @@
 namespace ls2k::vision::ml {
 namespace {
 
-// Board allocation reports 4656 bytes for this frozen graph. Keep a bounded
-// 16 KiB arena so model drift still fails at AllocateTensors instead of
-// silently consuming unrelated runtime memory.
+// Keep a bounded arena so model drift fails at AllocateTensors instead of
+// silently consuming unrelated runtime memory. Board evidence records the
+// actual used size for the selected frozen graph.
 constexpr std::size_t kTensorArenaBytes = 16U * 1024U;
 
 bool ShapeEquals(const TfLiteTensor& tensor,
@@ -67,8 +67,10 @@ bool SelectedMlClassifier::Initialize() {
     const TfLiteTensor* output = impl_->interpreter->output(0);
     if (input == nullptr || output == nullptr || input->type != kTfLiteInt8 ||
         output->type != kTfLiteInt8 || !ShapeEquals(*input, {1, 32, 32, 1}) ||
-        !ShapeEquals(*output, {1, 6}) || input->params.zero_point != -128 ||
-        std::fabs(input->params.scale - 1.0F / 255.0F) > 1.0e-7F) {
+        !ShapeEquals(*output, {1, 4}) || input->params.zero_point != -128 ||
+        output->params.zero_point != 19 ||
+        std::fabs(input->params.scale - 1.0F / 255.0F) > 1.0e-7F ||
+        std::fabs(output->params.scale - 0.148821F) > 1.0e-5F) {
         return false;
     }
     impl_->initialized = true;
@@ -92,20 +94,21 @@ port::MlClassifierOutput SelectedMlClassifier::Predict(const port::MlGrayRoi32& 
         return out;
     }
     const TfLiteTensor* output = impl_->interpreter->output(0);
+    out.tflite_feature.valid = true;
+    std::copy_n(output->data.int8, out.tflite_feature.values.size(),
+                out.tflite_feature.values.begin());
+    const generated::IdentityPrototypeScore score =
+        generated::ScoreIdentityFeature(out.tflite_feature.values.data());
     for (int cls = 0; cls < 3; ++cls) {
         out.classification.class_scores[static_cast<std::size_t>(cls)] =
-            static_cast<int>(output->data.int8[cls]);
-    }
-    int predicted = 0;
-    if (out.classification.class_scores[1] > out.classification.class_scores[predicted]) predicted = 1;
-    if (out.classification.class_scores[2] > out.classification.class_scores[predicted]) predicted = 2;
-    int second = -129;
-    for (int cls = 0; cls < 3; ++cls) {
-        if (cls != predicted) second = std::max(second, out.classification.class_scores[cls]);
+            -score.class_distances[static_cast<std::size_t>(cls)];
     }
     out.classification.valid = true;
-    out.classification.class_id = predicted;
-    out.classification.margin = out.classification.class_scores[predicted] - second;
+    out.classification.class_id = score.class_id;
+    out.classification.margin = score.margin;
+    out.classification.distance_valid = true;
+    out.classification.best_distance =
+        score.class_distances[static_cast<std::size_t>(score.class_id)];
     out.classification.reason = "ok";
     return out;
 }
@@ -115,10 +118,10 @@ const char* SelectedMlClassifier::ArtifactId() const {
     return generated::kTfliteClassifierArtifactId;
 }
 const char* SelectedMlClassifier::ArtifactSha256() const {
-    return generated::kTfliteClassifierModelSha256;
+    return generated::kTfliteClassifierArtifactSha256;
 }
 std::size_t SelectedMlClassifier::ArtifactItemCount() const {
-    return generated::kTfliteClassifierModelSize;
+    return generated::kIdentityPrototypeCount;
 }
 std::size_t SelectedMlClassifier::WorkingMemoryBytes() const {
     return impl_ == nullptr || impl_->interpreter == nullptr

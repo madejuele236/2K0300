@@ -822,9 +822,11 @@ void ReadMlParams(const cv::FileNode& root,
         ReadOptionalBool(ml, "ENABLED", parsed.ml.enabled, optional_malformed);
         const cv::FileNode roi = ml["ROI"];
         const cv::FileNode v9 = ml["V9"];
+        const cv::FileNode tflite_identity = ml["TFLITE_IDENTITY"];
         const cv::FileNode mapping = ml["CLASS_MAPPING"];
         const cv::FileNode maneuver = ml["MANEUVER"];
         if ((!roi.empty() && !roi.isMap()) || (!v9.empty() && !v9.isMap()) ||
+            (!tflite_identity.empty() && !tflite_identity.isMap()) ||
             (!mapping.empty() && !mapping.isMap()) ||
             (!maneuver.empty() && !maneuver.isMap())) {
             optional_malformed = true;
@@ -861,6 +863,14 @@ void ReadMlParams(const cv::FileNode& root,
             ReadOptionalInt(v9, "MIN_MARGIN", parsed.ml.v9.min_margin, optional_malformed);
             ReadOptionalInt(v9, "MAX_BEST_DISTANCE", parsed.ml.v9.max_best_distance, optional_malformed);
             ReadOptionalInt(v9, "CONFIRM_FRAMES", parsed.ml.v9.confirm_frames, optional_malformed);
+        }
+        if (!tflite_identity.empty()) {
+            ReadOptionalInt(tflite_identity, "MIN_MARGIN", parsed.ml.tflite_identity.min_margin,
+                            optional_malformed);
+            ReadOptionalInt(tflite_identity, "MAX_BEST_DISTANCE",
+                            parsed.ml.tflite_identity.max_best_distance, optional_malformed);
+            ReadOptionalInt(tflite_identity, "CONFIRM_FRAMES",
+                            parsed.ml.tflite_identity.confirm_frames, optional_malformed);
         }
         if (!mapping.empty()) {
             if (!mapping["CLASS_0_ACTION"].empty() &&

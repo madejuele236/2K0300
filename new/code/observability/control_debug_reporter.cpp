@@ -108,6 +108,47 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " boundary_row_count=" << snapshot.steering.boundary_row_count
                      << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
                      << " boundary_span_count=" << snapshot.steering.boundary_span_count
+                     << " ml.enabled=" << BoolToken(snapshot.steering.ml.enabled)
+                     << " ml.detector_valid=" << BoolToken(snapshot.steering.ml.detector_valid)
+                     << " ml.detector.frame_id=" << snapshot.steering.ml.detector.frame_id
+                     << " ml.detector.center_forward_m="
+                     << snapshot.steering.ml.detector.center.forward_m
+                     << " ml.detector.center_lateral_m="
+                     << snapshot.steering.ml.detector.center.lateral_m
+                     << " ml.detector.long_edge_m=" << snapshot.steering.ml.detector.long_edge_m
+                     << " ml.detector.short_edge_m=" << snapshot.steering.ml.detector.short_edge_m
+                     << " ml.detector.long_edge_to_lateral_rad="
+                     << snapshot.steering.ml.detector.long_edge_to_lateral_rad
+                     << " ml.roi.valid=" << BoolToken(snapshot.steering.ml.roi.valid)
+                     << " ml.roi.frame_id=" << snapshot.steering.ml.roi.frame_id
+                     << " ml.roi.reason=" << snapshot.steering.ml.roi.reason
+                     << " ml.classification.valid="
+                     << BoolToken(snapshot.steering.ml.classification.valid)
+                     << " ml.classification.backend="
+                     << port::MlClassifierBackendToken(snapshot.steering.ml.classification.backend)
+                     << " ml.classification.class_id="
+                     << snapshot.steering.ml.classification.class_id
+                     << " ml.classification.margin=" << snapshot.steering.ml.classification.margin
+                     << " ml.classification.distance_valid="
+                     << BoolToken(snapshot.steering.ml.classification.distance_valid)
+                     << " ml.classification.best_distance="
+                     << snapshot.steering.ml.classification.best_distance
+                     << " ml.classification.score0="
+                     << snapshot.steering.ml.classification.class_scores[0]
+                     << " ml.classification.score1="
+                     << snapshot.steering.ml.classification.class_scores[1]
+                     << " ml.classification.score2="
+                     << snapshot.steering.ml.classification.class_scores[2]
+                     << " ml.mapped_action=" << port::MlActionToken(snapshot.steering.ml.mapped_action)
+                     << " ml.locked_action=" << port::MlActionToken(snapshot.steering.ml.locked_action)
+                     << " ml.phase=" << port::MlScenePhaseToken(snapshot.steering.ml.phase)
+                     << " ml.reason=" << snapshot.steering.ml.reason
+                     << " ml.confirm_count=" << snapshot.steering.ml.confirm_count
+                     << " ml.active=" << BoolToken(snapshot.steering.ml.active)
+                     << " ml.detector_us=" << snapshot.steering.ml.detector_us
+                     << " ml.roi_us=" << snapshot.steering.ml.roi_us
+                     << " ml.classifier_us=" << snapshot.steering.ml.classifier_us
+                     << " ml.total_us=" << snapshot.steering.ml.total_us
                      << " perception_health.projector_ok="
                      << BoolToken(snapshot.steering.perception_health.projector_ok)
                      << " perception_health.reason=" << snapshot.steering.perception_health.reason

@@ -142,8 +142,11 @@ if(LS2K_ML_CLASSIFIER STREQUAL "V9")
 elseif(LS2K_ML_CLASSIFIER STREQUAL "TFLITE_INT8")
     add_definitions(-DLS2K_ML_CLASSIFIER_BACKEND=2)
     set(TFLITE_CLASSIFIER_MODEL
-        ${REPO_ROOT}/model_training/experiments/v8_parent_c2612_d6_d24pca2_qanchor_20260521_0002/s2d_c2_6_12_d6_shadow_init/parent_int8.tflite)
-    set(TFLITE_CLASSIFIER_SHA256 7e128f963b576a23868a4519972caa5f23cff6d69e6f74097062e7a6efe913df)
+        ${REPO_ROOT}/model_training/experiments/v8_parent_c2612_d4_multiteacher_20260520_0001/s2d_c2_6_12_d4_shadow_init/parent_int8.tflite)
+    set(TFLITE_CLASSIFIER_SHA256 0362178a0f665a3bf9dde16d4f6d9883d06370f2559824ef2d723b32002600cf)
+    set(TFLITE_IDENTITY_PARAMS
+        ${REPO_ROOT}/model_training/experiments/v8_input_canonicalization_20260522_0001/d4best_recompile_probe/identity_best_params.npz)
+    set(TFLITE_IDENTITY_PARAMS_SHA256 5ac2827bfc8aa37f928802bc93f1274879e7ab73c97f8da534424094d8a701c5)
     set(ML_CLASSIFIER_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/tflite_classifier)
     set(TFLITE_GENERATED_HEADER ${ML_CLASSIFIER_GENERATED_DIR}/generated_tflite_classifier_artifact.hpp)
     set(TFLITE_GENERATED_SOURCE ${ML_CLASSIFIER_GENERATED_DIR}/generated_tflite_classifier_artifact.cpp)
@@ -152,12 +155,15 @@ elseif(LS2K_ML_CLASSIFIER STREQUAL "TFLITE_INT8")
         COMMAND ${PYTHON3_EXECUTABLE}
                 ${REPO_ROOT}/model_training/generate_tflite_classifier_artifact.py
                 ${TFLITE_CLASSIFIER_MODEL}
+                ${TFLITE_IDENTITY_PARAMS}
                 ${TFLITE_GENERATED_HEADER}
                 ${TFLITE_GENERATED_SOURCE}
                 ${TFLITE_CLASSIFIER_SHA256}
+                ${TFLITE_IDENTITY_PARAMS_SHA256}
         DEPENDS
             ${REPO_ROOT}/model_training/generate_tflite_classifier_artifact.py
             ${TFLITE_CLASSIFIER_MODEL}
+            ${TFLITE_IDENTITY_PARAMS}
         VERBATIM)
     set(ML_CLASSIFIER_SOURCES
         ${ML_CLASSIFIER_COMMON_SOURCES}

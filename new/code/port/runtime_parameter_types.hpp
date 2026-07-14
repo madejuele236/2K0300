@@ -114,6 +114,12 @@ struct MlV9Parameters {
     int confirm_frames = 1;
 };
 
+struct MlTfliteIdentityParameters {
+    int min_margin = 1;
+    int max_best_distance = 2076;
+    int confirm_frames = 3;
+};
+
 struct MlClassMappingParameters {
     std::string class_0_action = "straight";
     std::string class_1_action = "left";
@@ -135,6 +141,7 @@ struct MlParameters {
     bool enabled = false;
     MlRoiParameters roi{};
     MlV9Parameters v9{};
+    MlTfliteIdentityParameters tflite_identity{};
     MlClassMappingParameters class_mapping{};
     MlManeuverParameters maneuver{};
 };

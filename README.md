@@ -162,6 +162,9 @@ none
 - 工作参数和编译期 fallback 必须各自合法，但允许取值不同；调参不要求冗余同步 C++ 默认值。
 - 不保留旧 JSON alias。
 - 有范围的参数必须在参数合同层显式校验；公式层不得偷偷 clamp 或改写语义。
+- ML 分类接受与连续帧确认按 backend 分组：V9 使用 `ML.V9` 的 126-bit
+  Hamming 合同，TFLite identity 使用 `ML.TFLITE_IDENTITY` 的 d4 squared-L2
+  合同；不得跨 backend 共用距离阈值或确认帧数。
 - 参数名必须表达当前真实语义：
   - `RUNNING_SPEED_TARGET`
   - `YAW_RATE_PID`

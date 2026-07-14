@@ -96,10 +96,16 @@ struct MlClassificationResult {
     const char* reason = "not_run";
 };
 
+struct MlTfliteInt8Feature {
+    bool valid = false;
+    std::array<std::int8_t, 4> values{};
+};
+
 struct MlClassifierOutput {
     MlClassificationResult classification{};
     V9Descriptor v9_descriptor{};
     V9ReplayResult v9_replay{};
+    MlTfliteInt8Feature tflite_feature{};
 };
 
 struct V9AcceptanceState {

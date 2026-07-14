@@ -95,6 +95,22 @@ void TestEnabledCommandYawPredictionRequiresFuturePredictionAndGain() {
            "command-yaw prediction should accept future prediction and calibrated yaw gain");
 }
 
+void TestTfliteIdentitySquaredL2ValidationRange() {
+    ls2k::port::MlParameters params{};
+    const auto odometry = UncalibratedOdometry();
+    params.tflite_identity.min_margin = 260100;
+    params.tflite_identity.max_best_distance = 260100;
+    Expect(ls2k::port::ValidateMlParameters(params, odometry),
+           "d4 squared-L2 mathematical maximum should validate");
+    params.tflite_identity.max_best_distance = 260101;
+    Expect(!ls2k::port::ValidateMlParameters(params, odometry),
+           "distance above d4 squared-L2 mathematical maximum must fail");
+    params.tflite_identity.max_best_distance = 2076;
+    params.tflite_identity.min_margin = 260101;
+    Expect(!ls2k::port::ValidateMlParameters(params, odometry),
+           "margin above d4 squared-L2 mathematical maximum must fail");
+}
+
 }  // namespace
 
 int main() {
@@ -103,6 +119,7 @@ int main() {
         TestEnabledEncoderForwardRequiresScale();
         TestEnabledWheelYawFallbackRequiresScaleAndTrack();
         TestEnabledCommandYawPredictionRequiresFuturePredictionAndGain();
+        TestTfliteIdentitySquaredL2ValidationRange();
     } catch (const std::exception& error) {
         std::cerr << "runtime_parameter_validation_test failed: " << error.what() << "\n";
         return 1;

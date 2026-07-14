@@ -886,6 +886,10 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << "},\"V9\":{\"MIN_MARGIN\":" << ml.v9.min_margin;
     header << ",\"MAX_BEST_DISTANCE\":" << ml.v9.max_best_distance;
     header << ",\"CONFIRM_FRAMES\":" << ml.v9.confirm_frames;
+    header << "},\"TFLITE_IDENTITY\":{\"MIN_MARGIN\":"
+           << ml.tflite_identity.min_margin;
+    header << ",\"MAX_BEST_DISTANCE\":" << ml.tflite_identity.max_best_distance;
+    header << ",\"CONFIRM_FRAMES\":" << ml.tflite_identity.confirm_frames;
     header << "},\"CLASS_MAPPING\":{\"CLASS_0_ACTION\":";
     AppendJsonString(header, ml.class_mapping.class_0_action);
     header << ",\"CLASS_1_ACTION\":";

@@ -188,7 +188,9 @@ MlSceneResult StepMlScene(const MlSceneInput& input,
     out.telemetry.replay_us = ElapsedUs(classifier_start, classifier_end);
     out.telemetry.classifier_us = out.telemetry.replay_us;
     out.telemetry.total_us = ElapsedUs(total_start, classifier_end);
-    if (!AcceptMlClassification(out.telemetry.classification, params.ml.v9)) {
+    const MlClassificationPolicy classification_policy =
+        SelectMlClassificationPolicy(out.telemetry.classification.backend, params.ml);
+    if (!AcceptMlClassification(out.telemetry.classification, classification_policy)) {
         out.next_memory.confirmation = {};
         out.next_memory.phase = port::MlScenePhase::kIdle;
         out.telemetry.phase = port::MlScenePhase::kIdle;
@@ -212,7 +214,7 @@ MlSceneResult StepMlScene(const MlSceneInput& input,
         static_cast<std::size_t>(params.ml.maneuver.min_boundary_samples)});
     const bool boundary_available = boundary.mode != port::ReferenceMode::kNone;
     const bool confirmed = StepMlConfirmation(
-        action, boundary_available, params.ml.v9.confirm_frames,
+        action, boundary_available, classification_policy.confirm_frames,
         out.next_memory.confirmation);
     if (!boundary_available) {
         out.next_memory.phase = port::MlScenePhase::kIdle;
