@@ -626,8 +626,9 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
                params.circle_v2_entry_bottom_forward_min_m;
 }
 
-bool ValidateReferenceTimeAlignment(const port::ReferenceTimeAlignmentParameters& params) {
-    return port::ValidateReferenceTimeAlignmentParameters(params);
+bool ValidateReferenceTimeAlignment(const port::ReferenceTimeAlignmentParameters& params,
+                                    const port::MotionOdometryParameters& odometry) {
+    return port::ValidateReferenceTimeAlignmentParameters(params, odometry);
 }
 
 bool ValidateCameraSource(const port::CameraSourceParameters& params) {
@@ -802,6 +803,85 @@ void ReadMediaParams(const cv::FileNode& root, port::RuntimeParameters& parsed, 
                      optional_malformed);
     ReadOptionalInt(root, "low_voltage_sample_interval_ms", parsed.low_voltage_sample_interval_ms,
                     optional_malformed);
+}
+
+void ReadMlParams(const cv::FileNode& root,
+                  port::RuntimeParameters& parsed,
+                  bool& optional_malformed) {
+    ReadOptionalNestedNumber(root,
+                             "MOTION_ODOMETRY",
+                             "ENCODER_TICKS_TO_METER",
+                             parsed.motion_odometry.encoder_ticks_to_meter,
+                             optional_malformed);
+    const cv::FileNode ml = root["ML"];
+    if (!ml.empty() && !ml.isMap()) {
+        optional_malformed = true;
+        return;
+    }
+    if (!ml.empty()) {
+        ReadOptionalBool(ml, "ENABLED", parsed.ml.enabled, optional_malformed);
+        const cv::FileNode roi = ml["ROI"];
+        const cv::FileNode v9 = ml["V9"];
+        const cv::FileNode mapping = ml["CLASS_MAPPING"];
+        const cv::FileNode maneuver = ml["MANEUVER"];
+        if ((!roi.empty() && !roi.isMap()) || (!v9.empty() && !v9.isMap()) ||
+            (!mapping.empty() && !mapping.isMap()) ||
+            (!maneuver.empty() && !maneuver.isMap())) {
+            optional_malformed = true;
+            return;
+        }
+        if (!roi.empty()) {
+            ReadOptionalNumber(roi, "SEARCH_FORWARD_MIN_M", parsed.ml.roi.search_forward_min_m, optional_malformed);
+            ReadOptionalNumber(roi, "SEARCH_FORWARD_MAX_M", parsed.ml.roi.search_forward_max_m, optional_malformed);
+            ReadOptionalNumber(roi, "SEARCH_LATERAL_LIMIT_M", parsed.ml.roi.search_lateral_limit_m, optional_malformed);
+            ReadOptionalNumber(roi, "GRID_FORWARD_STEP_M", parsed.ml.roi.grid_forward_step_m, optional_malformed);
+            ReadOptionalNumber(roi, "GRID_LATERAL_STEP_M", parsed.ml.roi.grid_lateral_step_m, optional_malformed);
+            ReadOptionalInt(roi, "RED_Y_MIN", parsed.ml.roi.red_y_min, optional_malformed);
+            ReadOptionalInt(roi, "RED_Y_MAX", parsed.ml.roi.red_y_max, optional_malformed);
+            ReadOptionalInt(roi, "RED_U_MIN", parsed.ml.roi.red_u_min, optional_malformed);
+            ReadOptionalInt(roi, "RED_U_MAX", parsed.ml.roi.red_u_max, optional_malformed);
+            ReadOptionalInt(roi, "RED_V_MIN", parsed.ml.roi.red_v_min, optional_malformed);
+            ReadOptionalInt(roi, "RED_V_MAX", parsed.ml.roi.red_v_max, optional_malformed);
+            ReadOptionalNumber(roi, "EXPECTED_LONG_EDGE_M", parsed.ml.roi.expected_long_edge_m, optional_malformed);
+            ReadOptionalNumber(roi, "EXPECTED_SHORT_EDGE_M", parsed.ml.roi.expected_short_edge_m, optional_malformed);
+            ReadOptionalNumber(roi, "LONG_EDGE_TOLERANCE_M", parsed.ml.roi.long_edge_tolerance_m, optional_malformed);
+            ReadOptionalNumber(roi, "SHORT_EDGE_TOLERANCE_M", parsed.ml.roi.short_edge_tolerance_m, optional_malformed);
+            ReadOptionalNumber(roi, "MAX_LONG_EDGE_TO_LATERAL_RAD", parsed.ml.roi.max_long_edge_to_lateral_rad, optional_malformed);
+            ReadOptionalInt(roi, "MIN_COMPONENT_CELLS", parsed.ml.roi.min_component_cells, optional_malformed);
+            ReadOptionalNumber(roi, "MIN_RECTANGULARITY", parsed.ml.roi.min_rectangularity, optional_malformed);
+            ReadOptionalNumber(roi, "MIN_RED_FILL_RATIO", parsed.ml.roi.min_red_fill_ratio, optional_malformed);
+            ReadOptionalNumber(roi, "SCORE_SIZE_WEIGHT", parsed.ml.roi.score_size_weight, optional_malformed);
+            ReadOptionalNumber(roi, "SCORE_RECTANGULARITY_WEIGHT", parsed.ml.roi.score_rectangularity_weight, optional_malformed);
+            ReadOptionalNumber(roi, "SCORE_RED_FILL_WEIGHT", parsed.ml.roi.score_red_fill_weight, optional_malformed);
+            ReadOptionalNumber(roi, "SCORE_ORIENTATION_WEIGHT", parsed.ml.roi.score_orientation_weight, optional_malformed);
+        }
+        if (!v9.empty()) {
+            ReadOptionalInt(v9, "MIN_MARGIN", parsed.ml.v9.min_margin, optional_malformed);
+            ReadOptionalInt(v9, "MAX_BEST_DISTANCE", parsed.ml.v9.max_best_distance, optional_malformed);
+            ReadOptionalInt(v9, "CONFIRM_FRAMES", parsed.ml.v9.confirm_frames, optional_malformed);
+        }
+        if (!mapping.empty()) {
+            if (!mapping["CLASS_0_ACTION"].empty() &&
+                !ReadStringValue(mapping["CLASS_0_ACTION"], parsed.ml.class_mapping.class_0_action)) optional_malformed = true;
+            if (!mapping["CLASS_1_ACTION"].empty() &&
+                !ReadStringValue(mapping["CLASS_1_ACTION"], parsed.ml.class_mapping.class_1_action)) optional_malformed = true;
+            if (!mapping["CLASS_2_ACTION"].empty() &&
+                !ReadStringValue(mapping["CLASS_2_ACTION"], parsed.ml.class_mapping.class_2_action)) optional_malformed = true;
+        }
+        if (!maneuver.empty()) {
+            ReadOptionalNumber(maneuver, "SPEED_TARGET", parsed.ml.maneuver.speed_target, optional_malformed);
+            ReadOptionalInt(maneuver, "MIN_BOUNDARY_SAMPLES", parsed.ml.maneuver.min_boundary_samples, optional_malformed);
+            ReadOptionalNumber(maneuver, "EXIT_FORWARD_M", parsed.ml.maneuver.exit_forward_m, optional_malformed);
+            ReadOptionalNumber(maneuver, "EXIT_MAX_ABS_LATERAL_ERROR_M", parsed.ml.maneuver.exit_max_abs_lateral_error_m, optional_malformed);
+            ReadOptionalNumber(maneuver, "EXIT_MAX_ABS_HEADING_ERROR_RAD", parsed.ml.maneuver.exit_max_abs_heading_error_rad, optional_malformed);
+            ReadOptionalInt(maneuver, "MAX_DURATION_MS", parsed.ml.maneuver.max_duration_ms, optional_malformed);
+            ReadOptionalInt(maneuver, "MAX_INTEGRATION_GAP_MS", parsed.ml.maneuver.max_integration_gap_ms, optional_malformed);
+            ReadOptionalInt(maneuver, "COOLDOWN_MS", parsed.ml.maneuver.cooldown_ms, optional_malformed);
+        }
+    }
+    if (!port::ValidateMlParameters(parsed.ml, parsed.motion_odometry)) {
+        optional_malformed = true;
+    }
 }
 
 void ReadBevProjectorParams(const cv::FileNode& root,
@@ -1036,11 +1116,6 @@ void ReadReferenceTimeAlignmentParams(const cv::FileNode& root,
                            optional_malformed);
     ReadOptionalNestedNumber(root,
                              "REFERENCE_TIME_ALIGNMENT",
-                             "ENCODER_TICKS_TO_METER",
-                             parsed.reference_time_alignment.encoder_ticks_to_meter,
-                             optional_malformed);
-    ReadOptionalNestedNumber(root,
-                             "REFERENCE_TIME_ALIGNMENT",
                              "WHEEL_TRACK_M",
                              parsed.reference_time_alignment.wheel_track_m,
                              optional_malformed);
@@ -1087,7 +1162,8 @@ void ReadReferenceTimeAlignmentParams(const cv::FileNode& root,
                              "MAX_DELTA_YAW_RAD",
                              parsed.reference_time_alignment.max_delta_yaw_rad,
                              optional_malformed);
-    if (!ValidateReferenceTimeAlignment(parsed.reference_time_alignment)) {
+    if (!ValidateReferenceTimeAlignment(parsed.reference_time_alignment,
+                                        parsed.motion_odometry)) {
         optional_malformed = true;
     }
 }
@@ -1169,8 +1245,9 @@ public:
         ReadBevClassificationAndBoundaryParams(root, parsed, optional_malformed);
         ReadBevControlModelParams(root, parsed, optional_malformed);
         ReadBevElementParams(root, parsed, optional_malformed);
-        ReadReferenceTimeAlignmentParams(root, parsed, optional_malformed);
         ReadCameraSourceParams(root, parsed, optional_malformed);
+        ReadMlParams(root, parsed, optional_malformed);
+        ReadReferenceTimeAlignmentParams(root, parsed, optional_malformed);
         // 综合校验：必填字段成功 + 无格式错误
         all_ok = all_ok && !optional_malformed;
 

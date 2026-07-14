@@ -139,6 +139,9 @@ struct SteeringDebugSnapshot {
     std::size_t boundary_row_count = 0;        ///< V9 sparse boundary row 数量
     std::size_t boundary_jump_count = 0;       ///< V9 局部 Y 边界跳变数量
     std::size_t boundary_span_count = 0;       ///< V9 同行边界 span 数量
+    port::MlTelemetrySnapshot ml{};            ///< ML 检测、replay 与场景跟踪事实
+    std::string speed_selection_source = "running_default";  ///< 速度目标选择来源
+    double effective_speed_target = 0.0;       ///< 运动监督器最终有效速度目标
     PerceptionHealthDebugView perception_health{};           ///< 感知健康状态
     port::VisualElementEvidenceFrame element_evidence{};     ///< 视觉元素证据帧
     port::CircleV2TelemetrySnapshot circle_v2{};              ///< CircleV2 场景状态

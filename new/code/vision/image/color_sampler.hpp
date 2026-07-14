@@ -18,6 +18,11 @@ bool SampleColorAt(const port::CameraPixelFrameView& frame,
                    float col_px,
                    CameraColorSample& out);
 
+bool SampleRgbMeanAt(const port::CameraPixelFrameView& frame,
+                     float row_px,
+                     float col_px,
+                     std::uint8_t& rgb_mean);
+
 }  // namespace ls2k::vision
 
 #endif  // LS2K_VISION_IMAGE_COLOR_SAMPLER_HPP

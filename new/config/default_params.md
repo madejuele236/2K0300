@@ -131,22 +131,21 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 | `REFERENCE_TIME_ALIGNMENT.FUTURE_PREDICTION_MAX_MS` | `80` | vehicle pose delta estimator | 允许从当前控制时刻预测到 control-effective time 的最大未来窗口。 |
 | `REFERENCE_TIME_ALIGNMENT.MAX_INTEGRATION_GAP_MS` | `30` | motion history | motion history 允许的最大采样空洞。 |
 | `REFERENCE_TIME_ALIGNMENT.MIN_ALIGNED_SAMPLES` | `3` | reference time alignment | 对齐后最少前方样本数。 |
-| `REFERENCE_TIME_ALIGNMENT.USE_ENCODER_FORWARD` | `0` | vehicle pose delta estimator | 是否用编码器积分前向位移。默认关闭，直到 `ENCODER_TICKS_TO_METER` 实测完成。 |
-| `REFERENCE_TIME_ALIGNMENT.ENCODER_TICKS_TO_METER` | `0.0` | vehicle pose delta estimator | 编码器 delta 到米的比例，合法范围 `[0, 1]`。启用 encoder forward 前必须实测。 |
-| `REFERENCE_TIME_ALIGNMENT.WHEEL_TRACK_M` | `0.0` | vehicle pose delta estimator | 轮距，用于 IMU yaw 不可用时的 wheel-yaw fallback，合法范围 `[0, 2]`。 |
+| `REFERENCE_TIME_ALIGNMENT.USE_ENCODER_FORWARD` | `0` | vehicle pose delta estimator | 是否用编码器积分前向位移。默认关闭，直到共享的 `MOTION_ODOMETRY.ENCODER_TICKS_TO_METER` 实测完成。 |
+| `REFERENCE_TIME_ALIGNMENT.WHEEL_TRACK_M` | `0.154` | vehicle pose delta estimator | 左右轮中心距，用于 IMU yaw 不可用时的 wheel-yaw fallback。实测外缘总宽 `0.18m`，单轮厚 `0.026m`，所以中心距为 `0.18-0.026=0.154m`；编码器尺度仍未知，因此 fallback 保持关闭。 |
 | `REFERENCE_TIME_ALIGNMENT.USE_IMU_YAW` | `1` | vehicle pose delta estimator | 是否优先使用 IMU `gyro_z` 积分 yaw。 |
 | `REFERENCE_TIME_ALIGNMENT.USE_WHEEL_YAW_FALLBACK` | `0` | vehicle pose delta estimator | IMU yaw 不可用时是否使用左右编码器差估 yaw。默认关闭，直到轮距和编码器尺度标定完成。 |
 | `REFERENCE_TIME_ALIGNMENT.FUTURE_PREDICTION_ENABLED` | `0` | vehicle pose delta estimator | 是否允许预测 `now_ms -> control_effective_time_ms`。默认关闭。 |
 | `REFERENCE_TIME_ALIGNMENT.COMMAND_YAW_PREDICTION_ENABLED` | `0` | vehicle pose delta estimator | 是否使用已施加 turn output 预测未来 yaw rate。默认关闭。 |
 | `REFERENCE_TIME_ALIGNMENT.TURN_OUTPUT_TO_YAW_RATE_GAIN` | `0.0` | vehicle pose delta estimator | `applied_turn_output -> yaw_rate(rad/s)` 的实测增益，合法范围 `[-100, 100]`。 |
 | `REFERENCE_TIME_ALIGNMENT.ACTUATOR_YAW_TAU_MS` | `35.0` | vehicle pose delta estimator | 命令 yaw 预测的一阶执行响应时间常数，合法范围 `[0, 1000]`。 |
-| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_FORWARD_M` | `0.6` | reference time alignment | 单次对齐允许的最大前向位移，超限 fail closed。 |
-| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_LATERAL_M` | `0.4` | reference time alignment | 单次对齐允许的最大横向位移，超限 fail closed。 |
+| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_FORWARD_M` | `0.782641706` | reference time alignment | 旧虚构 BEV 前向上限 `0.6` 按前向尺度换算后的单次对齐上限；尚未由运动实测重新标定。 |
+| `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_LATERAL_M` | `0.441152591` | reference time alignment | 旧虚构 BEV 横向上限 `0.4` 按横向尺度换算后的单次对齐上限；尚未由运动实测重新标定。 |
 | `REFERENCE_TIME_ALIGNMENT.MAX_DELTA_YAW_RAD` | `0.8` | reference time alignment | 单次对齐允许的最大 yaw 积分量，超限 fail closed。 |
 
 组合约束在参数加载阶段提前校验：当 `REFERENCE_TIME_ALIGNMENT.ENABLED=1`
-时，`USE_ENCODER_FORWARD=1` 要求 `ENCODER_TICKS_TO_METER > 0`；
-`USE_WHEEL_YAW_FALLBACK=1` 要求 `ENCODER_TICKS_TO_METER > 0` 且
+时，`USE_ENCODER_FORWARD=1` 要求 `MOTION_ODOMETRY.ENCODER_TICKS_TO_METER > 0`；
+`USE_WHEEL_YAW_FALLBACK=1` 要求该共享比例大于 0 且
 `WHEEL_TRACK_M > 0`；`COMMAND_YAW_PREDICTION_ENABLED=1` 要求
 `FUTURE_PREDICTION_ENABLED=1` 且 `TURN_OUTPUT_TO_YAW_RATE_GAIN != 0`。
 这些组合不满足时配置加载回退默认参数，而不是等 estimator 运行时再 fail closed。
@@ -196,56 +195,56 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 | 参数 | 当前 JSON 值 | 调参方法与证据 |
 | --- | --- | --- |
 | `BEV_PROJECTOR.VALID` | `1` | 投影是否可用。置 `0` 会让 perception health 失败，只用于 fail-safe 验证。 |
-| `BEV_PROJECTOR.PROJECTOR_ID` | `bev_projector_square_aspect_20260531T043107Z` | 标定版本名。只改标识，不改变几何；更新标定时同步改。 |
-| `BEV_PROJECTOR.PROJECTOR_HASH` | `bev-projector-square-aspect-frame-3096-20260531T043107Z` | 标定版本 hash/说明。只用于身份和 LUT 重建判断。 |
+| `BEV_PROJECTOR.PROJECTOR_ID` | `bev_projector_red_marker_metric_20260713T171917Z` | 标定版本名。只改标识，不改变几何；更新标定时同步改。 |
+| `BEV_PROJECTOR.PROJECTOR_HASH` | `bev-projector-red-marker-0p12x0p05-20260713T171917Z` | 标定版本 hash/说明。只用于身份和 LUT 重建判断。 |
 | `BEV_PROJECTOR.DEBUG_GRID_WIDTH` | `160` | dense debug BEV 图宽度，只影响调试图，不是 runtime sparse/raster authority。 |
 | `BEV_PROJECTOR.DEBUG_GRID_HEIGHT` | `128` | dense debug BEV 图高度，只影响调试图。 |
-| `BEV_PROJECTOR.SOURCE_ROW_0` / `SOURCE_COL_0` | `222.0` / `33.5` | 近端左标定点在原图中的像素位置。 |
-| `BEV_PROJECTOR.SOURCE_ROW_1` / `SOURCE_COL_1` | `222.0` / `298.5` | 近端右标定点在原图中的像素位置。 |
-| `BEV_PROJECTOR.SOURCE_ROW_2` / `SOURCE_COL_2` | `81.0` / `116.0` | 远端左标定点在原图中的像素位置。 |
-| `BEV_PROJECTOR.SOURCE_ROW_3` / `SOURCE_COL_3` | `81.0` / `217.0` | 远端右标定点在原图中的像素位置。 |
-| `BEV_PROJECTOR.TARGET_FORWARD_0` / `TARGET_LATERAL_0` | `0.061` / `-0.21` | 近端左标定点对应的车辆坐标。 |
-| `BEV_PROJECTOR.TARGET_FORWARD_1` / `TARGET_LATERAL_1` | `0.061` / `0.21` | 近端右标定点对应的车辆坐标。 |
-| `BEV_PROJECTOR.TARGET_FORWARD_2` / `TARGET_LATERAL_2` | `0.6006` / `-0.21` | 远端左标定点对应的车辆坐标。 |
-| `BEV_PROJECTOR.TARGET_FORWARD_3` / `TARGET_LATERAL_3` | `0.6006` / `0.21` | 远端右标定点对应的车辆坐标。 |
+| `BEV_PROJECTOR.SOURCE_ROW_0` / `SOURCE_COL_0` | `219.0` / `55.5` | 近端左标定点在原图中的像素位置。 |
+| `BEV_PROJECTOR.SOURCE_ROW_1` / `SOURCE_COL_1` | `219.0` / `307.5` | 近端右标定点在原图中的像素位置。 |
+| `BEV_PROJECTOR.SOURCE_ROW_2` / `SOURCE_COL_2` | `56.0` / `137.5` | 远端左标定点在原图中的像素位置。 |
+| `BEV_PROJECTOR.SOURCE_ROW_3` / `SOURCE_COL_3` | `56.0` / `226.5` | 远端右标定点在原图中的像素位置。 |
+| `BEV_PROJECTOR.TARGET_FORWARD_0` / `TARGET_LATERAL_0` | `0.0795685735` / `-0.2316051101` | 近端左标定点对应的车辆坐标。 |
+| `BEV_PROJECTOR.TARGET_FORWARD_1` / `TARGET_LATERAL_1` | `0.0795685735` / `0.2316051101` | 近端右标定点对应的车辆坐标。 |
+| `BEV_PROJECTOR.TARGET_FORWARD_2` / `TARGET_LATERAL_2` | `0.7834243479` / `-0.2316051101` | 远端左标定点对应的车辆坐标。 |
+| `BEV_PROJECTOR.TARGET_FORWARD_3` / `TARGET_LATERAL_3` | `0.7834243479` / `0.2316051101` | 远端右标定点对应的车辆坐标。 |
 
-摄像头角度变化后优先使用 `new/user/calibrate_bev_projector_from_live.py` 在直道居中静态帧上做多行边界拟合；脚本默认只输出建议和 overlay，显式 `--write-params` 才写回 `BEV_PROJECTOR.SOURCE_*`。当前 `TARGET_FORWARD_2/3` 额外按 live gray8 frame 3096 中的标准白色正方形做纵横比校正：该方块在当前 BEV 下高/宽约 `1.017`，因此保持近端 `0.061m` 不变，将远端 forward 从 `0.61m` 缩到 `0.6006m`。调 `SOURCE_*` 或 `TARGET_*` 时必须重新检查 raw/BEV 显示、boundary jumps/spans 和 reference overlay。不要通过 lateral-error 或 PID 参数掩盖标定错误。
+摄像头角度变化后优先使用 `new/user/calibrate_bev_projector_from_live.py` 在直道居中静态帧上做多行边界拟合；脚本默认只输出建议和 overlay，显式 `--write-params` 才写回 `BEV_PROJECTOR.SOURCE_*`。当前米制尺度以同一原始 YUYV 中真实 `0.12m × 0.05m` 的红色矩形为基准，并按车辆坐标原点 `(0,0)` 固定变换原点，对旧 BEV 应用 `forward_new = 1.3044028437 * forward_old`、`lateral_new = 1.1028814766 * lateral_old`。因此近端 `TARGET_FORWARD_0/1` 也参与换算，不保留旧 `0.061m`。该变换作用在 `TARGET_*`，因此所有 image-to-BEV 生成的 `forward_m/lateral_m` 都统一进入真实米制；禁止在 boundary、path、tracking、Circle、ML 或 viewer 再做第二次缩放。调 `SOURCE_*` 或 `TARGET_*` 时必须重新检查 raw/BEV 显示、boundary jumps/spans 和 reference overlay。不要通过 lateral-error 或 PID 参数掩盖标定错误。
 
 ## 9. BEV Geometry 行扫描
 
 | 参数 | 当前 JSON 值 | 作用与调参方法 |
 | --- | --- | --- |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_0` | `0.1` | reference path 第 0 层。当前视觉 reference 只能从 boundary facts 形成的近端连续候选开始。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_1` | `0.165217` | 第 1 层。用于 leading 连续段和插值。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_2` | `0.230435` | 第 2 层。默认 `MIN_LEADING_REFERENCE_SAMPLES=3` 时，这是最小 usable 远端。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_3` | `0.295652` | 第 3 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_4` | `0.36087` | 第 4 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_5` | `0.426087` | 第 5 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_6` | `0.491304` | 第 6 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_7` | `0.556522` | 第 7 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_8` | `0.621739` | 第 8 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_9` | `0.686957` | 第 9 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_10` | `0.752174` | 第 10 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_11` | `0.817391` | 第 11 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_12` | `0.882609` | 第 12 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_13` | `0.947826` | 第 13 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_14` | `1.013043` | 第 14 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_15` | `1.078261` | 第 15 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_16` | `1.143478` | 第 16 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_17` | `1.208696` | 第 17 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_18` | `1.273913` | 第 18 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_19` | `1.33913` | 第 19 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_20` | `1.404348` | 第 20 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_21` | `1.469565` | 第 21 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_22` | `1.534783` | 第 22 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_23` | `1.6` | 第 23 层；当前算法不会为了远端点跨 gap 补点。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_0` | `0.130440284` | reference path 第 0 层。当前视觉 reference 只能从 boundary facts 形成的近端连续候选开始。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_1` | `0.215509525` | 第 1 层。用于 leading 连续段和插值。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_2` | `0.300580069` | 第 2 层。默认 `MIN_LEADING_REFERENCE_SAMPLES=3` 时，这是最小 usable 远端。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_3` | `0.385649310` | 第 3 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_4` | `0.470719854` | 第 4 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_5` | `0.555789094` | 第 5 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_6` | `0.640858335` | 第 6 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_7` | `0.725928879` | 第 7 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_8` | `0.810998120` | 第 8 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_9` | `0.896068664` | 第 9 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_10` | `0.981137905` | 第 10 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_11` | `1.066207145` | 第 11 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_12` | `1.151277689` | 第 12 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_13` | `1.236346930` | 第 13 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_14` | `1.321416170` | 第 14 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_15` | `1.406486715` | 第 15 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_16` | `1.491555955` | 第 16 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_17` | `1.576626500` | 第 17 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_18` | `1.661695740` | 第 18 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_19` | `1.746764980` | 第 19 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_20` | `1.831835525` | 第 20 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_21` | `1.916904765` | 第 21 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_22` | `2.001975310` | 第 22 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_23` | `2.087044550` | 第 23 层；当前算法不会为了远端点跨 gap 补点。 |
 | `BEV_GEOMETRY.SPARSE_ROW_COUNT` | `24` | 启用原 24 个 `FORWARD_SAMPLE_*` 的前 N 行。设为 `12` 表示只扫描并输出 `FORWARD_SAMPLE_0..11`，不是把 12 行重新均匀分布到 0.061..1.5m。 |
-| `BEV_GEOMETRY.SEARCH_LATERAL_LIMIT_M` | `1.6` | BEV 横向扫描半宽。漏掉真实边界时可增大；无关纹理边界变多时减小。它不是原图有效 span 裁剪。 |
-| `BEV_GEOMETRY.LATERAL_STEP_M` | `0.02` | BEV 横向采样步长。减小会更精细但更耗时、更易拾取细碎边界；增大会更稳但 reference 量化更粗。 |
-| `BEV_GEOMETRY.BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M` | `0.15` | 普通路径候选生成前，边界 trace 相邻保留点的 BEV 平面最大距离。只用于原始边界点连续性裁剪，不从半路宽或采样步长推导。 |
-| `BEV_GEOMETRY.NOMINAL_ROAD_HALF_WIDTH_M` | `0.19` | 普通道路模型的稳定半路宽事实。CircleV2 ExitTrace 通过 `OrdinaryRoadModel.half_width` 消费该值，不再从每帧 rows 宽度实时重算。 |
+| `BEV_GEOMETRY.SEARCH_LATERAL_LIMIT_M` | `1.764610363` | 旧虚构横向半宽 `1.6` 按横向尺度换算。它不是原图有效 span 裁剪。 |
+| `BEV_GEOMETRY.LATERAL_STEP_M` | `0.022057630` | 旧虚构横向步长 `0.02` 按横向尺度换算。 |
+| `BEV_GEOMETRY.BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M` | `0.195660427` | trace 沿前向行推进，旧阈值 `0.15` 按前向尺度换算；这是等效换算值，不是新实测真值。 |
+| `BEV_GEOMETRY.NOMINAL_ROAD_HALF_WIDTH_M` | `0.225` | 实测赛道全宽 `0.45m` 的半宽；覆盖旧虚构值的等效换算。CircleV2 ExitTrace 通过同一 `OrdinaryRoadModel.half_width` 消费。 |
 
-`FORWARD_SAMPLE_*` 必须单调递增。当前 24 点按 0.1..1.6m 均匀分布，步长约 0.065217m。这些参数已经是 BEV 投影后的车辆坐标系米制 `forward_m`，消费方直接把它们作为 BEV 行位置使用，不需要再额外做一次 BEV 转换。改采样分布会影响 LUT identity、leading range、lateral-error 权重含义和 steering media snapshot；不要只改某一个点来修局部画面。
+`FORWARD_SAMPLE_*` 必须单调递增。旧虚构坐标的 0.1..1.6 已整体乘前向尺度，当前 24 点按 0.130440284..2.087044550m 分布，步长约 0.085069m。这些参数已经是校正后的 BEV 车辆坐标系 `forward_m`，消费方不得再缩放。改采样分布会影响 LUT identity、leading range、lateral-error 权重含义和 steering media snapshot；不要只改某一个点来修局部画面。
 
 `SPARSE_ROW_COUNT` 是活跃前缀长度，合法范围为 `1..24`。它改变性能和最大前视距离，但不改变任何已定义采样行的物理位置；参数变化会让 sparse LUT 与 hold geometry identity 失效并重建。
 
@@ -277,9 +276,9 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN` | `350` | turn-output target | `reference_tracking_geometry.lateral_offset_m` 到左右轮速半差目标的反馈增益。合法范围 `[0, 1000]`，越界参数按解析失败处理。 |
-| `BEV_CONTROL_MODEL.HEADING_ERROR_TO_WHEEL_DELTA_GAIN` | `80` | turn-output target | `reference_tracking_geometry.heading_error_rad` 到左右轮速半差目标的反馈增益。合法范围 `[0, 1000]`，越界参数按解析失败处理。 |
-| `BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN` | `30` | turn-output target | `reference_tracking_geometry.curvature_m_inv` 到左右轮速半差目标的曲率前馈增益，语义与 lateral/heading gain 一样是在 `RUNNING_SPEED_TARGET` 下的 nominal gain；运行时再统一乘 `speed_scale`。调参时结合 `yaw_control.curvature_term` 查看贡献。 |
+| `BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN` | `136.007362` | turn-output target | 旧增益 `150` 除以横向尺度，保持同一旧路径上的 lateral term 等效；尚未实车重调。 |
+| `BEV_CONTROL_MODEL.HEADING_ERROR_TO_WHEEL_DELTA_GAIN` | `59.136130` | turn-output target | 旧增益 `50` 按小角度斜率变化 `forward_scale/lateral_scale` 换算；大航向误差下不是严格等价，需实车复核。 |
+| `BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN` | `23.141201` | turn-output target | 旧增益 `15` 按小斜率曲率变化 `forward_scale^2/lateral_scale` 换算；尚未实车重调。 |
 | `BEV_CONTROL_MODEL.MIN_LEADING_REFERENCE_SAMPLES` | `3` | reference usability | 第一个连续真实 reference 点段的最小数量。近端丢线本身不使路径不可用，但真实连续点少于该值仍不可用。低于 3 时按 3 处理。 |
 | `BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES` | `3` | reference tracking geometry | 二次拟合 `reference_tracking_geometry` 所需的最小 leading usable 样本数。合法范围 `[3, 24]`。 |
 
@@ -300,8 +299,8 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M` | `0.0` | CircleV2 B path | InnerTrace 路径从内圆边线向道路内部偏移的距离。`0.0` 表示贴内圆边线；正值左环岛向右偏、右环岛向左偏。合法值 `0..2`。 |
 | `BEV_ELEMENT.CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN` | `0.7` | CircleV2 observer | CircleV2 Phase1 cue 和 Approach entry gate 使用“对侧直线”时的最低拟合置信度。`0.0` 等价旧行为；合法值 `0..1`。 |
 | `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT` | `3` | CircleV2 Approach gate | Approach entry gate 在下部 ROI 内要求的最少证据行数。它不限制 ROI 内最多扫描多少行，不改变 Phase1 cue 的全局 trace 语义。合法值 `1..24`。 |
-| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M` | `0.1` | CircleV2 Approach gate | Approach entry gate 下部 ROI 的前向下限。只限制“下部开口”观察，不限制 InnerTrace/ExitTrace 边线几何搜索。合法值 `0..2` 且不大于 max。 |
-| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M` | `0.35` | CircleV2 Approach gate | Approach entry gate 下部 ROI 的前向上限。完整 `[min,max]` 区间都会参与开口搜索；ROI 内不足 `CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT` 行则 entry gate 为 false。合法值 `0..2` 且不小于 min。 |
+| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M` | `0.130440284` | CircleV2 Approach gate | 旧前向下限 `0.1` 按前向尺度换算。 |
+| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M` | `0.456540995` | CircleV2 Approach gate | 旧前向上限 `0.35` 按前向尺度换算；完整 `[min,max]` 区间都会参与开口搜索。 |
 
 `cross_exit` 第一版只用于 evidence/debug。不要为了让车“看起来过十字”而用它直接改 actuator、yaw、safety 或 hold。现场先在 no-motion capture 中确认 `element_evidence.cross_exit.{present,confidence,reason,candidate.*}` 与 raw/BEV 画面对齐。generic element 扩展记录统一在 `element_evidence.records[]`，旧消费者只读 `cross_exit` 即可。
 
@@ -339,3 +338,41 @@ full BEV element raster 不属于 active `default_params.json` 运行时合同�
 运行时分层与 include 边界见 `new/code/port/README.md`。`PerceptionResult is a runtime transport snapshot, not a dependency shortcut.`
 
 后续在 `bev-simple-reference-extension` 上扩展 BEV 元素或路径策略前，先遵守根目录 `README.md` 中的大道至简与互不知晓约束。
+## ML startup parameters
+
+`MOTION_ODOMETRY.ENCODER_TICKS_TO_METER` is the single startup scale used by
+both reference time alignment and the ML maneuver odometry path.
+`ML.ENABLED` defaults to `0`; in that state no ML
+work is scheduled and zero-valued ROI calibration, odometry, and maneuver
+fields are intentionally valid.
+
+When `ML.ENABLED=1`, startup validation is fail-closed. The ROI search span,
+forward/lateral grid steps, expected rectangle edges and their tolerances must be finite and
+positive. YUV intervals must be ordered inside `[0,255]`; orientation must be
+in `(0, pi/2]`; component count must be at least one; rectangularity and red
+fill thresholds must be in `(0,1]`; score weights must be finite and
+nonnegative with a positive sum. `MOTION_ODOMETRY.ENCODER_TICKS_TO_METER`,
+`ML.MANEUVER.SPEED_TARGET`, and `ML.MANEUVER.EXIT_FORWARD_M` must be positive.
+The duration and integration-gap limits must be at least 1 ms. Exit tolerances
+and cooldown may be zero.
+
+`ML.V9` accepts `MIN_MARGIN>=0`, `MAX_BEST_DISTANCE` in `[0,126]`, and
+`CONFIRM_FRAMES>=1`. `ML.CLASS_MAPPING` is separate from acceptance. Each class
+maps to one of `straight`, `left`, `right`, or `unmapped`; defaults are class 0
+straight, class 1 left, and class 2 right. Duplicate mappings are permitted.
+
+The current disabled-by-default ML ROI calibration consumes the corrected BEV
+metric directly. Its marker truth is `EXPECTED_LONG_EDGE_M=0.120` and
+`EXPECTED_SHORT_EDGE_M=0.050`; its search window was transformed with the same
+projector scale about vehicle origin `(0,0)` to
+`forward=[0.1304402844,0.2739245972]m` and
+`lateral=+-0.1433745920m`. The old isotropic fictitious `GRID_STEP_M=0.003`
+was removed because one value cannot represent two different axis scales;
+the corrected contract is `GRID_FORWARD_STEP_M=0.0039132085` and
+`GRID_LATERAL_STEP_M=0.0033086444`. No ML-only scale compensation exists.
+
+CircleV2's active metric constants were converted at their owner: the center
+sample forward gap is `0.130440284m`, lateral opening threshold is
+`0.055144074m`, opposite-side lateral drift limit is `0.066172889m`, and exit
+trace lateral-span limit is `0.132345777m`. These are transformed equivalents
+of the old fictitious values, not new physical measurements.

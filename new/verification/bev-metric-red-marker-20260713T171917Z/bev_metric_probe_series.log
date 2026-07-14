@@ -1,0 +1,96 @@
+RUN=0
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.974175 red_fill_ratio=0.949785 quality=0.957601 component_cells=662
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_0.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58736f434987e8fd852723
+replay valid=true raw_class=0 best_distance=32 margin=7 prototype_index=1926
+timing capture_us=15934 detector_us=2479 roi_us=411 descriptor_us=77 replay_us=3206 algorithm_total_us=6175
+RUN=1
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.978479 red_fill_ratio=0.955524 quality=0.960111 component_cells=666
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_1.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f367534987e8ed852723
+replay valid=true raw_class=0 best_distance=31 margin=6 prototype_index=1875
+timing capture_us=15951 detector_us=2545 roi_us=412 descriptor_us=34 replay_us=3239 algorithm_total_us=6231
+RUN=2
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.977044 red_fill_ratio=0.952654 quality=0.959035 component_cells=664
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_2.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f367534987e8fd812723
+replay valid=true raw_class=0 best_distance=31 margin=6 prototype_index=661
+timing capture_us=15939 detector_us=2500 roi_us=410 descriptor_us=33 replay_us=3301 algorithm_total_us=6246
+RUN=3
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.979914 red_fill_ratio=0.956959 quality=0.960829 component_cells=667
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_3.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f36f534987e8ed852723
+replay valid=true raw_class=0 best_distance=31 margin=5 prototype_index=1926
+timing capture_us=15929 detector_us=2574 roi_us=412 descriptor_us=34 replay_us=3292 algorithm_total_us=6313
+RUN=4
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.979914 red_fill_ratio=0.956959 quality=0.960829 component_cells=667
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_4.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f367434987e8fd852723
+replay valid=true raw_class=0 best_distance=31 margin=8 prototype_index=1875
+timing capture_us=15937 detector_us=2559 roi_us=411 descriptor_us=34 replay_us=3245 algorithm_total_us=6250
+RUN=5
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.977762 red_fill_ratio=0.955524 quality=0.959932 component_cells=666
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_5.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f367534987e8ed852723
+replay valid=true raw_class=0 best_distance=31 margin=6 prototype_index=1875
+timing capture_us=15933 detector_us=2577 roi_us=412 descriptor_us=34 replay_us=3304 algorithm_total_us=6328
+RUN=6
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.977044 red_fill_ratio=0.954089 quality=0.959394 component_cells=665
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_6.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f367434987e8fd852723
+replay valid=true raw_class=0 best_distance=31 margin=8 prototype_index=1875
+timing capture_us=15939 detector_us=2555 roi_us=411 descriptor_us=33 replay_us=3226 algorithm_total_us=6227
+RUN=7
+artifact valid=true candidate_id=dct8_sign_absmedian__duplicate_code_merge descriptor_config_hash=07a813eb3fb09eeba81aa2b5221d5cafba5353b611135aef78c35795d65e0fab template_table_hash=bb3736af2f8da704c21d344b5e95b93fbc366699dad923714b9839db22ec59c8 template_codes_sha256=39f620e408b8f452aacd1d79b7b13ef1a6f100d892b61989c0960aceb7db285f prototypes=6267 descriptor_bytes=16 descriptor_bits=126
+config path=/home/root/ml_metric_probe_params.json projector_id=bev_projector_red_marker_metric_20260713T171917Z projector_hash=bev-projector-red-marker-0p12x0p05-20260713T171917Z motion_parameters_loaded=false
+detector valid=true frame_id=1 center_forward_m=0.187440 center_lateral_m=-0.017375 long_edge_m=0.123000 short_edge_m=0.051000 long_axis_forward=-0.000000 long_axis_lateral=1.000000 orientation_rad=0.000000 rectangularity=0.977762 red_fill_ratio=0.956959 quality=0.960291 component_cells=667
+detector_corner index=0 forward_m=0.161940 lateral_m=-0.078875
+detector_corner index=1 forward_m=0.212940 lateral_m=-0.078875
+detector_corner index=2 forward_m=0.212940 lateral_m=0.044125
+detector_corner index=3 forward_m=0.161940 lateral_m=0.044125
+roi valid=true reason=ok frame_id=1 bytes=1024 saved=true path=/home/root/bev_metric_probe_roi_7.raw long_axis_forward=-0.000000 long_axis_lateral=1.000000 forward_normal_forward=1.000000 forward_normal_lateral=0.000000
+descriptor valid=true bytes=7bf2952f8c58f367534987e8ed852723
+replay valid=true raw_class=0 best_distance=31 margin=6 prototype_index=1875
+timing capture_us=15931 detector_us=2575 roi_us=411 descriptor_us=33 replay_us=3218 algorithm_total_us=6238

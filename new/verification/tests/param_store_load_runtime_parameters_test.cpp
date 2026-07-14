@@ -135,6 +135,30 @@ int main(int argc, char** argv) {
                       "  \"wheel_turn_decel_delta_scale\": 0.75,\n"
                       "  \"brushless_debug_fixed_pwm_enabled\": 0,\n"
                       "  \"brushless_debug_fixed_pwm\": 750,\n"
+                      "  \"MOTION_ODOMETRY\": {\"ENCODER_TICKS_TO_METER\": 0.001},\n"
+                      "  \"ML\": {"
+                      "\"ENABLED\": 1,"
+                      "\"ROI\": {"
+                      "\"SEARCH_FORWARD_MIN_M\": 0.1,\"SEARCH_FORWARD_MAX_M\": 1.0,"
+                      "\"SEARCH_LATERAL_LIMIT_M\": 0.5,"
+                      "\"GRID_FORWARD_STEP_M\": 0.02,\"GRID_LATERAL_STEP_M\": 0.03,"
+                      "\"RED_Y_MIN\": 20,\"RED_Y_MAX\": 220,"
+                      "\"RED_U_MIN\": 10,\"RED_U_MAX\": 120,"
+                      "\"RED_V_MIN\": 130,\"RED_V_MAX\": 250,"
+                      "\"EXPECTED_LONG_EDGE_M\": 0.2,\"EXPECTED_SHORT_EDGE_M\": 0.1,"
+                      "\"LONG_EDGE_TOLERANCE_M\": 0.05,\"SHORT_EDGE_TOLERANCE_M\": 0.03,"
+                      "\"MAX_LONG_EDGE_TO_LATERAL_RAD\": 0.3,"
+                      "\"MIN_COMPONENT_CELLS\": 4,\"MIN_RECTANGULARITY\": 0.5,"
+                      "\"MIN_RED_FILL_RATIO\": 0.5,\"SCORE_SIZE_WEIGHT\": 2.0,"
+                      "\"SCORE_RECTANGULARITY_WEIGHT\": 1.0,"
+                      "\"SCORE_RED_FILL_WEIGHT\": 1.0,\"SCORE_ORIENTATION_WEIGHT\": 1.0},"
+                      "\"V9\": {\"MIN_MARGIN\": 2,\"MAX_BEST_DISTANCE\": 50,\"CONFIRM_FRAMES\": 3},"
+                      "\"CLASS_MAPPING\": {\"CLASS_0_ACTION\": \"straight\","
+                      "\"CLASS_1_ACTION\": \"left\",\"CLASS_2_ACTION\": \"right\"},"
+                      "\"MANEUVER\": {\"SPEED_TARGET\": 100,\"MIN_BOUNDARY_SAMPLES\": 3,"
+                      "\"EXIT_FORWARD_M\": 0.5,\"EXIT_MAX_ABS_LATERAL_ERROR_M\": 0.1,"
+                      "\"EXIT_MAX_ABS_HEADING_ERROR_RAD\": 0.2,\"MAX_DURATION_MS\": 1000,"
+                      "\"MAX_INTEGRATION_GAP_MS\": 30,\"COOLDOWN_MS\": 200}},\n"
                       "  \"BEV_GEOMETRY\": {"
                       "\"NOMINAL_ROAD_HALF_WIDTH_M\": 0.33,"
                       "\"SPARSE_ROW_COUNT\": 12,"
@@ -182,6 +206,21 @@ int main(int argc, char** argv) {
                "brushless_debug_fixed_pwm_enabled should parse false");
         Expect(enabled.brushless_debug_fixed_pwm == 750,
                "brushless_debug_fixed_pwm should parse");
+        Expect(enabled.ml.enabled &&
+                   std::abs(enabled.motion_odometry.encoder_ticks_to_meter - 0.001) < 1.0e-9,
+               "enabled ML must parse the shared motion-odometry scale");
+        Expect(enabled.ml.v9.min_margin == 2 &&
+                   enabled.ml.v9.max_best_distance == 50 &&
+                   enabled.ml.v9.confirm_frames == 3,
+               "ML V9 acceptance and confirmation parameters should parse");
+        Expect(enabled.ml.class_mapping.class_1_action == "left" &&
+                   enabled.ml.class_mapping.class_2_action == "right",
+               "ML class mapping should parse independently of replay");
+        Expect(std::abs(enabled.ml.roi.grid_forward_step_m - 0.02) < 1.0e-9 &&
+                   std::abs(enabled.ml.roi.grid_lateral_step_m - 0.03) < 1.0e-9 &&
+                   std::abs(enabled.ml.roi.expected_long_edge_m - 0.2) < 1.0e-9 &&
+                   std::abs(enabled.ml.maneuver.speed_target - 100.0) < 1.0e-9,
+               "ML ROI and maneuver parameters should parse");
         Expect(std::abs(enabled.bev_geometry.nominal_road_half_width_m - 0.33F) <
                    1.0e-6F,
                "BEV_GEOMETRY.NOMINAL_ROAD_HALF_WIDTH_M should parse");
@@ -304,14 +343,14 @@ int main(int argc, char** argv) {
         Expect(std::abs(absent.bev_element.circle_v2_entry_bottom_forward_max_m -
                         builtin_defaults.bev_element.circle_v2_entry_bottom_forward_max_m) < 1.0e-6F,
                "missing BEV_ELEMENT should keep CircleV2 entry bottom max default");
-        Expect(std::abs(absent.bev_geometry.nominal_road_half_width_m - 0.19F) <
+        Expect(std::abs(absent.bev_geometry.nominal_road_half_width_m - 0.225F) <
                    1.0e-6F,
                "missing BEV_GEOMETRY should keep nominal road half-width default");
         Expect(absent.bev_geometry.sparse_row_count ==
                    static_cast<int>(ls2k::port::kBevReferenceSampleCount),
                "missing BEV_GEOMETRY should keep sparse row count default");
         Expect(std::abs(absent.bev_geometry.boundary_trace_max_adjacent_distance_m -
-                        0.15F) < 1.0e-6F,
+                        0.195660427F) < 1.0e-6F,
                "missing BEV_GEOMETRY should keep boundary trace distance default");
         Expect(std::abs(absent.bev_classification.white_confidence_min -
                         0.55F) < 1.0e-6F,
@@ -386,7 +425,7 @@ int main(int argc, char** argv) {
         Expect(malformed_geometry.parse_failure,
                "zero nominal road half width should set parse_failure");
         Expect(std::abs(malformed_geometry.bev_geometry.nominal_road_half_width_m -
-                        0.19F) < 1.0e-6F,
+                        0.225F) < 1.0e-6F,
                "nominal road half-width fallback should keep default");
         Expect(malformed_geometry_diagnostics.SawCode("params.parse"),
                "zero nominal road half width should emit params.parse");
@@ -429,7 +468,7 @@ int main(int argc, char** argv) {
                "zero boundary trace distance should set parse_failure");
         Expect(std::abs(malformed_boundary_trace.bev_geometry
                             .boundary_trace_max_adjacent_distance_m -
-                        0.15F) < 1.0e-6F,
+                        0.195660427F) < 1.0e-6F,
                "boundary trace distance fallback should keep default");
         Expect(malformed_boundary_trace_diagnostics.SawCode("params.parse"),
                "zero boundary trace distance should emit params.parse");

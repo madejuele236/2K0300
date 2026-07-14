@@ -101,6 +101,31 @@ add_library(ls2k_assistant_transport STATIC
 )
 target_link_libraries(ls2k_assistant_transport PUBLIC ls2k_project_headers ls2k_assistant_protocol pthread)
 
+find_program(PYTHON3_EXECUTABLE NAMES python3)
+if(NOT PYTHON3_EXECUTABLE)
+    message(FATAL_ERROR "python3 is required to generate the V9 firmware artifact")
+endif()
+
+set(V9_BUNDLE_DIR
+    ${REPO_ROOT}/model_training/experiments/v9_binary_template_replay_20260522_0001/current/pruned_firmware_bundles/dct8_sign_absmedian__duplicate_code_merge)
+set(V9_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/v9)
+set(V9_GENERATED_HEADER ${V9_GENERATED_DIR}/generated_v9_artifact.hpp)
+set(V9_GENERATED_SOURCE ${V9_GENERATED_DIR}/generated_v9_artifact.cpp)
+add_custom_command(
+    OUTPUT ${V9_GENERATED_HEADER} ${V9_GENERATED_SOURCE}
+    COMMAND ${PYTHON3_EXECUTABLE}
+            ${REPO_ROOT}/model_training/generate_v9_firmware_artifact.py
+            ${V9_BUNDLE_DIR}
+            ${V9_GENERATED_HEADER}
+            ${V9_GENERATED_SOURCE}
+    DEPENDS
+        ${REPO_ROOT}/model_training/generate_v9_firmware_artifact.py
+        ${V9_BUNDLE_DIR}/manifest.json
+        ${V9_BUNDLE_DIR}/template_codes_packed_u8.bin
+        ${V9_BUNDLE_DIR}/template_parent_u8.bin
+    VERBATIM
+)
+
 set(NEW_SRCS
     ../user/main.cpp
     ../code/platform/bootstrap.cpp
@@ -116,6 +141,16 @@ set(NEW_SRCS
     ../code/control/wheel_target_mixer.cpp
     ../code/control/wheel_pid.cpp
     ../code/vision/image/luma_sampler.cpp
+    ../code/vision/image/color_sampler.cpp
+    ../code/vision/ml/red_rectangle_detector.cpp
+    ../code/vision/ml/roi_sampler.cpp
+    ../code/vision/ml/v9_descriptor.cpp
+    ../code/vision/ml/v9_replay.cpp
+    ../code/vision/ml/ml_path_generator.cpp
+    ../code/vision/ml/ml_reference_adapter.cpp
+    ../code/vision/ml/ml_inertial_path_tracker.cpp
+    ../code/vision/ml/ml_scene.cpp
+    ${V9_GENERATED_SOURCE}
     ../code/vision/bev/bev_projector.cpp
     ../code/vision/bev/bev_image_segment_connectivity.cpp
     ../code/vision/bev/single_boundary_offset.cpp
@@ -163,6 +198,7 @@ add_executable(
     ${PROJ_NAME}
     ${NEW_SRCS}
 )
+target_include_directories(${PROJ_NAME} PRIVATE ${V9_GENERATED_DIR})
 target_compile_definitions(${PROJ_NAME} PRIVATE
     LS2K_PERF_ENABLED=$<BOOL:${LS2K_PERF_ENABLED}>
     LS2K_PERF_USE_CYCLE_COUNTER=$<BOOL:${LS2K_PERF_USE_CYCLE_COUNTER}>
@@ -182,6 +218,39 @@ target_link_libraries(
     ls2k_platform_camera
     ls2k_platform_motor
     ls2k_assistant_transport
+    ${OpenCV_LIBS}
+    pthread
+    m
+)
+
+add_executable(
+    ml_yuyv_capture
+    ../user/ml_yuyv_capture.cpp
+)
+target_link_libraries(
+    ml_yuyv_capture
+    ls2k_project_headers
+    ls2k_platform_camera
+    pthread
+    m
+)
+
+add_executable(
+    ml_v9_board_probe
+    ../user/ml_v9_board_probe.cpp
+    ../code/vision/image/color_sampler.cpp
+    ../code/vision/ml/red_rectangle_detector.cpp
+    ../code/vision/ml/roi_sampler.cpp
+    ../code/vision/ml/v9_descriptor.cpp
+    ../code/vision/ml/v9_replay.cpp
+    ../code/vision/bev/bev_projector.cpp
+    ${V9_GENERATED_SOURCE}
+)
+target_include_directories(ml_v9_board_probe PRIVATE ${V9_GENERATED_DIR})
+target_link_libraries(
+    ml_v9_board_probe
+    ls2k_project_headers
+    ls2k_platform_camera
     ${OpenCV_LIBS}
     pthread
     m

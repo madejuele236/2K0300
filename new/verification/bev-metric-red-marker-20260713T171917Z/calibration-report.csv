@@ -1,0 +1,2 @@
+line,frame_path,long_edge_m,short_edge_m,long_edge_to_lateral_rad,rectangularity,y_median,y_p05,y_p95,u_median,u_p05,u_p95,v_median,v_p05,v_p95
+1,/home/madejuele/projects/2K0300/new/verification/ml-v9-board-calibration-20260713T163406Z/frame-raw.yuyv,0.12000000000375197,0.04999999999583406,0.022560841534391272,0.9939249002370285,90,58.0,98.0,115,111.0,136.0,180,149.0,187.0

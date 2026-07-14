@@ -51,16 +51,15 @@ struct ReferenceTimeAlignmentParameters {
     int max_integration_gap_ms = 30;       ///< motion history 最大允许采样空洞
     int min_aligned_samples = 3;           ///< 对齐后最少前方样本数
     bool use_encoder_forward = false;      ///< 是否用编码器积分前进距离
-    double encoder_ticks_to_meter = 0.0;   ///< 编码器 delta -> meter 的比例
-    double wheel_track_m = 0.0;            ///< 左右轮距，用于轮速 yaw fallback
+    double wheel_track_m = 0.154;          ///< 左右轮中心距，用于轮速 yaw fallback
     bool use_imu_yaw = true;               ///< 是否使用 IMU gyro_z 积分 yaw
     bool use_wheel_yaw_fallback = false;   ///< IMU 不可用时是否用左右轮差估 yaw
     bool future_prediction_enabled = false;      ///< 是否预测 now -> effective
     bool command_yaw_prediction_enabled = false; ///< 是否用 applied turn 输出预测 yaw
     double turn_output_to_yaw_rate_gain = 0.0;   ///< turn output -> yaw rate(rad/s)
     double actuator_yaw_tau_ms = 35.0;           ///< yaw 响应一阶时间常数
-    double max_delta_forward_m = 0.60;      ///< 单次对齐最大前向位移
-    double max_delta_lateral_m = 0.40;      ///< 单次对齐最大横向位移
+    double max_delta_forward_m = 0.782641706;  ///< 单次对齐最大前向位移
+    double max_delta_lateral_m = 0.441152591;  ///< 单次对齐最大横向位移
     double max_delta_yaw_rad = 0.80;        ///< 单次对齐最大 yaw 积分
 };
 
@@ -75,6 +74,67 @@ struct CameraSourceParameters {
     int poll_timeout_ms = 50;              ///< capture thread 内 poll 超时
     bool drain_ready_buffers = true;       ///< 一次 wait 中 drain ready buffers
     std::string fallback_backend = "vendor_uvc";  ///< primary startup 失败时 fallback 后端
+};
+
+struct MotionOdometryParameters {
+    double encoder_ticks_to_meter = 0.0;
+};
+
+struct MlRoiParameters {
+    double search_forward_min_m = 0.0;
+    double search_forward_max_m = 0.0;
+    double search_lateral_limit_m = 0.0;
+    double grid_forward_step_m = 0.0;
+    double grid_lateral_step_m = 0.0;
+    int red_y_min = 0;
+    int red_y_max = 255;
+    int red_u_min = 0;
+    int red_u_max = 255;
+    int red_v_min = 0;
+    int red_v_max = 255;
+    double expected_long_edge_m = 0.0;
+    double expected_short_edge_m = 0.0;
+    double long_edge_tolerance_m = 0.0;
+    double short_edge_tolerance_m = 0.0;
+    double max_long_edge_to_lateral_rad = 0.0;
+    int min_component_cells = 0;
+    double min_rectangularity = 0.0;
+    double min_red_fill_ratio = 0.0;
+    double score_size_weight = 1.0;
+    double score_rectangularity_weight = 1.0;
+    double score_red_fill_weight = 1.0;
+    double score_orientation_weight = 1.0;
+};
+
+struct MlV9Parameters {
+    int min_margin = 0;
+    int max_best_distance = 126;
+    int confirm_frames = 1;
+};
+
+struct MlClassMappingParameters {
+    std::string class_0_action = "straight";
+    std::string class_1_action = "left";
+    std::string class_2_action = "right";
+};
+
+struct MlManeuverParameters {
+    double speed_target = 0.0;
+    int min_boundary_samples = 3;
+    double exit_forward_m = 0.0;
+    double exit_max_abs_lateral_error_m = 0.0;
+    double exit_max_abs_heading_error_rad = 0.0;
+    int max_duration_ms = 0;
+    int max_integration_gap_ms = 0;
+    int cooldown_ms = 0;
+};
+
+struct MlParameters {
+    bool enabled = false;
+    MlRoiParameters roi{};
+    MlV9Parameters v9{};
+    MlClassMappingParameters class_mapping{};
+    MlManeuverParameters maneuver{};
 };
 
 /**
@@ -146,6 +206,8 @@ struct RuntimeParameters {
     BEVElementParameters bev_element{};                   ///< BEV元素检测参数
     ReferenceTimeAlignmentParameters reference_time_alignment{};  ///< 参考时间对齐参数
     CameraSourceParameters camera_source{};                       ///< 相机源参数
+    MotionOdometryParameters motion_odometry{};
+    MlParameters ml{};
 
     // 状态标记
     bool startup_critical_applied = false;  ///< 启动阶段关键参数是否已应用

@@ -72,7 +72,7 @@ def emit_telemetry(connection: socket.socket,
                 "eligibility": {
                     "usable": True,
                     "leading_usable_samples": 4,
-                    "leading_min_forward_m": 0.061,
+                    "leading_min_forward_m": 0.0795685735,
                     "leading_max_forward_m": 0.249,
                     "reason": "ok",
                 },

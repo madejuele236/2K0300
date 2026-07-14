@@ -82,8 +82,10 @@ bool EnsureBEVSampleProjectionLut(BEVSampleProjectionLut& lut,
                                   const port::CameraPixelFrameView& frame,
                                   const port::RuntimeParameters& params,
                                   const BEVProjector& projector) {
-    const float lateral_limit = std::max(0.1F, params.bev_geometry.search_lateral_limit_m);
-    const float lateral_step = std::max(0.005F, params.bev_geometry.lateral_step_m);
+    const float lateral_limit =
+        std::max(0.110288148F, params.bev_geometry.search_lateral_limit_m);
+    const float lateral_step =
+        std::max(0.005514407F, params.bev_geometry.lateral_step_m);
     const std::size_t lateral_count = ComputeLateralSampleCount(lateral_limit, lateral_step);
     const std::size_t active_sparse_rows = ActiveSparseRowCount(params);
     if (!projector.Valid() || !frame.Valid() || lateral_count == 0) {

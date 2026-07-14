@@ -21,7 +21,7 @@ public:
     /// @return             配置是否成功
     bool Configure(const port::RuntimeParameters& params,
                    port::DiagnosticSink& diagnostics);
-    /// 重置普通参考连续性记忆（不触碰 scene-owned 记忆）
+    /// 重置参考连续性与 ML scene 记忆（CircleV2 contract 保持不变）
     void ResetReferenceMemory();
     /// 处理一帧图像：BEV 边界事实 → 元素检测 → 参考选择 → 横向误差计算
     /// @param capture   相机捕获数据

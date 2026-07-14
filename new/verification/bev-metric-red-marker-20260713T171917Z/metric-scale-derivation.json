@@ -1,0 +1,45 @@
+{
+  "artifact": "bev_metric_scale_derivation",
+  "source_frame": "../ml-v9-board-calibration-20260713T163406Z/frame-raw.yuyv",
+  "source_projector_id": "bev_projector_straight_fit_20260711T143337Z",
+  "source_observed_long_edge_m": 0.10880178576013258,
+  "source_observed_short_edge_m": 0.03843302576984896,
+  "true_long_edge_m": 0.12,
+  "true_short_edge_m": 0.05,
+  "forward_anchor_m": 0.0,
+  "lateral_anchor_m": 0.0,
+  "forward_scale": 1.304402843698539,
+  "lateral_scale": 1.1028814766321489,
+  "transform": {
+    "forward": "forward_scale * forward_old",
+    "lateral": "lateral_scale * lateral_old"
+  },
+  "independent_physical_truths": {
+    "wheel_outer_to_outer_m": 0.18,
+    "single_wheel_thickness_m": 0.026,
+    "wheel_center_track_m": 0.154,
+    "track_width_m": 0.45,
+    "track_half_width_m": 0.225
+  },
+  "corrected_target_points": [
+    {"forward_m": 0.0795685735, "lateral_m": -0.2316051101},
+    {"forward_m": 0.0795685735, "lateral_m": 0.2316051101},
+    {"forward_m": 0.7834243479, "lateral_m": -0.2316051101},
+    {"forward_m": 0.7834243479, "lateral_m": 0.2316051101}
+  ],
+  "identifiability": {
+    "identified": ["forward scale", "lateral scale"],
+    "not_identified_by_one_rectangle": ["absolute vehicle yaw"],
+    "externally_defined": ["vehicle coordinate origin is (0,0)"],
+    "preserved": ["vehicle origin (0,0)", "source image points"]
+  },
+  "secondary_grid_observation": {
+    "old_detector_long_edge_m": 0.114,
+    "old_detector_short_edge_m": 0.039,
+    "old_grid_step_m": 0.003,
+    "corrected_grid_forward_step_m": 0.0039132085,
+    "corrected_grid_lateral_step_m": 0.0033086444,
+    "used_as_scale_authority": false,
+    "reason": "oriented component box includes BEV grid-cell quantization"
+  }
+}

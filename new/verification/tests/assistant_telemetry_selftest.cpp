@@ -89,6 +89,39 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.yaw_control.lateral_term = 0.03;
     snapshot.steering.yaw_control.heading_term = -0.01;
     snapshot.steering.yaw_control.curvature_term = 0.10;
+    snapshot.steering.ml.enabled = true;
+    snapshot.steering.ml.artifact_candidate_id = "candidate-v9";
+    snapshot.steering.ml.descriptor_config_hash = "descriptor-hash";
+    snapshot.steering.ml.template_table_hash = "table-hash";
+    snapshot.steering.ml.template_codes_sha256 = "codes-sha256";
+    snapshot.steering.ml.artifact_prototype_count = 87;
+    snapshot.steering.ml.detector_us = 101;
+    snapshot.steering.ml.roi_us = 102;
+    snapshot.steering.ml.descriptor_us = 103;
+    snapshot.steering.ml.replay_us = 104;
+    snapshot.steering.ml.total_us = 410;
+    snapshot.steering.ml.detector_valid = true;
+    snapshot.steering.ml.detector.valid = true;
+    snapshot.steering.ml.detector.quality = 0.83F;
+    snapshot.steering.ml.roi.valid = true;
+    snapshot.steering.ml.descriptor.valid = true;
+    snapshot.steering.ml.replay.valid = true;
+    snapshot.steering.ml.replay.class_id = 1;
+    snapshot.steering.ml.replay.best_distance = 7;
+    snapshot.steering.ml.replay.margin = 11;
+    snapshot.steering.ml.mapped_action = ls2k::port::MlAction::kLeft;
+    snapshot.steering.ml.locked_action = ls2k::port::MlAction::kLeft;
+    snapshot.steering.ml.phase = ls2k::port::MlScenePhase::kActive;
+    snapshot.steering.ml.reason = "tracking";
+    snapshot.steering.ml.confirm_count = 4;
+    snapshot.steering.ml.active = true;
+    snapshot.steering.ml.pose_delta.valid = true;
+    snapshot.steering.ml.progress_m = 0.42F;
+    snapshot.steering.ml.lateral_error_m = -0.03F;
+    snapshot.steering.ml.heading_error_rad = 0.04F;
+    snapshot.steering.ml.path_sample_count = 6;
+    snapshot.steering.speed_selection_source = "ml_maneuver";
+    snapshot.steering.effective_speed_target = 77.0;
     snapshot.steering.actuator.raw_turn_output = 12;
     snapshot.steering.actuator.applied_turn_output = 10;
     snapshot.raw_turn_output = 12;
@@ -145,6 +178,10 @@ void TestSnapshotFactsMapToAssistantView() {
            "tracking geometry sample count must be copied");
     Expect(telemetry.yaw_control.curvature_term > 0.09,
            "yaw curvature term must be copied");
+    Expect(telemetry.ml.active && telemetry.ml.replay.class_id == 1,
+           "ML scene and replay facts must be copied");
+    Expect(telemetry.speed_selection_source == "ml_maneuver",
+           "ML speed selection source must be copied");
     Expect(telemetry.left_drive_pwm_command == 120,
            "left drive PWM command must be copied");
     Expect(telemetry.right_drive_pwm_command == 130,
@@ -202,7 +239,28 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
     Expect(Contains(json, "\"sample_count\":5"),
            "assistant telemetry must include tracking sample count");
     Expect(Contains(json, "\"yaw_control\":{\"turn_output_target\":0.12"),
-           "assistant telemetry must include yaw-control object");
+            "assistant telemetry must include yaw-control object");
+    Expect(Contains(json, "\"ml\":{\"enabled\":true,\"artifact\":"),
+           "assistant telemetry must include ML metadata");
+    Expect(Contains(json, "\"candidate_id\":\"candidate-v9\""),
+           "assistant telemetry must include generated artifact identity");
+    Expect(Contains(json, "\"template_codes_sha256\":\"codes-sha256\""),
+           "assistant telemetry must include generated artifact hash");
+    Expect(Contains(json, "\"timing_us\":{\"detector\":101,\"roi\":102,\"descriptor\":103,\"replay\":104,\"total\":410}"),
+           "assistant telemetry must include stage timings");
+    Expect(Contains(json, "\"detector_valid\":true"),
+           "assistant telemetry must include detector validity");
+    Expect(Contains(json, "\"roi\":{\"valid\":true") &&
+               Contains(json, "\"width\":32,\"height\":32,\"pixel_format\":\"gray8\""),
+           "assistant telemetry must include ROI metadata without bytes");
+    Expect(Contains(json, "\"mapped_action\":\"left\",\"locked_action\":\"left\""),
+           "assistant telemetry must include ML actions");
+    Expect(Contains(json, "\"phase\":\"active\",\"reason\":\"tracking\",\"confirm_count\":4"),
+           "assistant telemetry must include ML phase, reason, and confirmation");
+    Expect(Contains(json, "\"speed_selection\":{\"source\":\"ml_maneuver\",\"effective_speed_target\":77}"),
+           "assistant telemetry must include effective ML speed selection");
+    Expect(!Contains(json, "roi_bytes"),
+           "assistant telemetry must not serialize ML ROI bytes");
     Expect(Contains(json, "\"lateral_term\":0.03"),
            "assistant telemetry must include lateral yaw term");
     Expect(Contains(json, "\"heading_term\":-0.01"),

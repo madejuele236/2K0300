@@ -482,7 +482,7 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.reference_time_alignment.max_integration_gap_ms = 30;
     config.param_snapshot.reference_time_alignment.min_aligned_samples = 3;
     config.param_snapshot.reference_time_alignment.use_encoder_forward = true;
-    config.param_snapshot.reference_time_alignment.encoder_ticks_to_meter = 0.001;
+    config.param_snapshot.motion_odometry.encoder_ticks_to_meter = 0.001;
     config.param_snapshot.reference_time_alignment.wheel_track_m = 0.42;
     config.param_snapshot.reference_time_alignment.use_imu_yaw = true;
     config.param_snapshot.reference_time_alignment.use_wheel_yaw_fallback = true;
@@ -498,6 +498,13 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_geometry.sparse_row_count = 12;
     config.param_snapshot.bev_geometry.boundary_trace_max_adjacent_distance_m = 0.45F;
     config.param_snapshot.bev_classification.white_confidence_min = 0.60F;
+    config.param_snapshot.ml.enabled = true;
+    config.param_snapshot.ml.roi.search_forward_min_m = 0.15;
+    config.param_snapshot.ml.roi.grid_forward_step_m = 0.004;
+    config.param_snapshot.ml.roi.grid_lateral_step_m = 0.0035;
+    config.param_snapshot.ml.v9.confirm_frames = 4;
+    config.param_snapshot.ml.class_mapping.class_1_action = "left";
+    config.param_snapshot.ml.maneuver.speed_target = 77.0;
 
     std::vector<std::uint8_t> encoded;
     std::string error;
@@ -592,9 +599,9 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include CircleV2 entry bottom min row count");
     Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\""),
             "config snapshot must not include removed CircleV2 entry bottom row-count field");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.10000000149"),
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.130440279841"),
             "config snapshot must include CircleV2 entry bottom forward min");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.34999999404"),
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.456541001797"),
             "config snapshot must include CircleV2 entry bottom forward max");
     Require(!Contains(header_json, "\"CIRCLE_ENTRY_"),
             "config snapshot must not include legacy circle entry parameters");
@@ -618,6 +625,23 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include encoder forward gate");
     Require(Contains(header_json, "\"ENCODER_TICKS_TO_METER\":0.001"),
             "config snapshot must include encoder scale");
+    Require(Contains(header_json,
+                     "\"MOTION_ODOMETRY\":{\"ENCODER_TICKS_TO_METER\":0.001}"),
+            "config snapshot must own encoder scale under MOTION_ODOMETRY");
+    Require(Contains(header_json, "\"ML\":{\"ENABLED\":true"),
+            "config snapshot must include ML enablement");
+    Require(Contains(header_json, "\"SEARCH_FORWARD_MIN_M\":0.15"),
+            "config snapshot must include ML ROI parameters");
+    Require(Contains(header_json, "\"GRID_FORWARD_STEP_M\":0.004"),
+            "config snapshot must include ML forward grid step");
+    Require(Contains(header_json, "\"GRID_LATERAL_STEP_M\":0.0035"),
+            "config snapshot must include ML lateral grid step");
+    Require(Contains(header_json, "\"CONFIRM_FRAMES\":4"),
+            "config snapshot must include ML V9 parameters");
+    Require(Contains(header_json, "\"CLASS_1_ACTION\":\"left\""),
+            "config snapshot must include ML class mapping");
+    Require(Contains(header_json, "\"SPEED_TARGET\":77"),
+            "config snapshot must include ML maneuver speed");
     Require(Contains(header_json, "\"WHEEL_TRACK_M\":0.42"),
             "config snapshot must include wheel track");
     Require(Contains(header_json, "\"USE_WHEEL_YAW_FALLBACK\":true"),
@@ -670,6 +694,96 @@ void TestImagePayloadValidation() {
     Require(!ls2k::transport::EncodeSteeringMediaImageFrame(frame, encoded, error),
             "invalid image payload size must be rejected");
     Require(Contains(error, "exactly"), "payload validation error should mention exact size");
+}
+
+void TestLegacyImagePayloadHasNoLayout() {
+    std::vector<std::uint8_t> primary(4U, 0x2A);
+    ls2k::transport::SteeringMediaImageFrame frame{};
+    frame.frame_id = 2;
+    frame.width = 2;
+    frame.height = 2;
+    frame.pixel_data = primary.data();
+    frame.pixel_size = primary.size();
+
+    std::vector<std::uint8_t> encoded;
+    std::string error;
+    Require(ls2k::transport::EncodeSteeringMediaImageFrame(frame, encoded, error),
+            "legacy image frame should encode without auxiliary data");
+    std::string header_json;
+    std::vector<std::uint8_t> decoded_payload;
+    Require(ls2k::transport::DecodeSteeringMediaEnvelope(encoded.data(),
+                                                        encoded.size(),
+                                                        header_json,
+                                                        decoded_payload,
+                                                        error),
+            "legacy image frame should decode");
+    Require(!Contains(header_json, "\"payload_layout\""),
+            "legacy image header must remain free of payload_layout");
+    Require(decoded_payload == primary, "legacy image payload bytes must remain unchanged");
+}
+
+void TestAuxiliaryGray8ImagePayloadEncoding() {
+    std::vector<std::uint8_t> primary(4U, 0x11);
+    std::vector<std::uint8_t> auxiliary(32U * 32U, 0x7C);
+    ls2k::transport::SteeringMediaImageFrame frame{};
+    frame.frame_id = 3;
+    frame.width = 2;
+    frame.height = 2;
+    frame.pixel_data = primary.data();
+    frame.pixel_size = primary.size();
+    frame.auxiliary_data = auxiliary.data();
+    frame.auxiliary_size = auxiliary.size();
+    frame.auxiliary_width = 32;
+    frame.auxiliary_height = 32;
+    frame.auxiliary_name = "ml_roi";
+
+    std::vector<std::uint8_t> encoded;
+    std::string error;
+    Require(ls2k::transport::EncodeSteeringMediaImageFrame(frame, encoded, error),
+            "image frame with a 32x32 gray8 auxiliary payload should encode");
+    std::string header_json;
+    std::vector<std::uint8_t> decoded_payload;
+    Require(ls2k::transport::DecodeSteeringMediaEnvelope(encoded.data(),
+                                                        encoded.size(),
+                                                        header_json,
+                                                        decoded_payload,
+                                                        error),
+            "image frame with auxiliary payload should decode");
+    Require(Contains(header_json, "\"payload_layout\":{\"version\":1"),
+            "auxiliary image frame must declare payload layout version 1");
+    Require(Contains(header_json, "\"primary\":{\"offset\":0,\"size\":4}"),
+            "payload layout must declare the primary segment");
+    Require(Contains(header_json,
+                     "\"auxiliary\":{\"name\":\"ml_roi\",\"offset\":4,\"size\":1024,\"width\":32,\"height\":32,\"pixel_format\":\"gray8\"}"),
+            "payload layout must declare the exact 32x32 gray8 auxiliary segment");
+    Require(decoded_payload.size() == primary.size() + auxiliary.size(),
+            "combined payload must contain both segments");
+    Require(std::equal(primary.begin(), primary.end(), decoded_payload.begin()),
+            "primary image must remain the first payload segment");
+    Require(std::equal(auxiliary.begin(), auxiliary.end(), decoded_payload.begin() + primary.size()),
+            "auxiliary image must follow the primary segment exactly");
+}
+
+void TestMalformedAuxiliaryPayloadRejected() {
+    std::vector<std::uint8_t> primary(4U, 0x11);
+    std::vector<std::uint8_t> auxiliary(10U, 0x22);
+    ls2k::transport::SteeringMediaImageFrame frame{};
+    frame.width = 2;
+    frame.height = 2;
+    frame.pixel_data = primary.data();
+    frame.pixel_size = primary.size();
+    frame.auxiliary_data = auxiliary.data();
+    frame.auxiliary_size = auxiliary.size();
+    frame.auxiliary_width = 32;
+    frame.auxiliary_height = 32;
+    frame.auxiliary_name = "ml_roi";
+
+    std::vector<std::uint8_t> encoded;
+    std::string error;
+    Require(!ls2k::transport::EncodeSteeringMediaImageFrame(frame, encoded, error),
+            "malformed auxiliary payload length must be rejected");
+    Require(Contains(error, "auxiliary payload"),
+            "malformed auxiliary error must identify the auxiliary segment");
 }
 
 void TestGray4ImagePayloadEncoding() {
@@ -1132,9 +1246,9 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must expose CircleV2 entry bottom min row count");
     Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\""),
             "service config snapshot must not expose removed CircleV2 entry bottom row-count field");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.10000000149"),
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.130440279841"),
             "service config snapshot must expose CircleV2 entry bottom forward min");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.34999999404"),
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.456541001797"),
             "service config snapshot must expose CircleV2 entry bottom forward max");
     Require(!Contains(header_json, "\"CIRCLE_ENTRY_"),
             "service config snapshot must not expose legacy circle entry settings");
@@ -1310,6 +1424,7 @@ void TestServicePublishesFromRecentMatchingCapture() {
     params.steering_media_enabled = true;
     params.steering_media_port = 8890;
     params.steering_media_publish_interval_ms = 80;
+    params.steering_media_gray_bits = 8;
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
@@ -1321,6 +1436,22 @@ void TestServicePublishesFromRecentMatchingCapture() {
         state.control_debug_snapshot.steering.valid = true;
         state.control_debug_snapshot.steering.frame_id = 41;
         state.control_debug_snapshot.steering.capture_time_ms = 1234;
+        state.control_debug_snapshot.steering.ml.enabled = true;
+        state.control_debug_snapshot.steering.ml.artifact_candidate_id = "candidate-v9";
+        state.control_debug_snapshot.steering.ml.template_codes_sha256 = "codes-sha256";
+        state.control_debug_snapshot.steering.ml.artifact_prototype_count = 87;
+        state.control_debug_snapshot.steering.ml.detector_us = 10;
+        state.control_debug_snapshot.steering.ml.roi_us = 20;
+        state.control_debug_snapshot.steering.ml.descriptor_us = 30;
+        state.control_debug_snapshot.steering.ml.replay_us = 40;
+        state.control_debug_snapshot.steering.ml.total_us = 100;
+        state.control_debug_snapshot.steering.ml.roi.valid = true;
+        for (std::size_t index = 0;
+             index < state.control_debug_snapshot.steering.ml.roi.gray.size();
+             ++index) {
+            state.control_debug_snapshot.steering.ml.roi.gray[index] =
+                static_cast<std::uint8_t>(index & 0xFFU);
+        }
     }
     FillMatchingCapture(frame_store, 41, 1234);
     FillMatchingCapture(frame_store, 42, 1249);
@@ -1346,6 +1477,25 @@ void TestServicePublishesFromRecentMatchingCapture() {
             "default media mode must keep snapshot-aligned image publication");
     Require(Contains(header_json, "\"snapshot_alignment\":{\"aligned\":true"),
             "default media mode must expose exact snapshot/image alignment");
+    Require(Contains(header_json, "\"ml\":{\"enabled\":true"),
+            "media snapshot must include ML metadata");
+    Require(Contains(header_json, "\"candidate_id\":\"candidate-v9\""),
+            "media snapshot must include generated artifact identity");
+    Require(Contains(header_json, "\"template_codes_sha256\":\"codes-sha256\""),
+            "media snapshot must include generated artifact hash");
+    Require(Contains(header_json, "\"timing_us\":{\"detector\":10,\"roi\":20,\"descriptor\":30,\"replay\":40,\"total\":100}"),
+            "media snapshot must include ML stage timings");
+    Require(Contains(header_json, "\"roi\":{\"valid\":true") &&
+                Contains(header_json, "\"width\":32,\"height\":32,\"pixel_format\":\"gray8\""),
+            "media snapshot must declare valid 32x32 ROI metadata");
+    Require(Contains(header_json, "\"auxiliary\":{\"name\":\"ml_roi\""),
+            "media frame must declare the ML ROI auxiliary segment");
+    Require(payload.size() == 320U * 240U + ls2k::port::kMlRoiPixelCount,
+            "media frame must concatenate primary image and exact ML ROI bytes");
+    for (std::size_t index = 0; index < ls2k::port::kMlRoiPixelCount; ++index) {
+        Require(payload[320U * 240U + index] == static_cast<std::uint8_t>(index & 0xFFU),
+                "media frame must preserve the board-produced ML ROI bytes");
+    }
 }
 
 void TestServicePublishesLumaFromRawYuyvCapture() {
@@ -1603,6 +1753,9 @@ int main() {
         TestReporterEmitsMinimalSteeringSnapshot();
         TestConfigEnvelopeIsMinimalBevContract();
         TestImagePayloadValidation();
+        TestLegacyImagePayloadHasNoLayout();
+        TestAuxiliaryGray8ImagePayloadEncoding();
+        TestMalformedAuxiliaryPayloadRejected();
         TestGray4ImagePayloadEncoding();
         TestGray2ImagePayloadEncoding();
         TestLinkQueuesLatestFrameOnBusySocket();

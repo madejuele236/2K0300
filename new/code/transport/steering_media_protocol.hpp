@@ -66,6 +66,10 @@ struct SteeringMediaParamSnapshotView {
     port::BEVElementParameters bev_element{};
     /** reference 时间对齐参数 */
     port::ReferenceTimeAlignmentParameters reference_time_alignment{};
+    /** 运动里程计参数 */
+    port::MotionOdometryParameters motion_odometry{};
+    /** ML 检测、回放与惯性机动参数 */
+    port::MlParameters ml{};
 };
 
 /**
@@ -268,6 +272,12 @@ struct SteeringMediaSnapshotView {
     std::size_t boundary_jump_count = 0;
     /** V9 同行边界 span 数量 */
     std::size_t boundary_span_count = 0;
+    /** ML 每帧检测、replay 与场景跟踪事实（ROI 字节走可选辅助 payload） */
+    port::MlTelemetrySnapshot ml{};
+    /** 本周期速度目标选择来源 */
+    std::string speed_selection_source = "running_default";
+    /** 运动监督器最终有效速度目标 */
+    double effective_speed_target = 0.0;
     /** 感知健康状态 */
     SteeringMediaPerceptionHealthView perception_health{};
     /** 视觉元素证据（路口退出/圆形检测） */
@@ -354,6 +364,16 @@ struct SteeringMediaImageFrame {
     const std::uint8_t* pixel_data = nullptr;
     /** 像素数据大小（字节），由 pixel_format 决定 */
     std::size_t pixel_size = 0;
+    /** 可选的辅助灰度负载（例如精确的 ML ROI）；不改变主图像字段语义 */
+    const std::uint8_t* auxiliary_data = nullptr;
+    /** 辅助负载大小（字节）；gray8 必须严格等于 auxiliary_width * auxiliary_height */
+    std::size_t auxiliary_size = 0;
+    /** 辅助 gray8 图像宽度（像素） */
+    int auxiliary_width = 0;
+    /** 辅助 gray8 图像高度（像素） */
+    int auxiliary_height = 0;
+    /** 辅助负载稳定名称/令牌，例如 "ml_roi" */
+    const char* auxiliary_name = nullptr;
 };
 
 /**

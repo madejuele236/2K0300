@@ -1,0 +1,14 @@
+{
+  "long_edge_m": 0.10880178576013258,
+  "short_edge_m": 0.03843302576984896,
+  "center_forward_m": 0.14758662739235684,
+  "center_lateral_m": -0.01812017143656292,
+  "long_axis_forward": 0.019075110748700174,
+  "long_axis_lateral": 0.999818053522702,
+  "forward_normal_forward": 0.999818053522702,
+  "forward_normal_lateral": -0.019075110748700174,
+  "image_row_min": 113.00602085841486,
+  "image_row_max": 152.09644086340768,
+  "image_col_min": 150.3223739691878,
+  "image_col_max": 196.69280079469
+}

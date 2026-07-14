@@ -17,6 +17,8 @@
 #include "vision/bev/bev_simple_perception.hpp"
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
+#include "vision/ml/ml_scene.hpp"
+#include "generated_v9_artifact.hpp"
 
 namespace ls2k::runtime {
 
@@ -55,6 +57,7 @@ port::PerceptionResult BuildPerceptionResult(
     const port::PerceptionHealth& health,
     const port::VisualElementEvidenceFrame& element_evidence,
     const port::CircleV2TelemetrySnapshot& circle_v2,
+    const port::MlTelemetrySnapshot& ml,
     const port::VisualReferenceCandidatePathSet& candidate_paths,
     const port::VisualReferenceSelection& visual_selection,
     const port::ReferenceContinuityResult& continuity,
@@ -80,6 +83,7 @@ port::PerceptionResult BuildPerceptionResult(
     perception.perception_health = health;
     perception.element_evidence = element_evidence;
     perception.circle_v2 = circle_v2;
+    perception.ml = ml;
     perception.visual_reference_candidate_paths = candidate_paths;
     perception.visual_reference_selection = visual_selection;
     perception.reference_usability = selected_usability;
@@ -253,6 +257,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
 /// 重置普通参考连续性记忆（清空 reference hold，不触碰 scene-owned 记忆）
 void SteeringFramePipeline::ResetReferenceMemory() {
     ResetSteeringReferenceHoldMemory(perception_memory_);
+    vision::ml::ResetMlSceneMemory(perception_memory_.ml_scene);
 }
 
 /// 处理一帧图像：V9 BEV 边界事实 → 元素检测 → 视觉参考选择 → 横向误差计算 → 参考控制就绪评估
@@ -272,6 +277,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     port::PerceptionHealth health{};
     port::VisualElementEvidenceFrame element_evidence{};
     port::CircleV2TelemetrySnapshot circle_v2_snapshot{};
+    port::MlTelemetrySnapshot ml_snapshot{};
     port::VisualReferenceCandidatePathSet candidate_paths{};
     port::VisualReferenceSelection visual_selection{};
     vision::BEVSimplePerceptionResult current_facts{};
@@ -293,10 +299,22 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             reference::MakeLineVisualReferenceCandidate(current_facts.reference_path,
                                                         current_facts.reference_source);
 
+        vision::VisualElementPipelineResult element_result{};
+        vision::ml::MlSceneInput ml_input{};
+        ml_input.frame = &capture.pixel_view;
+        ml_input.projector = &projector_;
+        ml_input.road_path_facts = &current_facts.road_path_facts;
+        ml_input.motion_history = &motion_history;
+        ml_input.artifact = vision::ml::generated::Artifact();
+        ml_input.capture_time_ms = capture.capture_time_ms;
+        const vision::ml::MlSceneResult ml_result =
+            vision::ml::StepMlScene(ml_input, params, prior_memory.ml_scene);
+        perception_memory_.ml_scene = ml_result.next_memory;
+        ml_snapshot = ml_result.telemetry;
+
         vision::VisualElementPipelineInput element_input{};
         element_input.sparse_rows = &current_facts.rows;
         element_input.line_candidate = line_candidate;
-        vision::VisualElementPipelineResult element_result{};
         element_result = vision::RunVisualElementPipeline(element_input, params);
         element_evidence = element_result.evidence;
 
@@ -343,14 +361,19 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                 candidates{};
             std::size_t candidate_count = 0;
             candidates[candidate_count++] = line_candidate;
-            for (const port::VisualReferenceCandidate& candidate :
-                 element_result.candidates) {
-                if (candidate_count < candidates.size()) {
-                    candidates[candidate_count++] = candidate;
+            if (!ml_result.suppress_other_scene_candidates) {
+                for (const port::VisualReferenceCandidate& candidate :
+                     element_result.candidates) {
+                    if (candidate_count < candidates.size()) {
+                        candidates[candidate_count++] = candidate;
+                    }
+                }
+                if (circle_candidate.has_value() && candidate_count < candidates.size()) {
+                    candidates[candidate_count++] = *circle_candidate;
                 }
             }
-            if (circle_candidate.has_value() && candidate_count < candidates.size()) {
-                candidates[candidate_count++] = *circle_candidate;
+            if (ml_result.candidate.present && candidate_count < candidates.size()) {
+                candidates[candidate_count++] = ml_result.candidate;
             }
             for (std::size_t index = 0; index < candidate_count; ++index) {
                 const port::VisualReferenceCandidate& candidate = candidates[index];
@@ -411,6 +434,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                  health,
                                  element_evidence,
                                  circle_v2_snapshot,
+                                 ml_snapshot,
                                  candidate_paths,
                                  visual_selection,
                                  continuity,

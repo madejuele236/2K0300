@@ -1,0 +1,87 @@
+{
+  "objective": "correct BEV metric scale from a 0.12m x 0.05m red marker",
+  "coordinate_origin": {"forward_m": 0.0, "lateral_m": 0.0},
+  "corrected_projector_id": "bev_projector_red_marker_metric_20260713T171917Z",
+  "scale": {
+    "forward": 1.304402843698539,
+    "lateral": 1.1028814766321489
+  },
+  "measured_physical_truths": {
+    "marker_long_edge_m": 0.12,
+    "marker_short_edge_m": 0.05,
+    "wheel_outer_to_outer_m": 0.18,
+    "single_wheel_thickness_m": 0.026,
+    "wheel_center_track_m": 0.154,
+    "track_width_m": 0.45,
+    "track_half_width_m": 0.225
+  },
+  "continuous_four_corner_replay": {
+    "long_edge_m": 0.12000000000375197,
+    "short_edge_m": 0.04999999999583406,
+    "center_forward_m": 0.19251241648727138,
+    "center_lateral_m": -0.01998440143140954,
+    "orientation_rad": 0.022560841537595307
+  },
+  "board_production_probe": {
+    "board_ip": "192.168.137.100",
+    "runs": 8,
+    "valid_detector_runs": 8,
+    "valid_roi_runs": 8,
+    "roi_bytes_each": 1024,
+    "detector_long_edge_m": 0.122420,
+    "detector_short_edge_m": 0.050872,
+    "detector_grid_forward_step_m": 0.0039132085,
+    "detector_grid_lateral_step_m": 0.0033086444,
+    "raw_class_0_supplies_runs": 8,
+    "best_distance_min": 30,
+    "best_distance_max": 32,
+    "margin_min": 4,
+    "margin_max": 6,
+    "timing_us": {
+      "detector_avg": 1953.125,
+      "roi_avg": 410.375,
+      "descriptor_avg": 32.625,
+      "replay_avg": 3272.125,
+      "algorithm_total_avg": 5669.625,
+      "algorithm_total_max": 5786
+    },
+    "runtime_started": false,
+    "motion_parameters_loaded": false
+  },
+  "board_saved_roi_performance": {
+    "camera_opened": false,
+    "runtime_started": false,
+    "roi_count": 8,
+    "baseline": {
+      "measured_samples": 400,
+      "descriptor_avg_us": 24.116,
+      "replay_avg_us": 2862.423,
+      "combined_avg_us": 2886.539,
+      "binary_sha256": "87a381579654fac73f0c1256e61ac3286a548ee845a8dde675653a01f497a049"
+    },
+    "optimized": {
+      "measured_samples": 1600,
+      "descriptor_avg_us": 23.681,
+      "replay_avg_us": 235.557,
+      "combined_avg_us": 259.238,
+      "binary_sha256": "52e5028f4dc2fd0473e7a7788fc632a4dcac48b7e28cc48c346bf3777f3fe1a3"
+    },
+    "baseline_optimized_parity_identical": true,
+    "parity_sha256": "1d95e32f7e7a5df9447489317681bd5c7d8dd22f52ed5d66d4159ee61e3cb40c",
+    "evidence": "bev_metric_v9_replay_performance_20260714.json"
+  },
+  "configuration": {
+    "live_camera_probe_binary_sha256": "e6e813b26dbe0a9fe0f19ab86fbaf412c6efe2b4d1aadd75d90a44d87b192a40",
+    "local_probe_params_sha256": "94b3b672fcdc1534fd9c7c64be75830470bb23f8203acb6ea9db06969ed25a33",
+    "board_default_params_preserved_sha256": "197e6d71d43549fb0b174edc4104d0166b2fae09d0e8199e626bdbc5fc23ae76",
+    "ml_enabled": false
+  },
+  "interpretation": {
+    "continuous_bev_metric_matches_truth": true,
+    "production_detector_quantization": "the independently converted forward/lateral grid cells bound the 0.122420m vs 0.120m and 0.050872m vs 0.050m residuals",
+    "downstream_second_scale": false,
+    "classification_model_modified": false,
+    "descriptor_plus_replay_meets_2ms_roadmap_target": true,
+    "descriptor_plus_replay_note": "saved real board ROIs measure 0.259ms combined after exact SWAR popcount optimization; baseline and optimized outputs are byte-identical"
+  }
+}

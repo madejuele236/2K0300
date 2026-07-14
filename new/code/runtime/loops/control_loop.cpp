@@ -8,6 +8,7 @@
 #include <cmath>
 #include <string>
 
+#include "control/ml_speed_policy.hpp"
 #include "estimation/vehicle_pose_delta_estimator.hpp"
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_lateral_error.hpp"
@@ -31,6 +32,7 @@ using control::MotionPhase;
 using control::MotionSupervisorInputs;
 using control::MotionSupervisorState;
 using control::ResolveRuntimeSpeedTarget;
+using control::SelectPerceptionSpeedTarget;
 using control::RuntimeTuningOverrideActiveAt;
 using control::RuntimeTuningSnapshot;
 using control::SnapshotRuntimeTuningState;
@@ -65,6 +67,7 @@ MotionSupervisorInputs BuildMotionSupervisorInputs(bool startup_complete,
                                                    const MotionSupervisorState& motion_state,
                                                    const MotionIntent& motion_intent,
                                                    const RuntimeTuningSnapshot& tuning_snapshot,
+                                                   const port::PerceptionResult& perception,
                                                    const ControlGateDecision& gate,
                                                    const port::EncoderDelta& encoder,
                                                    uint64_t now_ms,
@@ -75,7 +78,9 @@ MotionSupervisorInputs BuildMotionSupervisorInputs(bool startup_complete,
     inputs.startup_complete = startup_complete;
     inputs.gate_clear = !gate.veto_active;
     inputs.now_ms = now_ms;
-    inputs.running_speed_target = ResolveRuntimeSpeedTarget(tuning_snapshot, params.running_speed_target, now_ms);
+    const double default_speed_target = SelectPerceptionSpeedTarget(perception, params);
+    inputs.running_speed_target =
+        ResolveRuntimeSpeedTarget(tuning_snapshot, default_speed_target, now_ms);
     inputs.encoder_mean_abs = (std::abs(encoder.left) + std::abs(encoder.right)) / 2;
     inputs.motion_unveto_confirm_cycles = params.motion_unveto_confirm_cycles;
     inputs.motion_spinup_ms = params.motion_spinup_ms;
@@ -244,7 +249,8 @@ port::PerceptionResult BuildControlTimePerception(const port::PerceptionResult& 
                                              control_effective_time_ms,
                                              motion_history,
                                              command_history,
-                                             params.reference_time_alignment);
+                                             params.reference_time_alignment,
+                                             params.motion_odometry);
     const reference::ReferenceTimeAlignmentResult alignment =
         reference::AlignReferencePathToVehiclePoseDelta(perception.reference_path,
                                                        perception.reference_capture_time_ms,
@@ -323,6 +329,11 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.boundary_row_count = perception.boundary_row_count;
     debug_snapshot.steering.boundary_jump_count = perception.boundary_jump_count;
     debug_snapshot.steering.boundary_span_count = perception.boundary_span_count;
+    debug_snapshot.steering.ml = perception.ml;
+    debug_snapshot.steering.speed_selection_source =
+        override_active ? "runtime_override"
+                        : (perception.ml.active ? "ml_maneuver" : "running_default");
+    debug_snapshot.steering.effective_speed_target = inputs.final_motion.effective_speed_target;
     debug_snapshot.steering.perception_health.projector_ok = perception.perception_health.projector_ok;
     debug_snapshot.steering.perception_health.reason = perception.perception_health.reason;
     debug_snapshot.steering.element_evidence = perception.element_evidence;
@@ -966,7 +977,8 @@ void ControlLoop::Tick() {
 
     // --- 第 3 阶段：运动监督 ---
     const MotionDecision motion = motion_supervisor_.Evaluate(BuildMotionSupervisorInputs(
-        state_.startup_complete, previous_motion_state, motion_intent, tuning_snapshot, gate, encoder, now_ms, params_));
+        state_.startup_complete, previous_motion_state, motion_intent, tuning_snapshot,
+        perception, gate, encoder, now_ms, params_));
 
     if (motion.reset_controllers) {
         ResetControllerState(yaw_controller_,
@@ -1052,7 +1064,8 @@ void ControlLoop::Tick() {
     MotionDecision final_motion = motion;
     if (motion.state.phase == MotionPhase::kStopping) {
         MotionSupervisorInputs stop_completion_inputs = BuildMotionSupervisorInputs(
-            state_.startup_complete, motion.state, motion_intent, tuning_snapshot, gate, encoder, now_ms, params_);
+            state_.startup_complete, motion.state, motion_intent, tuning_snapshot,
+            perception, gate, encoder, now_ms, params_);
         // Lifecycle stop completion is keyed to the command that can still reach the actuator path,
         // not the controller's diagnostic-only requested PWM.
         stop_completion_inputs.shaped_command_zero = current_effective_command_zero;

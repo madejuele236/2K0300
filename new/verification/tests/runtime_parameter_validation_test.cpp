@@ -20,7 +20,6 @@ ls2k::port::ReferenceTimeAlignmentParameters EnabledParams() {
     params.max_integration_gap_ms = 30;
     params.min_aligned_samples = 3;
     params.use_encoder_forward = false;
-    params.encoder_ticks_to_meter = 0.0;
     params.wheel_track_m = 0.0;
     params.use_imu_yaw = true;
     params.use_wheel_yaw_fallback = false;
@@ -34,38 +33,44 @@ ls2k::port::ReferenceTimeAlignmentParameters EnabledParams() {
     return params;
 }
 
+ls2k::port::MotionOdometryParameters UncalibratedOdometry() {
+    return {};
+}
+
 void TestDisabledAllowsUncalibratedOptionalSources() {
     auto params = EnabledParams();
     params.enabled = false;
     params.use_encoder_forward = true;
     params.use_wheel_yaw_fallback = true;
     params.command_yaw_prediction_enabled = true;
-    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(
+               params, UncalibratedOdometry()),
            "disabled alignment should allow uncalibrated optional source fields");
 }
 
 void TestEnabledEncoderForwardRequiresScale() {
     auto params = EnabledParams();
     params.use_encoder_forward = true;
-    params.encoder_ticks_to_meter = 0.0;
-    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    auto odometry = UncalibratedOdometry();
+    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(params, odometry),
            "enabled encoder-forward integration must require encoder scale at load time");
 
-    params.encoder_ticks_to_meter = 0.001;
-    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    odometry.encoder_ticks_to_meter = 0.001;
+    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(params, odometry),
            "encoder-forward integration should accept calibrated encoder scale");
 }
 
 void TestEnabledWheelYawFallbackRequiresScaleAndTrack() {
     auto params = EnabledParams();
     params.use_wheel_yaw_fallback = true;
-    params.encoder_ticks_to_meter = 0.001;
+    auto odometry = UncalibratedOdometry();
+    odometry.encoder_ticks_to_meter = 0.001;
     params.wheel_track_m = 0.0;
-    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(params, odometry),
            "wheel-yaw fallback must require wheel track at load time");
 
     params.wheel_track_m = 0.50;
-    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(params, odometry),
            "wheel-yaw fallback should accept calibrated encoder scale and wheel track");
 }
 
@@ -74,16 +79,19 @@ void TestEnabledCommandYawPredictionRequiresFuturePredictionAndGain() {
     params.command_yaw_prediction_enabled = true;
     params.future_prediction_enabled = false;
     params.turn_output_to_yaw_rate_gain = 0.01;
-    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(
+               params, UncalibratedOdometry()),
            "command-yaw prediction must require future prediction");
 
     params.future_prediction_enabled = true;
     params.turn_output_to_yaw_rate_gain = 0.0;
-    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    Expect(!ls2k::port::ValidateReferenceTimeAlignmentParameters(
+               params, UncalibratedOdometry()),
            "command-yaw prediction must require a calibrated yaw gain");
 
     params.turn_output_to_yaw_rate_gain = 0.01;
-    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(params),
+    Expect(ls2k::port::ValidateReferenceTimeAlignmentParameters(
+               params, UncalibratedOdometry()),
            "command-yaw prediction should accept future prediction and calibrated yaw gain");
 }
 

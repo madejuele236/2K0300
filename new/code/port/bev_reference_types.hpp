@@ -27,6 +27,7 @@ namespace ls2k::port {
 enum class ReferenceMode {
     kNone,           ///< 无有效参考路径
     kIntervalCenter, ///< 基于区间中心构建的参考路径（正常视觉跟踪模式）
+    kMlObservedBoundary, ///< ML 选择的实际观测边界（不偏移、不平滑）
     kHoldLast        ///< 保持上一次的参考路径（感知短暂丢失时的保持策略）
 };
 
@@ -39,6 +40,7 @@ enum class ReferenceMode {
 enum class BEVPathPointSource {
     kNone,           ///< 无来源（未初始化）
     kIntervalCenter, ///< 由区间中心算法生成
+    kMlObservedBoundary, ///< ML 选择的实际观测边界
     kHold            ///< 由保持策略生成（复用上一帧的值）
 };
 

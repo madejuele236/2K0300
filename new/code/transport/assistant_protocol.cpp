@@ -192,6 +192,128 @@ void AppendJsonBool(std::ostringstream& stream, bool value) {
     stream << (value ? "true" : "false");
 }
 
+void AppendMlTelemetryJson(std::ostringstream& stream,
+                           const port::MlTelemetrySnapshot& ml,
+                           const std::string& speed_selection_source,
+                           double effective_speed_target) {
+    stream << "{\"enabled\":";
+    AppendJsonBool(stream, ml.enabled);
+    stream << ",\"artifact\":{\"candidate_id\":";
+    AppendJsonString(stream, ml.artifact_candidate_id == nullptr
+                                 ? "unavailable" : ml.artifact_candidate_id);
+    stream << ",\"descriptor_config_hash\":";
+    AppendJsonString(stream, ml.descriptor_config_hash == nullptr
+                                 ? "unavailable" : ml.descriptor_config_hash);
+    stream << ",\"template_table_hash\":";
+    AppendJsonString(stream, ml.template_table_hash == nullptr
+                                 ? "unavailable" : ml.template_table_hash);
+    stream << ",\"template_codes_sha256\":";
+    AppendJsonString(stream, ml.template_codes_sha256 == nullptr
+                                 ? "unavailable" : ml.template_codes_sha256);
+    stream << ",\"prototype_count\":" << ml.artifact_prototype_count << "}";
+    stream << ",\"timing_us\":{\"detector\":" << ml.detector_us;
+    stream << ",\"roi\":" << ml.roi_us;
+    stream << ",\"descriptor\":" << ml.descriptor_us;
+    stream << ",\"replay\":" << ml.replay_us;
+    stream << ",\"total\":" << ml.total_us << "}";
+    stream << ",\"detector_valid\":";
+    AppendJsonBool(stream, ml.detector_valid);
+    stream << ",\"detector\":{\"valid\":";
+    AppendJsonBool(stream, ml.detector.valid);
+    stream << ",\"frame_id\":" << ml.detector.frame_id;
+    stream << ",\"capture_time_ms\":" << ml.detector.capture_time_ms;
+    stream << ",\"center\":{\"forward_m\":";
+    AppendJsonNumber(stream, ml.detector.center.forward_m);
+    stream << ",\"lateral_m\":";
+    AppendJsonNumber(stream, ml.detector.center.lateral_m);
+    stream << "},\"long_edge_m\":";
+    AppendJsonNumber(stream, ml.detector.long_edge_m);
+    stream << ",\"short_edge_m\":";
+    AppendJsonNumber(stream, ml.detector.short_edge_m);
+    stream << ",\"long_axis_forward\":";
+    AppendJsonNumber(stream, ml.detector.long_axis_forward);
+    stream << ",\"long_axis_lateral\":";
+    AppendJsonNumber(stream, ml.detector.long_axis_lateral);
+    stream << ",\"long_edge_to_lateral_rad\":";
+    AppendJsonNumber(stream, ml.detector.long_edge_to_lateral_rad);
+    stream << ",\"corners\":[";
+    for (std::size_t index = 0; index < ml.detector.corners.size(); ++index) {
+        if (index > 0U) stream << ",";
+        stream << "{\"forward_m\":";
+        AppendJsonNumber(stream, ml.detector.corners[index].forward_m);
+        stream << ",\"lateral_m\":";
+        AppendJsonNumber(stream, ml.detector.corners[index].lateral_m);
+        stream << "}";
+    }
+    stream << "]";
+    stream << ",\"rectangularity\":";
+    AppendJsonNumber(stream, ml.detector.rectangularity);
+    stream << ",\"red_fill_ratio\":";
+    AppendJsonNumber(stream, ml.detector.red_fill_ratio);
+    stream << ",\"score\":";
+    AppendJsonNumber(stream, ml.detector.quality);
+    stream << ",\"component_cells\":" << ml.detector.component_cells << "}";
+    stream << ",\"roi\":{\"valid\":";
+    AppendJsonBool(stream, ml.roi.valid);
+    stream << ",\"frame_id\":" << ml.roi.frame_id;
+    stream << ",\"reason\":";
+    AppendJsonString(stream, ml.roi.reason == nullptr ? "unknown" : ml.roi.reason);
+    stream << ",\"long_axis_forward\":";
+    AppendJsonNumber(stream, ml.roi.long_axis_forward);
+    stream << ",\"long_axis_lateral\":";
+    AppendJsonNumber(stream, ml.roi.long_axis_lateral);
+    stream << ",\"forward_normal_forward\":";
+    AppendJsonNumber(stream, ml.roi.forward_normal_forward);
+    stream << ",\"forward_normal_lateral\":";
+    AppendJsonNumber(stream, ml.roi.forward_normal_lateral);
+    stream << ",\"width\":" << port::kMlRoiSide;
+    stream << ",\"height\":" << port::kMlRoiSide;
+    stream << ",\"pixel_format\":\"gray8\"}";
+    stream << ",\"descriptor_valid\":";
+    AppendJsonBool(stream, ml.descriptor.valid);
+    stream << ",\"replay\":{\"valid\":";
+    AppendJsonBool(stream, ml.replay.valid);
+    stream << ",\"class_id\":" << ml.replay.class_id;
+    stream << ",\"best_distance\":" << ml.replay.best_distance;
+    stream << ",\"margin\":" << ml.replay.margin;
+    stream << ",\"prototype_index\":" << ml.replay.prototype_index << "}";
+    stream << ",\"mapped_action\":";
+    AppendJsonString(stream, port::MlActionToken(ml.mapped_action));
+    stream << ",\"locked_action\":";
+    AppendJsonString(stream, port::MlActionToken(ml.locked_action));
+    stream << ",\"phase\":";
+    AppendJsonString(stream, port::MlScenePhaseToken(ml.phase));
+    stream << ",\"reason\":";
+    AppendJsonString(stream, ml.reason == nullptr ? "unknown" : ml.reason);
+    stream << ",\"confirm_count\":" << ml.confirm_count;
+    stream << ",\"active\":";
+    AppendJsonBool(stream, ml.active);
+    stream << ",\"anchor\":{\"forward_m\":";
+    AppendJsonNumber(stream, ml.anchor.forward_m);
+    stream << ",\"lateral_m\":";
+    AppendJsonNumber(stream, ml.anchor.lateral_m);
+    stream << "},\"pose_delta\":{\"valid\":";
+    AppendJsonBool(stream, ml.pose_delta.valid);
+    stream << ",\"forward_m\":";
+    AppendJsonNumber(stream, ml.pose_delta.forward_m);
+    stream << ",\"lateral_m\":";
+    AppendJsonNumber(stream, ml.pose_delta.lateral_m);
+    stream << ",\"yaw_rad\":";
+    AppendJsonNumber(stream, ml.pose_delta.yaw_rad);
+    stream << "},\"progress_m\":";
+    AppendJsonNumber(stream, ml.progress_m);
+    stream << ",\"lateral_error_m\":";
+    AppendJsonNumber(stream, ml.lateral_error_m);
+    stream << ",\"heading_error_rad\":";
+    AppendJsonNumber(stream, ml.heading_error_rad);
+    stream << ",\"path_sample_count\":" << ml.path_sample_count;
+    stream << ",\"speed_selection\":{\"source\":";
+    AppendJsonString(stream, speed_selection_source);
+    stream << ",\"effective_speed_target\":";
+    AppendJsonNumber(stream, effective_speed_target);
+    stream << "}}";
+}
+
 }  // namespace
 
 AssistantProtocolDecoder::AssistantProtocolDecoder(double max_target_speed)
@@ -403,6 +525,11 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     stream << ",\"boundary_row_count\":" << telemetry.boundary_row_count;
     stream << ",\"boundary_jump_count\":" << telemetry.boundary_jump_count;
     stream << ",\"boundary_span_count\":" << telemetry.boundary_span_count;
+    stream << ",\"ml\":";
+    AppendMlTelemetryJson(stream,
+                          telemetry.ml,
+                          telemetry.speed_selection_source,
+                          telemetry.effective_speed_target);
     stream << ",\"perception_health\":{\"projector_ok\":";
     AppendJsonBool(stream, telemetry.perception_health.projector_ok);
     stream << ",\"reason\":";

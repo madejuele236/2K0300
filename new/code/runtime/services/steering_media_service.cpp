@@ -130,6 +130,8 @@ transport::SteeringMediaConfigSnapshot SteeringMediaService::BuildConfigSnapshot
     snapshot.param_snapshot.bev_control_model = params_.bev_control_model;
     snapshot.param_snapshot.bev_element = params_.bev_element;
     snapshot.param_snapshot.reference_time_alignment = params_.reference_time_alignment;
+    snapshot.param_snapshot.motion_odometry = params_.motion_odometry;
+    snapshot.param_snapshot.ml = params_.ml;
     return snapshot;
 }
 
@@ -145,6 +147,9 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.boundary_row_count = snapshot.boundary_row_count;
     view.boundary_jump_count = snapshot.boundary_jump_count;
     view.boundary_span_count = snapshot.boundary_span_count;
+    view.ml = snapshot.ml;
+    view.speed_selection_source = snapshot.speed_selection_source;
+    view.effective_speed_target = snapshot.effective_speed_target;
     view.perception_health.projector_ok = snapshot.perception_health.projector_ok;
     view.perception_health.reason = snapshot.perception_health.reason;
     view.element_evidence = snapshot.element_evidence;
@@ -412,6 +417,13 @@ void SteeringMediaService::Tick(RuntimeState& state,
         snapshot.steering.frame_id == capture_handle.frame_id &&
         snapshot.steering.capture_time_ms == capture_handle.capture_time_ms;
     FillImageFrame(capture->PixelView(), frame);
+    if (snapshot.steering.ml.roi.valid) {
+        frame.auxiliary_data = snapshot.steering.ml.roi.gray.data();
+        frame.auxiliary_size = snapshot.steering.ml.roi.gray.size();
+        frame.auxiliary_width = port::kMlRoiSide;
+        frame.auxiliary_height = port::kMlRoiSide;
+        frame.auxiliary_name = "ml_roi";
+    }
 
     const transport::SteeringMediaPublishResult result = link_.PublishImageFrame(frame, diagnostics);
     if (result == transport::SteeringMediaPublishResult::kSent ||

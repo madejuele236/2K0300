@@ -16,7 +16,8 @@ port::VehiclePoseDelta EstimateVehiclePoseDelta(
     uint64_t end_time_ms,
     const port::MotionHistory& motion_history,
     const port::ControlCommandHistory& command_history,
-    const port::ReferenceTimeAlignmentParameters& params);
+    const port::ReferenceTimeAlignmentParameters& params,
+    const port::MotionOdometryParameters& odometry);
 
 }  // namespace ls2k::estimation
 

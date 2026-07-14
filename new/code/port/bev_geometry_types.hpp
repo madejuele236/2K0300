@@ -50,19 +50,19 @@ constexpr std::size_t kBevReferenceSampleCount = 24;   ///< 参考路径采样�
 struct BEVProjectorCalibration {
     bool valid = true;  ///< 标定是否有效
     std::array<ImagePoint, kBevCalibrationPointCount> source_points{  ///< 源图像上的四个标定点（像素坐标）
-        {ImagePoint{222.0F, 33.5F},
-         ImagePoint{222.0F, 298.5F},
-         ImagePoint{81.0F, 116.0F},
-         ImagePoint{81.0F, 217.0F}}};
+        {ImagePoint{219.0F, 55.5F},
+         ImagePoint{219.0F, 307.5F},
+         ImagePoint{56.0F, 137.5F},
+         ImagePoint{56.0F, 226.5F}}};
     std::array<BEVPoint, kBevCalibrationPointCount> target_points{  ///< BEV平面上的对应目标点（米坐标）
-        {BEVPoint{0.061F, -0.21F},
-         BEVPoint{0.061F, 0.21F},
-         BEVPoint{0.6006F, -0.21F},
-         BEVPoint{0.6006F, 0.21F}}};
+        {BEVPoint{0.0795685735F, -0.2316051101F},
+         BEVPoint{0.0795685735F, 0.2316051101F},
+         BEVPoint{0.7834243479F, -0.2316051101F},
+         BEVPoint{0.7834243479F, 0.2316051101F}}};
     int debug_grid_width = 160;   ///< 调试栅格宽度（像素）
     int debug_grid_height = 128;  ///< 调试栅格高度（像素）
-    std::string projector_id = "bev_projector_square_aspect_20260531T043107Z";  ///< 投影器唯一标识
-    std::string projector_hash = "bev-projector-square-aspect-frame-3096-20260531T043107Z";   ///< 投影器哈希版本
+    std::string projector_id = "bev_projector_red_marker_metric_20260713T171917Z";  ///< 投影器唯一标识
+    std::string projector_hash = "bev-projector-red-marker-0p12x0p05-20260713T171917Z";   ///< 投影器哈希版本
 };
 
 /**
@@ -76,35 +76,35 @@ struct BEVProjectorCalibration {
  */
 struct BEVGeometryParameters {
     std::array<float, kBevReferenceSampleCount> forward_samples_m{  ///< 24个前向采样位置（米），从近到远
-        {0.100000F,
-         0.165217F,
-         0.230435F,
-         0.295652F,
-         0.360870F,
-         0.426087F,
-         0.491304F,
-         0.556522F,
-         0.621739F,
-         0.686957F,
-         0.752174F,
-         0.817391F,
-         0.882609F,
-         0.947826F,
-         1.013043F,
-         1.078261F,
-         1.143478F,
-         1.208696F,
-         1.273913F,
-         1.339130F,
-         1.404348F,
-         1.469565F,
-         1.534783F,
-         1.600000F}};
+        {0.130440284F,
+         0.215509525F,
+         0.300580069F,
+         0.385649310F,
+         0.470719854F,
+         0.555789094F,
+         0.640858335F,
+         0.725928879F,
+         0.810998120F,
+         0.896068664F,
+         0.981137905F,
+         1.066207145F,
+         1.151277689F,
+         1.236346930F,
+         1.321416170F,
+         1.406486715F,
+         1.491555955F,
+         1.576626500F,
+         1.661695740F,
+         1.746764980F,
+         1.831835525F,
+         1.916904765F,
+         2.001975310F,
+         2.087044550F}};
     int sparse_row_count = static_cast<int>(kBevReferenceSampleCount);  ///< 启用原始前向采样行的前 N 行
-    float search_lateral_limit_m = 1.60F;  ///< 横向搜索范围限制（米）
-    float lateral_step_m = 0.02F;          ///< 横向搜索步长（米）
-    float boundary_trace_max_adjacent_distance_m = 0.15F;  ///< 边界 trace 相邻保留点最大距离（米）
-    float nominal_road_half_width_m = 0.19F;  ///< 普通道路模型使用的名义半路宽（米）
+    float search_lateral_limit_m = 1.764610363F;  ///< 横向搜索范围限制（米）
+    float lateral_step_m = 0.022057630F;          ///< 横向搜索步长（米）
+    float boundary_trace_max_adjacent_distance_m = 0.195660427F;  ///< 边界 trace 相邻保留点最大距离（米）
+    float nominal_road_half_width_m = 0.225F;  ///< 实测赛道半宽（米）
 };
 
 /**
@@ -145,9 +145,9 @@ inline bool IsValidBEVBoundaryParameters(const BEVBoundaryParameters& params) {
  * 将从感知到控制的映射参数化，包括横向误差的加权和PID增益等。
  */
 struct BEVControlModelParameters {
-    double lateral_offset_to_wheel_delta_gain = 200.0;  ///< 横向位置项到轮速差值的增益系数
-    double heading_error_to_wheel_delta_gain = 60.0;  ///< 航向误差项到轮速差值的增益系数
-    double curvature_to_wheel_delta_gain = 20.0;  ///< nominal speed下曲率前馈项到轮速差值的增益系数
+    double lateral_offset_to_wheel_delta_gain = 136.007362;  ///< 横向位置项到轮速差值的增益系数
+    double heading_error_to_wheel_delta_gain = 59.136130;  ///< 航向误差项到轮速差值的增益系数
+    double curvature_to_wheel_delta_gain = 23.141201;  ///< nominal speed下曲率前馈项到轮速差值的增益系数
     int min_leading_reference_samples = 3;  ///< 最小前导参考采样点数量
     int tracking_fit_min_samples = 3;       ///< 跟踪几何拟合最小采样点数量
 };

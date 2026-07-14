@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "port/ml_types.hpp"
 #include "port/visual_element_evidence_types.hpp"
 
 namespace ls2k::transport {
@@ -165,6 +166,8 @@ struct AssistantTelemetryView {
     std::uint64_t boundary_row_count = 0;         ///< V9 sparse boundary row 数量
     std::uint64_t boundary_jump_count = 0;        ///< V9 局部 Y 边界跳变数量
     std::uint64_t boundary_span_count = 0;        ///< V9 同行边界 span 数量
+    port::MlTelemetrySnapshot ml{};               ///< ML 每帧事实（不含 ROI 字节序列化）
+    std::string speed_selection_source = "running_default";  ///< 速度选择来源
     AssistantPerceptionHealthView perception_health{};  ///< 感知健康视图
     AssistantElementEvidenceView element_evidence{};    ///< 元素证据帧
     AssistantVisualReferenceView visual_reference{};    ///< 视觉参考视图

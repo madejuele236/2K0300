@@ -17,10 +17,10 @@ constexpr std::size_t kOpeningSustainRows = 2U;
 struct ExpansionParams {
     int min_support_rows = 1;
     int min_sampleable_per_row = 16;
-    float center_sample_forward_gap_max_m = 0.10F;
-    float open_expansion_min_m = 0.05F;
+    float center_sample_forward_gap_max_m = 0.130440284F;
+    float open_expansion_min_m = 0.055144074F;
     float opening_expansion_ratio_min = 0.10F;
-    float opposite_straight_drift_max_m = 0.06F;
+    float opposite_straight_drift_max_m = 0.066172889F;
     float opposite_shrink_ratio_min = 0.10F;
     float present_confidence_min = 0.65F;
 };

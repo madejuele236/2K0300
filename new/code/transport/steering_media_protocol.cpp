@@ -111,6 +111,8 @@ const char* ReferenceModeToken(port::ReferenceMode mode) {
             return "none";
         case port::ReferenceMode::kIntervalCenter:
             return "interval_center";
+        case port::ReferenceMode::kMlObservedBoundary:
+            return "ml_observed_boundary";
         case port::ReferenceMode::kHoldLast:
             return "hold_last";
     }
@@ -123,6 +125,8 @@ const char* PathPointSourceToken(port::BEVPathPointSource source) {
             return "none";
         case port::BEVPathPointSource::kIntervalCenter:
             return "interval_center";
+        case port::BEVPathPointSource::kMlObservedBoundary:
+            return "ml_observed_boundary";
         case port::BEVPathPointSource::kHold:
             return "hold";
     }
@@ -212,6 +216,128 @@ void AppendCircleV2PointObservationJson(std::ostringstream& stream,
     stream << "}";
 }
 
+void AppendMlTelemetryJson(std::ostringstream& stream,
+                           const port::MlTelemetrySnapshot& ml,
+                           const std::string& speed_selection_source,
+                           double effective_speed_target) {
+    stream << "{\"enabled\":";
+    AppendJsonBool(stream, ml.enabled);
+    stream << ",\"artifact\":{\"candidate_id\":";
+    AppendJsonString(stream, ml.artifact_candidate_id == nullptr
+                                 ? "unavailable" : ml.artifact_candidate_id);
+    stream << ",\"descriptor_config_hash\":";
+    AppendJsonString(stream, ml.descriptor_config_hash == nullptr
+                                 ? "unavailable" : ml.descriptor_config_hash);
+    stream << ",\"template_table_hash\":";
+    AppendJsonString(stream, ml.template_table_hash == nullptr
+                                 ? "unavailable" : ml.template_table_hash);
+    stream << ",\"template_codes_sha256\":";
+    AppendJsonString(stream, ml.template_codes_sha256 == nullptr
+                                 ? "unavailable" : ml.template_codes_sha256);
+    stream << ",\"prototype_count\":" << ml.artifact_prototype_count << "}";
+    stream << ",\"timing_us\":{\"detector\":" << ml.detector_us;
+    stream << ",\"roi\":" << ml.roi_us;
+    stream << ",\"descriptor\":" << ml.descriptor_us;
+    stream << ",\"replay\":" << ml.replay_us;
+    stream << ",\"total\":" << ml.total_us << "}";
+    stream << ",\"detector_valid\":";
+    AppendJsonBool(stream, ml.detector_valid);
+    stream << ",\"detector\":{\"valid\":";
+    AppendJsonBool(stream, ml.detector.valid);
+    stream << ",\"frame_id\":" << ml.detector.frame_id;
+    stream << ",\"capture_time_ms\":" << ml.detector.capture_time_ms;
+    stream << ",\"center\":{\"forward_m\":";
+    AppendJsonNumber(stream, ml.detector.center.forward_m);
+    stream << ",\"lateral_m\":";
+    AppendJsonNumber(stream, ml.detector.center.lateral_m);
+    stream << "},\"long_edge_m\":";
+    AppendJsonNumber(stream, ml.detector.long_edge_m);
+    stream << ",\"short_edge_m\":";
+    AppendJsonNumber(stream, ml.detector.short_edge_m);
+    stream << ",\"long_axis_forward\":";
+    AppendJsonNumber(stream, ml.detector.long_axis_forward);
+    stream << ",\"long_axis_lateral\":";
+    AppendJsonNumber(stream, ml.detector.long_axis_lateral);
+    stream << ",\"long_edge_to_lateral_rad\":";
+    AppendJsonNumber(stream, ml.detector.long_edge_to_lateral_rad);
+    stream << ",\"corners\":[";
+    for (std::size_t index = 0; index < ml.detector.corners.size(); ++index) {
+        if (index > 0U) stream << ",";
+        stream << "{\"forward_m\":";
+        AppendJsonNumber(stream, ml.detector.corners[index].forward_m);
+        stream << ",\"lateral_m\":";
+        AppendJsonNumber(stream, ml.detector.corners[index].lateral_m);
+        stream << "}";
+    }
+    stream << "]";
+    stream << ",\"rectangularity\":";
+    AppendJsonNumber(stream, ml.detector.rectangularity);
+    stream << ",\"red_fill_ratio\":";
+    AppendJsonNumber(stream, ml.detector.red_fill_ratio);
+    stream << ",\"score\":";
+    AppendJsonNumber(stream, ml.detector.quality);
+    stream << ",\"component_cells\":" << ml.detector.component_cells << "}";
+    stream << ",\"roi\":{\"valid\":";
+    AppendJsonBool(stream, ml.roi.valid);
+    stream << ",\"frame_id\":" << ml.roi.frame_id;
+    stream << ",\"reason\":";
+    AppendJsonString(stream, ml.roi.reason == nullptr ? "unknown" : ml.roi.reason);
+    stream << ",\"long_axis_forward\":";
+    AppendJsonNumber(stream, ml.roi.long_axis_forward);
+    stream << ",\"long_axis_lateral\":";
+    AppendJsonNumber(stream, ml.roi.long_axis_lateral);
+    stream << ",\"forward_normal_forward\":";
+    AppendJsonNumber(stream, ml.roi.forward_normal_forward);
+    stream << ",\"forward_normal_lateral\":";
+    AppendJsonNumber(stream, ml.roi.forward_normal_lateral);
+    stream << ",\"width\":" << port::kMlRoiSide;
+    stream << ",\"height\":" << port::kMlRoiSide;
+    stream << ",\"pixel_format\":\"gray8\"}";
+    stream << ",\"descriptor_valid\":";
+    AppendJsonBool(stream, ml.descriptor.valid);
+    stream << ",\"replay\":{\"valid\":";
+    AppendJsonBool(stream, ml.replay.valid);
+    stream << ",\"class_id\":" << ml.replay.class_id;
+    stream << ",\"best_distance\":" << ml.replay.best_distance;
+    stream << ",\"margin\":" << ml.replay.margin;
+    stream << ",\"prototype_index\":" << ml.replay.prototype_index << "}";
+    stream << ",\"mapped_action\":";
+    AppendJsonString(stream, port::MlActionToken(ml.mapped_action));
+    stream << ",\"locked_action\":";
+    AppendJsonString(stream, port::MlActionToken(ml.locked_action));
+    stream << ",\"phase\":";
+    AppendJsonString(stream, port::MlScenePhaseToken(ml.phase));
+    stream << ",\"reason\":";
+    AppendJsonString(stream, ml.reason == nullptr ? "unknown" : ml.reason);
+    stream << ",\"confirm_count\":" << ml.confirm_count;
+    stream << ",\"active\":";
+    AppendJsonBool(stream, ml.active);
+    stream << ",\"anchor\":{\"forward_m\":";
+    AppendJsonNumber(stream, ml.anchor.forward_m);
+    stream << ",\"lateral_m\":";
+    AppendJsonNumber(stream, ml.anchor.lateral_m);
+    stream << "},\"pose_delta\":{\"valid\":";
+    AppendJsonBool(stream, ml.pose_delta.valid);
+    stream << ",\"forward_m\":";
+    AppendJsonNumber(stream, ml.pose_delta.forward_m);
+    stream << ",\"lateral_m\":";
+    AppendJsonNumber(stream, ml.pose_delta.lateral_m);
+    stream << ",\"yaw_rad\":";
+    AppendJsonNumber(stream, ml.pose_delta.yaw_rad);
+    stream << "},\"progress_m\":";
+    AppendJsonNumber(stream, ml.progress_m);
+    stream << ",\"lateral_error_m\":";
+    AppendJsonNumber(stream, ml.lateral_error_m);
+    stream << ",\"heading_error_rad\":";
+    AppendJsonNumber(stream, ml.heading_error_rad);
+    stream << ",\"path_sample_count\":" << ml.path_sample_count;
+    stream << ",\"speed_selection\":{\"source\":";
+    AppendJsonString(stream, speed_selection_source);
+    stream << ",\"effective_speed_target\":";
+    AppendJsonNumber(stream, effective_speed_target);
+    stream << "}}";
+}
+
 /**
  * 构建转向快照 JSON —— 将 SteeringMediaSnapshotView 序列化为 JSON 对象字符串。
  * @param snapshot 转向快照视图数据
@@ -254,6 +380,11 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
     AppendCircleV2PointObservationJson(stream, snapshot.circle_v2.entry_points.right);
     stream << "}";
     stream << "}";
+    stream << ",\"ml\":";
+    AppendMlTelemetryJson(stream,
+                          snapshot.ml,
+                          snapshot.speed_selection_source,
+                          snapshot.effective_speed_target);
     stream << ",\"visual_reference\":{\"present\":";
     AppendJsonBool(stream, snapshot.visual_reference.present);
     stream << ",\"source\":";
@@ -659,9 +790,6 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"USE_ENCODER_FORWARD\":";
     AppendJsonBool(header,
                    snapshot.param_snapshot.reference_time_alignment.use_encoder_forward);
-    header << ",\"ENCODER_TICKS_TO_METER\":";
-    AppendJsonNumber(header,
-                     snapshot.param_snapshot.reference_time_alignment.encoder_ticks_to_meter);
     header << ",\"WHEEL_TRACK_M\":";
     AppendJsonNumber(header, snapshot.param_snapshot.reference_time_alignment.wheel_track_m);
     header << ",\"USE_IMU_YAW\":";
@@ -693,6 +821,73 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header,
                      snapshot.param_snapshot.reference_time_alignment.max_delta_yaw_rad);
     header << "}";
+    header << ",\"MOTION_ODOMETRY\":{\"ENCODER_TICKS_TO_METER\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.motion_odometry.encoder_ticks_to_meter);
+    header << "}";
+    const port::MlParameters& ml = snapshot.param_snapshot.ml;
+    header << ",\"ML\":{\"ENABLED\":";
+    AppendJsonBool(header, ml.enabled);
+    header << ",\"ROI\":{\"SEARCH_FORWARD_MIN_M\":";
+    AppendJsonNumber(header, ml.roi.search_forward_min_m);
+    header << ",\"SEARCH_FORWARD_MAX_M\":";
+    AppendJsonNumber(header, ml.roi.search_forward_max_m);
+    header << ",\"SEARCH_LATERAL_LIMIT_M\":";
+    AppendJsonNumber(header, ml.roi.search_lateral_limit_m);
+    header << ",\"GRID_FORWARD_STEP_M\":";
+    AppendJsonNumber(header, ml.roi.grid_forward_step_m);
+    header << ",\"GRID_LATERAL_STEP_M\":";
+    AppendJsonNumber(header, ml.roi.grid_lateral_step_m);
+    header << ",\"RED_Y_MIN\":" << ml.roi.red_y_min;
+    header << ",\"RED_Y_MAX\":" << ml.roi.red_y_max;
+    header << ",\"RED_U_MIN\":" << ml.roi.red_u_min;
+    header << ",\"RED_U_MAX\":" << ml.roi.red_u_max;
+    header << ",\"RED_V_MIN\":" << ml.roi.red_v_min;
+    header << ",\"RED_V_MAX\":" << ml.roi.red_v_max;
+    header << ",\"EXPECTED_LONG_EDGE_M\":";
+    AppendJsonNumber(header, ml.roi.expected_long_edge_m);
+    header << ",\"EXPECTED_SHORT_EDGE_M\":";
+    AppendJsonNumber(header, ml.roi.expected_short_edge_m);
+    header << ",\"LONG_EDGE_TOLERANCE_M\":";
+    AppendJsonNumber(header, ml.roi.long_edge_tolerance_m);
+    header << ",\"SHORT_EDGE_TOLERANCE_M\":";
+    AppendJsonNumber(header, ml.roi.short_edge_tolerance_m);
+    header << ",\"MAX_LONG_EDGE_TO_LATERAL_RAD\":";
+    AppendJsonNumber(header, ml.roi.max_long_edge_to_lateral_rad);
+    header << ",\"MIN_COMPONENT_CELLS\":" << ml.roi.min_component_cells;
+    header << ",\"MIN_RECTANGULARITY\":";
+    AppendJsonNumber(header, ml.roi.min_rectangularity);
+    header << ",\"MIN_RED_FILL_RATIO\":";
+    AppendJsonNumber(header, ml.roi.min_red_fill_ratio);
+    header << ",\"SCORE_SIZE_WEIGHT\":";
+    AppendJsonNumber(header, ml.roi.score_size_weight);
+    header << ",\"SCORE_RECTANGULARITY_WEIGHT\":";
+    AppendJsonNumber(header, ml.roi.score_rectangularity_weight);
+    header << ",\"SCORE_RED_FILL_WEIGHT\":";
+    AppendJsonNumber(header, ml.roi.score_red_fill_weight);
+    header << ",\"SCORE_ORIENTATION_WEIGHT\":";
+    AppendJsonNumber(header, ml.roi.score_orientation_weight);
+    header << "},\"V9\":{\"MIN_MARGIN\":" << ml.v9.min_margin;
+    header << ",\"MAX_BEST_DISTANCE\":" << ml.v9.max_best_distance;
+    header << ",\"CONFIRM_FRAMES\":" << ml.v9.confirm_frames;
+    header << "},\"CLASS_MAPPING\":{\"CLASS_0_ACTION\":";
+    AppendJsonString(header, ml.class_mapping.class_0_action);
+    header << ",\"CLASS_1_ACTION\":";
+    AppendJsonString(header, ml.class_mapping.class_1_action);
+    header << ",\"CLASS_2_ACTION\":";
+    AppendJsonString(header, ml.class_mapping.class_2_action);
+    header << "},\"MANEUVER\":{\"SPEED_TARGET\":";
+    AppendJsonNumber(header, ml.maneuver.speed_target);
+    header << ",\"MIN_BOUNDARY_SAMPLES\":" << ml.maneuver.min_boundary_samples;
+    header << ",\"EXIT_FORWARD_M\":";
+    AppendJsonNumber(header, ml.maneuver.exit_forward_m);
+    header << ",\"EXIT_MAX_ABS_LATERAL_ERROR_M\":";
+    AppendJsonNumber(header, ml.maneuver.exit_max_abs_lateral_error_m);
+    header << ",\"EXIT_MAX_ABS_HEADING_ERROR_RAD\":";
+    AppendJsonNumber(header, ml.maneuver.exit_max_abs_heading_error_rad);
+    header << ",\"MAX_DURATION_MS\":" << ml.maneuver.max_duration_ms;
+    header << ",\"MAX_INTEGRATION_GAP_MS\":" << ml.maneuver.max_integration_gap_ms;
+    header << ",\"COOLDOWN_MS\":" << ml.maneuver.cooldown_ms;
+    header << "}}";
     header << "}}";
     return EncodeEnvelope(header.str(), nullptr, 0, encoded, error);
 }
@@ -715,6 +910,31 @@ bool EncodeSteeringMediaImageFrame(const SteeringMediaImageFrame& frame,
     const char* pixel_format = frame.pixel_format == nullptr ? "gray8" : frame.pixel_format;
     if (!ValidateSteeringMediaImagePayload(frame.width, frame.height, pixel_format, frame.pixel_size, error)) {
         return false;
+    }
+    const bool has_auxiliary = frame.auxiliary_data != nullptr || frame.auxiliary_size != 0 ||
+                               frame.auxiliary_width != 0 || frame.auxiliary_height != 0 ||
+                               frame.auxiliary_name != nullptr;
+    if (has_auxiliary) {
+        if (frame.auxiliary_data == nullptr) {
+            error = "steering image auxiliary payload is missing";
+            return false;
+        }
+        if (frame.auxiliary_name == nullptr || frame.auxiliary_name[0] == '\0') {
+            error = "steering image auxiliary payload name is missing";
+            return false;
+        }
+        if (!ValidateSteeringMediaImagePayload(frame.auxiliary_width,
+                                               frame.auxiliary_height,
+                                               "gray8",
+                                               frame.auxiliary_size,
+                                               error)) {
+            error = "steering image auxiliary payload: " + error;
+            return false;
+        }
+        if (frame.pixel_size > std::numeric_limits<std::size_t>::max() - frame.auxiliary_size) {
+            error = "steering image combined payload size overflows";
+            return false;
+        }
     }
 
     std::ostringstream header;
@@ -776,10 +996,40 @@ bool EncodeSteeringMediaImageFrame(const SteeringMediaImageFrame& frame,
     header << ",\"source_height\":"
            << (frame.source_height > 0 ? frame.source_height : frame.height);
     header << ",\"downsample\":" << std::max(1, frame.downsample);
+    if (has_auxiliary) {
+        header << ",\"payload_layout\":{";
+        header << "\"version\":1";
+        header << ",\"primary\":{";
+        header << "\"offset\":0";
+        header << ",\"size\":" << frame.pixel_size;
+        header << "}";
+        header << ",\"auxiliary\":{";
+        header << "\"name\":";
+        AppendJsonString(header, frame.auxiliary_name);
+        header << ",\"offset\":" << frame.pixel_size;
+        header << ",\"size\":" << frame.auxiliary_size;
+        header << ",\"width\":" << frame.auxiliary_width;
+        header << ",\"height\":" << frame.auxiliary_height;
+        header << ",\"pixel_format\":\"gray8\"";
+        header << "}";
+        header << "}";
+    }
     header << ",\"steering_snapshot\":";
     AppendSteeringSnapshotJson(header, frame.steering_snapshot);
     header << "}";
-    return EncodeEnvelope(header.str(), frame.pixel_data, frame.pixel_size, encoded, error);
+    if (!has_auxiliary) {
+        return EncodeEnvelope(header.str(), frame.pixel_data, frame.pixel_size, encoded, error);
+    }
+    std::vector<std::uint8_t> combined_payload(frame.pixel_size + frame.auxiliary_size);
+    std::memcpy(combined_payload.data(), frame.pixel_data, frame.pixel_size);
+    std::memcpy(combined_payload.data() + frame.pixel_size,
+                frame.auxiliary_data,
+                frame.auxiliary_size);
+    return EncodeEnvelope(header.str(),
+                          combined_payload.data(),
+                          combined_payload.size(),
+                          encoded,
+                          error);
 }
 
 /**

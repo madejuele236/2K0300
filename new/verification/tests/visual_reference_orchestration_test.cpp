@@ -112,6 +112,28 @@ void TestHoldModeRejectsCandidate() {
            "kHoldLast mode rejection must be explicit");
 }
 
+void TestMlObservedBoundaryCandidateIsCurrentVisualReference() {
+    ls2k::port::VisualReferenceCandidate candidate =
+        Candidate(ls2k::port::VisualReferenceCandidateKind::kMlGrounded,
+                  3,
+                  "ml_observed_boundary");
+    candidate.reference_path.mode = ls2k::port::ReferenceMode::kMlObservedBoundary;
+    for (ls2k::port::BEVPathSample& sample : candidate.reference_path.sampled_path) {
+        if (sample.present) {
+            sample.source = ls2k::port::BEVPathPointSource::kMlObservedBoundary;
+        }
+    }
+    const ls2k::port::VisualReferenceSelection selection =
+        ls2k::reference::SelectVisualReference({candidate});
+    Expect(selection.present,
+           "ML observed-boundary mode must be accepted as current visual evidence");
+    Expect(selection.source == "ml_observed_boundary",
+           "ML observed-boundary candidate must preserve its factual source");
+    Expect(selection.reference_path.mode ==
+               ls2k::port::ReferenceMode::kMlObservedBoundary,
+           "selected ML candidate must retain observed-boundary mode");
+}
+
 void TestLineWinsWhenSpecialIsAbsent() {
     const ls2k::port::VisualReferenceCandidate line =
         Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
@@ -186,6 +208,7 @@ int main() {
         TestMissingIndexZeroRejectsCandidate();
         TestNoneModeRejectsCandidate();
         TestHoldModeRejectsCandidate();
+        TestMlObservedBoundaryCandidateIsCurrentVisualReference();
         TestLineWinsWhenSpecialIsAbsent();
         TestPriorityExplainsMultipleSpecialCandidates();
         TestCrossExitPriorityExceedsCircle();

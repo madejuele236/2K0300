@@ -1,0 +1,110 @@
+{
+  "artifact": "ml_four_corner_calibration_report",
+  "frame_count": 1,
+  "frames": [
+    {
+      "line": 1,
+      "frame_path": "/home/madejuele/projects/2K0300/new/verification/ml-v9-board-calibration-20260713T163406Z/frame-raw.yuyv",
+      "long_edge_m": 0.10880178576013258,
+      "short_edge_m": 0.03843302576984896,
+      "long_edge_to_lateral_rad": 0.019076267715971325,
+      "rectangularity": 0.9913423078621494,
+      "bev_corners": [
+        {
+          "forward_m": 0.16554549772412422,
+          "lateral_m": -0.07610231545616478
+        },
+        {
+          "forward_m": 0.16770319350024862,
+          "lateral_m": 0.03699287017078417
+        },
+        {
+          "forward_m": 0.1285489091725273,
+          "lateral_m": 0.03555828220858886
+        },
+        {
+          "forward_m": 0.12854890917252726,
+          "lateral_m": -0.06892952266945993
+        }
+      ],
+      "y": {
+        "count": 985,
+        "median": 90,
+        "p05": 58.0,
+        "p95": 98.0
+      },
+      "u": {
+        "count": 985,
+        "median": 115,
+        "p05": 111.0,
+        "p95": 136.0
+      },
+      "v": {
+        "count": 985,
+        "median": 180,
+        "p05": 149.0,
+        "p95": 187.0
+      }
+    }
+  ],
+  "aggregate": {
+    "long_edge_m": {
+      "count": 1,
+      "median": 0.10880178576013258,
+      "p05": 0.10880178576013258,
+      "p95": 0.10880178576013258
+    },
+    "short_edge_m": {
+      "count": 1,
+      "median": 0.03843302576984896,
+      "p05": 0.03843302576984896,
+      "p95": 0.03843302576984896
+    },
+    "long_edge_to_lateral_rad": {
+      "count": 1,
+      "median": 0.019076267715971325,
+      "p05": 0.019076267715971325,
+      "p95": 0.019076267715971325
+    },
+    "rectangularity": {
+      "count": 1,
+      "median": 0.9913423078621494,
+      "p05": 0.9913423078621494,
+      "p95": 0.9913423078621494
+    },
+    "y": {
+      "count": 985,
+      "median": 90,
+      "p05": 58.0,
+      "p95": 98.0
+    },
+    "u": {
+      "count": 985,
+      "median": 115,
+      "p05": 111.0,
+      "p95": 136.0
+    },
+    "v": {
+      "count": 985,
+      "median": 180,
+      "p05": 149.0,
+      "p95": 187.0
+    }
+  },
+  "outlier_frames": [],
+  "recommended_ml_roi_parameters": {
+    "EXPECTED_LONG_EDGE_M": 0.10880178576013258,
+    "EXPECTED_SHORT_EDGE_M": 0.03843302576984896,
+    "LONG_EDGE_TOLERANCE_M": 0.0,
+    "SHORT_EDGE_TOLERANCE_M": 0.0,
+    "MAX_LONG_EDGE_TO_LATERAL_RAD": 0.019076267715971325,
+    "RED_Y_MIN": 58,
+    "RED_Y_MAX": 98,
+    "RED_U_MIN": 111,
+    "RED_U_MAX": 136,
+    "RED_V_MIN": 149,
+    "RED_V_MAX": 187,
+    "basis": "median expected size; p05/p95 absolute coverage; p95 orientation; pooled annotated YUV p05/p95"
+  },
+  "writes_runtime_configuration": false
+}

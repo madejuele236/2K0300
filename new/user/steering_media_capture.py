@@ -57,9 +57,12 @@ class SteeringMediaListener:
             "config_snapshot_path": None,
             "metadata_path": str(output_dir / "frame_metadata.jsonl"),
             "frame_dir": str(output_dir / "frames"),
+            "ml_roi_dir": str(output_dir / "ml_roi"),
             "frame_count": 0,
+            "ml_roi_count": 0,
             "payload_bytes": 0,
             "decoded_payload_bytes": 0,
+            "auxiliary_payload_bytes": 0,
             "receiver_error": None,
             "first_host_receive_monotonic_ms": None,
             "last_host_receive_monotonic_ms": None,
@@ -83,6 +86,7 @@ class SteeringMediaListener:
     def start(self) -> None:
         self._output_dir.mkdir(parents=True, exist_ok=True)
         (self._output_dir / "frames").mkdir(parents=True, exist_ok=True)
+        (self._output_dir / "ml_roi").mkdir(parents=True, exist_ok=True)
         self._server = socket.create_server((self._listen_host, self._listen_port), reuse_port=False)
         self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, SOCKET_BUFFER_BYTES)
@@ -248,25 +252,49 @@ class SteeringMediaListener:
             )
             return
 
-        if len(payload) != expected_payload_bytes:
+        try:
+            primary_payload, auxiliary_payload = self._split_image_payload(
+                header, payload, expected_payload_bytes
+            )
+        except ValueError as error:
             self._summary["receiver_error"] = (
-                "invalid steering image payload size: "
-                f"expected {expected_payload_bytes}, got {len(payload)}"
+                f"invalid steering image payload layout: {error}"
             )
             return
 
         frame_id = int(header.get("frame_id", 0))
-        decoded_payload = self._decode_image_payload(header, payload, frame_width, frame_height)
+        decoded_payload = self._decode_image_payload(
+            header, primary_payload, frame_width, frame_height
+        )
         frame_path = self._output_dir / "frames" / f"frame-{frame_id:06d}.raw"
         frame_path.write_bytes(decoded_payload)
         self._update_frame_stats(header, payload, receive_monotonic_ms)
         self._summary["decoded_payload_bytes"] = (
             int(self._summary["decoded_payload_bytes"]) + len(decoded_payload)
         )
+        ml_roi_path: Optional[Path] = None
+        auxiliary_metadata: Optional[Dict[str, Any]] = None
+        if auxiliary_payload is not None:
+            auxiliary_layout, auxiliary_bytes = auxiliary_payload
+            ml_roi_path = self._output_dir / "ml_roi" / f"frame-{frame_id:06d}.raw"
+            ml_roi_path.write_bytes(auxiliary_bytes)
+            self._summary["ml_roi_count"] = int(self._summary["ml_roi_count"]) + 1
+            self._summary["auxiliary_payload_bytes"] = (
+                int(self._summary["auxiliary_payload_bytes"]) + len(auxiliary_bytes)
+            )
+            auxiliary_metadata = {**auxiliary_layout, "path": str(ml_roi_path)}
+
         metadata = {
             "host_received_utc": utc_timestamp(),
             "host_received_monotonic_ms": receive_monotonic_ms,
             "frame_path": str(frame_path),
+            "primary_payload": {
+                "path": str(frame_path),
+                "encoded_size": len(primary_payload),
+                "decoded_size": len(decoded_payload),
+            },
+            "auxiliary_payload": auxiliary_metadata,
+            "ml_roi_path": str(ml_roi_path) if ml_roi_path is not None else None,
             **header,
         }
         with self._metadata_lock:
@@ -305,6 +333,58 @@ class SteeringMediaListener:
         if bits is not None:
             return (pixels * bits + 7) // 8
         return pixels
+
+    def _split_image_payload(
+        self, header: Dict[str, Any], payload: bytes, expected_primary_size: int
+    ) -> tuple[bytes, Optional[tuple[Dict[str, Any], bytes]]]:
+        layout = header.get("payload_layout")
+        if layout is None:
+            if len(payload) != expected_primary_size:
+                raise ValueError(
+                    f"legacy payload expected {expected_primary_size} bytes, got {len(payload)}"
+                )
+            return payload, None
+        if not isinstance(layout, dict) or layout.get("version") != 1:
+            raise ValueError("payload_layout.version must be 1")
+        primary = layout.get("primary")
+        auxiliary = layout.get("auxiliary")
+        if not isinstance(primary, dict) or not isinstance(auxiliary, dict):
+            raise ValueError("payload_layout must contain primary and auxiliary objects")
+
+        primary_offset = primary.get("offset")
+        primary_size = primary.get("size")
+        if primary_offset != 0 or primary_size != expected_primary_size:
+            raise ValueError(
+                "primary segment must start at 0 and match the declared image size"
+            )
+
+        auxiliary_offset = auxiliary.get("offset")
+        auxiliary_size = auxiliary.get("size")
+        auxiliary_width = auxiliary.get("width")
+        auxiliary_height = auxiliary.get("height")
+        auxiliary_name = auxiliary.get("name")
+        if (
+            not isinstance(auxiliary_name, str)
+            or not auxiliary_name
+            or auxiliary.get("pixel_format") != "gray8"
+            or not isinstance(auxiliary_width, int)
+            or isinstance(auxiliary_width, bool)
+            or auxiliary_width <= 0
+            or not isinstance(auxiliary_height, int)
+            or isinstance(auxiliary_height, bool)
+            or auxiliary_height <= 0
+            or not isinstance(auxiliary_size, int)
+            or isinstance(auxiliary_size, bool)
+            or auxiliary_size != auxiliary_width * auxiliary_height
+            or auxiliary_offset != primary_size
+            or auxiliary_offset + auxiliary_size != len(payload)
+        ):
+            raise ValueError("auxiliary segment is not a contiguous gray8 image")
+
+        return (
+            payload[:primary_size],
+            (dict(auxiliary), payload[auxiliary_offset : auxiliary_offset + auxiliary_size]),
+        )
 
     def _packed_gray_bits(self, header: Dict[str, Any]) -> Optional[int]:
         encoding = header.get("payload_encoding")

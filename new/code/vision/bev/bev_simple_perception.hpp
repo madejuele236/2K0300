@@ -21,6 +21,7 @@ struct BEVSimplePerceptionResult {
     std::vector<BEVSimpleRowScan> rows{};        ///< 各行的扫描结果
     std::size_t boundary_jump_count = 0;         ///< V9 局部 Y 边界跳变数量
     std::size_t boundary_span_count = 0;         ///< V9 同行边界 span 数量
+    BEVRoadPathFacts road_path_facts{};           ///< 普通路径选中候选的对齐中心/实际边界事实
     port::BEVReferencePath reference_path{};      ///< 构建的参考路径
     std::string reference_mode = "none";          ///< 参考路径模式字符串
     std::string reference_source = "none";        ///< 参考路径来源字符串

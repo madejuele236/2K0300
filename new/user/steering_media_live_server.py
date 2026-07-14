@@ -33,6 +33,47 @@ def _encode_media_envelope(header: Dict[str, Any], payload: bytes) -> bytes:
     )
 
 
+def _split_image_payload(header: Dict[str, Any], payload: bytes) -> Tuple[bytes, Optional[Dict[str, Any]], bytes]:
+    """Validate a versioned image layout and return primary plus optional auxiliary bytes."""
+    layout = header.get("payload_layout")
+    if layout is None:
+        return payload, None, b""
+    if not isinstance(layout, dict) or layout.get("version") != 1:
+        raise ValueError("payload_layout.version must be 1")
+    primary = layout.get("primary")
+    auxiliary = layout.get("auxiliary")
+    if not isinstance(primary, dict) or not isinstance(auxiliary, dict):
+        raise ValueError("payload_layout must contain primary and auxiliary objects")
+    primary_offset = primary.get("offset")
+    primary_size = primary.get("size")
+    auxiliary_offset = auxiliary.get("offset")
+    auxiliary_size = auxiliary.get("size")
+    auxiliary_width = auxiliary.get("width")
+    auxiliary_height = auxiliary.get("height")
+    if (
+        primary_offset != 0
+        or not isinstance(primary_size, int)
+        or isinstance(primary_size, bool)
+        or primary_size < 0
+        or auxiliary_offset != primary_size
+        or not isinstance(auxiliary_size, int)
+        or isinstance(auxiliary_size, bool)
+        or not isinstance(auxiliary_width, int)
+        or isinstance(auxiliary_width, bool)
+        or auxiliary_width <= 0
+        or not isinstance(auxiliary_height, int)
+        or isinstance(auxiliary_height, bool)
+        or auxiliary_height <= 0
+        or auxiliary_size != auxiliary_width * auxiliary_height
+        or auxiliary.get("pixel_format") != "gray8"
+        or not isinstance(auxiliary.get("name"), str)
+        or not auxiliary.get("name")
+        or auxiliary_offset + auxiliary_size != len(payload)
+    ):
+        raise ValueError("invalid contiguous primary/auxiliary payload layout")
+    return payload[:primary_size], dict(auxiliary), payload[auxiliary_offset:]
+
+
 def _encode_ws_frame(payload: bytes, *, opcode: int = 0x2) -> bytes:
     first = 0x80 | (opcode & 0x0F)
     length = len(payload)
@@ -1140,10 +1181,12 @@ function visibleBevBounds(config, projection, sourceWidth, sourceHeight) {
   const projector = config?.BEV_PROJECTOR || {};
   const geometry = config?.BEV_GEOMETRY || {};
   const samples = forwardSamplesFromConfig(config);
-  const searchLimit = Math.max(0.1, numberOrNull(geometry.SEARCH_LATERAL_LIMIT_M) ?? 1.6);
-  const forwardMin = samples.length > 0 ? samples[0] : 0.061;
-  const forwardMax = Math.max(forwardMin + 0.1, samples.length > 0 ? samples[samples.length - 1] : 1.5);
-  const lateralScanLimit = Math.max(2.0, searchLimit * 4.0);
+  const searchLimit = Math.max(0.110288148, numberOrNull(geometry.SEARCH_LATERAL_LIMIT_M) ?? 1.764610363);
+  const forwardMin = samples.length > 0 ? samples[0] : 0.0795685735;
+  const forwardMax = Math.max(
+      forwardMin + 0.130440284,
+      samples.length > 0 ? samples[samples.length - 1] : 2.087044550);
+  const lateralScanLimit = Math.max(2.205762953, searchLimit * 4.0);
   let lateralMin = null;
   let lateralMax = null;
   const slices = 64;
@@ -1164,7 +1207,7 @@ function visibleBevBounds(config, projection, sourceWidth, sourceHeight) {
     lateralMin = -searchLimit;
     lateralMax = searchLimit;
   }
-  const lateralPadding = Math.max(0.02, (lateralMax - lateralMin) * 0.025);
+  const lateralPadding = Math.max(0.022057630, (lateralMax - lateralMin) * 0.025);
   return {
     lateralMin: lateralMin - lateralPadding,
     lateralMax: lateralMax + lateralPadding,
@@ -1175,8 +1218,8 @@ function visibleBevBounds(config, projection, sourceWidth, sourceHeight) {
 }
 function bevDisplayGeometry(config, projection, sourceWidth, sourceHeight) {
   const bounds = visibleBevBounds(config, projection, sourceWidth, sourceHeight);
-  const lateralSpan = Math.max(0.1, bounds.lateralMax - bounds.lateralMin);
-  const forwardSpan = Math.max(0.1, bounds.forwardMax - bounds.forwardMin);
+  const lateralSpan = Math.max(0.110288148, bounds.lateralMax - bounds.lateralMin);
+  const forwardSpan = Math.max(0.130440284, bounds.forwardMax - bounds.forwardMin);
   const projector = bounds.projector || {};
   const baseWidth = Math.round(Math.max(2, numberOrNull(projector.DEBUG_GRID_WIDTH) ?? 160) * 2);
   const width = Math.max(320, Math.min(960, baseWidth * 2));
@@ -1334,6 +1377,7 @@ function drawPathCandidateOverlay(header, renderInfo) {
 }
 let latestFrameId = null;
 let latestRenderKey = null;
+let latestAuxiliaryPayload = null;
 let latestSequence = 0;
 let lastRenderMs = 0;
 let smoothedFps = null;
@@ -1353,6 +1397,65 @@ const speedPollDelayMs = 100;
 const speedWindowMs = 60000;
 let latestSpeedSequence = 0;
 let speedSeries = [];
+function splitImagePayload(header, payload) {
+  const layout = header.payload_layout;
+  if (layout == null) return { primary: payload, auxiliary: null };
+  const primary = layout.primary;
+  const auxiliary = layout.auxiliary;
+  const valid = layout.version === 1 && primary && auxiliary &&
+    primary.offset === 0 && Number.isInteger(primary.size) && primary.size >= 0 &&
+    auxiliary.offset === primary.size && Number.isInteger(auxiliary.size) &&
+    Number.isInteger(auxiliary.width) && auxiliary.width > 0 &&
+    Number.isInteger(auxiliary.height) && auxiliary.height > 0 &&
+    auxiliary.size === auxiliary.width * auxiliary.height &&
+    auxiliary.pixel_format === "gray8" &&
+    typeof auxiliary.name === "string" && auxiliary.name.length > 0 &&
+    auxiliary.offset + auxiliary.size === payload.length;
+  if (!valid) return null;
+  return {
+    primary: payload.slice(0, primary.size),
+    auxiliary: {
+      layout: auxiliary,
+      data: payload.slice(auxiliary.offset, auxiliary.offset + auxiliary.size),
+    },
+  };
+}
+function drawAuxiliaryInset(auxiliary) {
+  if (!auxiliary) return;
+  const width = auxiliary.layout.width;
+  const height = auxiliary.layout.height;
+  if (!Number.isInteger(width) || !Number.isInteger(height) ||
+      auxiliary.data.length !== width * height) return;
+  const inset = document.createElement("canvas");
+  inset.width = width;
+  inset.height = height;
+  const insetCtx = inset.getContext("2d");
+  const image = insetCtx.createImageData(width, height);
+  for (let index = 0; index < auxiliary.data.length; ++index) {
+    const value = auxiliary.data[index];
+    const offset = index * 4;
+    image.data[offset] = value;
+    image.data[offset + 1] = value;
+    image.data[offset + 2] = value;
+    image.data[offset + 3] = 255;
+  }
+  insetCtx.putImageData(image, 0, 0);
+  const scale = Math.max(1, Math.min(4, Math.floor(Math.min(
+    canvas.width * 0.28 / width, canvas.height * 0.28 / height))));
+  const drawWidth = width * scale;
+  const drawHeight = height * scale;
+  const x = Math.max(6, canvas.width - drawWidth - 10);
+  const y = 10;
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.82)";
+  ctx.fillRect(x - 5, y - 5, drawWidth + 10, drawHeight + 24);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(inset, x, y, drawWidth, drawHeight);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText(auxiliary.layout.name, x, y + drawHeight + 15);
+  ctx.restore();
+}
 function handleEnvelope(buffer, transport) {
   const bytes = new Uint8Array(buffer);
   if (bytes.length < 8) return;
@@ -1379,9 +1482,13 @@ function handleEnvelope(buffer, transport) {
     const renderKey = `${header.frame_id ?? "-"}:${header.capture_time_ms ?? "-"}`;
     if (renderKey === latestRenderKey) return;
     latestRenderKey = renderKey;
-    const pixelStats = renderGray(header, payload);
+    const segments = splitImagePayload(header, payload);
+    if (!segments) return;
+    latestAuxiliaryPayload = segments.auxiliary;
+    const pixelStats = renderGray(header, segments.primary);
     if (!pixelStats) return;
     drawPathCandidateOverlay(header, pixelStats);
+    drawAuxiliaryInset(latestAuxiliaryPayload);
     latestFrameId = header.frame_id ?? latestFrameId;
     const steering = header.steering_snapshot || {};
     const camera = header.camera_frame || {};
@@ -1416,7 +1523,9 @@ function handleEnvelope(buffer, transport) {
     fields.frameId.textContent = String(header.frame_id ?? "-");
     fields.size.textContent =
       `${header.width}x${header.height} downsample=${header.downsample ?? 1} ` +
-      `${header.payload_encoding ?? header.pixel_format ?? "raw"}`;
+      `${header.payload_encoding ?? header.pixel_format ?? "raw"}` +
+      `${latestAuxiliaryPayload ? ` / ${latestAuxiliaryPayload.layout.name}=` +
+        `${latestAuxiliaryPayload.layout.width}x${latestAuxiliaryPayload.layout.height}` : ""}`;
     fields.source.textContent =
       `${header.source_width ?? header.width}x${header.source_height ?? header.height} / ` +
       `${header.frame_source ?? "-"} / aligned=${formatBool(nested(header, ["snapshot_alignment", "aligned"], null))}`;
@@ -1776,6 +1885,7 @@ class LiveFrameHub:
             "messages_published": 0,
             "config_messages": 0,
             "image_messages": 0,
+            "auxiliary_image_messages": 0,
             "config_cached": False,
             "clients_connected": 0,
             "client_disconnects": 0,
@@ -1788,6 +1898,9 @@ class LiveFrameHub:
 
     def publish(self, header: Dict[str, Any], payload: bytes, receive_monotonic_ms: int) -> None:
         with self._condition:
+            auxiliary_metadata: Optional[Dict[str, Any]] = None
+            if header.get("type") == "image_frame":
+                _, auxiliary_metadata, _ = _split_image_payload(header, payload)
             self._sequence += 1
             live_header = dict(header)
             live_header["host_received_monotonic_ms"] = receive_monotonic_ms
@@ -1805,6 +1918,10 @@ class LiveFrameHub:
             if live_header.get("type") == "image_frame":
                 self._summary["image_messages"] = int(self._summary["image_messages"]) + 1
                 self._summary["last_frame_id"] = live_header.get("frame_id")
+                if auxiliary_metadata is not None:
+                    self._summary["auxiliary_image_messages"] = (
+                        int(self._summary["auxiliary_image_messages"]) + 1
+                    )
             self._condition.notify_all()
 
     def wait_next(self, last_sequence: int, timeout_s: float) -> Tuple[int, Optional[bytes]]:

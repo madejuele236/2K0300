@@ -25,7 +25,6 @@ ls2k::port::ReferenceTimeAlignmentParameters Params() {
     params.max_age_ms = 120;
     params.max_integration_gap_ms = 30;
     params.use_encoder_forward = true;
-    params.encoder_ticks_to_meter = 0.001;
     params.use_imu_yaw = true;
     params.use_wheel_yaw_fallback = false;
     params.max_delta_forward_m = 1.0;
@@ -33,6 +32,12 @@ ls2k::port::ReferenceTimeAlignmentParameters Params() {
     params.max_delta_yaw_rad = 1.0;
     params.future_prediction_enabled = false;
     return params;
+}
+
+ls2k::port::MotionOdometryParameters Odometry(double scale = 0.001) {
+    ls2k::port::MotionOdometryParameters odometry{};
+    odometry.encoder_ticks_to_meter = scale;
+    return odometry;
 }
 
 ls2k::port::MotionHistory MakeHistory() {
@@ -51,7 +56,8 @@ void TestEncoderForward() {
         130,
         MakeHistory(),
         ls2k::port::ControlCommandHistory{},
-        Params());
+        Params(),
+        Odometry());
 
     Expect(result.valid, "encoder forward delta should be valid");
     ExpectNear(result.delta_forward_m, 0.03, 1.0e-6, "forward delta mismatch");
@@ -72,7 +78,8 @@ void TestImuYaw() {
         130,
         history,
         ls2k::port::ControlCommandHistory{},
-        Params());
+        Params(),
+        Odometry());
 
     Expect(result.valid, "imu yaw delta should be valid");
     ExpectNear(result.delta_yaw_rad, 0.03, 1.0e-6, "yaw delta mismatch");
@@ -98,7 +105,8 @@ void TestWheelYawFallback() {
         130,
         history,
         ls2k::port::ControlCommandHistory{},
-        params);
+        params,
+        Odometry());
 
     Expect(result.valid, "wheel yaw fallback should be valid");
     ExpectNear(result.delta_yaw_rad, 0.06, 1.0e-6, "wheel yaw fallback mismatch");
@@ -107,7 +115,6 @@ void TestWheelYawFallback() {
 
 void TestBodyFrameLateralSignFollowsRightPositiveProtocol() {
     auto params = Params();
-    params.encoder_ticks_to_meter = 0.1;
     params.max_delta_lateral_m = 1.0;
     auto right_turn_history = MakeHistory();
     for (std::size_t index = 0; index < right_turn_history.count; ++index) {
@@ -122,7 +129,8 @@ void TestBodyFrameLateralSignFollowsRightPositiveProtocol() {
         130,
         right_turn_history,
         ls2k::port::ControlCommandHistory{},
-        params);
+        params,
+        Odometry(0.1));
     Expect(result.valid, "positive yaw body-frame delta should be valid");
     Expect(result.delta_lateral_m > 0.0,
            "positive yaw with forward motion should accumulate right-positive lateral delta");
@@ -137,7 +145,8 @@ void TestBodyFrameLateralSignFollowsRightPositiveProtocol() {
         130,
         left_turn_history,
         ls2k::port::ControlCommandHistory{},
-        params);
+        params,
+        Odometry(0.1));
     Expect(result.valid, "negative yaw body-frame delta should be valid");
     Expect(result.delta_lateral_m < 0.0,
            "negative yaw with forward motion should accumulate left-negative lateral delta");
@@ -150,7 +159,8 @@ void TestFuturePredictionDisabledFailsWhenNeeded() {
         150,
         MakeHistory(),
         ls2k::port::ControlCommandHistory{},
-        Params());
+        Params(),
+        Odometry());
 
     Expect(!result.valid, "future prediction disabled should fail for future end time");
     Expect(result.reason == "future_prediction_disabled",
@@ -168,7 +178,8 @@ void TestFutureConstantVelocity() {
         150,
         MakeHistory(),
         ls2k::port::ControlCommandHistory{},
-        params);
+        params,
+        Odometry());
 
     Expect(result.valid, "future constant velocity prediction should be valid");
     ExpectNear(result.delta_forward_m, 0.05, 1.0e-6, "future forward prediction mismatch");
@@ -197,7 +208,8 @@ void TestCommandPredictionFiltersInvalidCommands() {
         150,
         MakeHistory(),
         commands,
-        params);
+        params,
+        Odometry());
     Expect(result.valid, "prediction without usable command should still be valid");
     Expect(!result.used_command_prediction, "invalid command must not drive prediction");
     ExpectNear(result.predicted_yaw_rate_radps, 0.0, 1.0e-6, "invalid command yaw mismatch");
@@ -215,7 +227,8 @@ void TestCommandPredictionFiltersInvalidCommands() {
         150,
         MakeHistory(),
         commands,
-        params);
+        params,
+        Odometry());
     Expect(result.valid, "prediction with usable command should be valid");
     Expect(result.used_command_prediction, "valid command must drive prediction");
     ExpectNear(result.predicted_yaw_rate_radps, 1.0, 1.0e-6, "command yaw prediction mismatch");

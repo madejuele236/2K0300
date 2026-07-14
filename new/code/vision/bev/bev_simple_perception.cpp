@@ -16,6 +16,8 @@ const char* ToString(port::ReferenceMode mode) {
             return "none";
         case port::ReferenceMode::kIntervalCenter:
             return "interval_center";
+        case port::ReferenceMode::kMlObservedBoundary:
+            return "ml_observed_boundary";
         case port::ReferenceMode::kHoldLast:
             return "hold_last";
     }
@@ -28,6 +30,8 @@ const char* ToString(port::BEVPathPointSource source) {
             return "none";
         case port::BEVPathPointSource::kIntervalCenter:
             return "interval_center";
+        case port::BEVPathPointSource::kMlObservedBoundary:
+            return "ml_observed_boundary";
         case port::BEVPathPointSource::kHold:
             return "hold";
     }
@@ -57,7 +61,22 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
         result.boundary_span_count += row.spans.size();
     }
     const BEVImageSegmentConnectivity connectivity(frame, projector, params.bev_boundary);
-    result.reference_path = BuildReferencePath(result.rows, params, connectivity);
+    result.road_path_facts =
+        BuildConnectedRoadPathFacts(result.rows, params, connectivity);
+    for (std::size_t index = 0; index < result.road_path_facts.center.size(); ++index) {
+        result.reference_path.sampled_path[index].point.forward_m =
+            params.bev_geometry.forward_samples_m[index];
+        const BEVRoadPathPointFact& center = result.road_path_facts.center[index];
+        if (!center.present) {
+            continue;
+        }
+        port::BEVPathSample& sample = result.reference_path.sampled_path[index];
+        result.reference_path.mode = port::ReferenceMode::kIntervalCenter;
+        sample.present = true;
+        sample.point = center.point;
+        sample.confidence = center.confidence;
+        sample.source = port::BEVPathPointSource::kIntervalCenter;
+    }
     result.reference_mode = ToString(result.reference_path.mode);
     result.reference_source =
         result.reference_path.mode == port::ReferenceMode::kIntervalCenter ? "simple_interval_center" : "none";

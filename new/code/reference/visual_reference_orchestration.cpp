@@ -42,6 +42,7 @@ CandidateValidation ValidateCandidate(const port::VisualReferenceCandidate& cand
     }
     switch (candidate.reference_path.mode) {
         case port::ReferenceMode::kIntervalCenter:
+        case port::ReferenceMode::kMlObservedBoundary:
             break;
         case port::ReferenceMode::kHoldLast:
             return {false, "hold_candidate_not_visual"};

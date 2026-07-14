@@ -58,7 +58,7 @@ struct CircleV2Params {
     float opposite_straight_confidence_min = 0.50F;
     int entry_bottom_min_row_count = 4;
     float entry_bottom_forward_min_m = 0.0F;
-    float entry_bottom_forward_max_m = 0.25F;
+    float entry_bottom_forward_max_m = 0.326100711F;
 };
 
 struct CircleV2ReferencePlan {

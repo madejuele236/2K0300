@@ -1,0 +1,1 @@
+{"frame_path":"frame-raw.yuyv","format":"yuyv","width":320,"height":240,"stride":640,"bev_projector_config_path":"../../config/default_params.json","corners":[{"row_px":153.0,"col_px":148.0},{"row_px":152.0,"col_px":198.0},{"row_px":172.0,"col_px":199.0},{"row_px":172.0,"col_px":148.0}]}

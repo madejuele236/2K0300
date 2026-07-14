@@ -17,6 +17,8 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     telemetry.boundary_row_count = snapshot.steering.boundary_row_count;
     telemetry.boundary_jump_count = snapshot.steering.boundary_jump_count;
     telemetry.boundary_span_count = snapshot.steering.boundary_span_count;
+    telemetry.ml = snapshot.steering.ml;
+    telemetry.speed_selection_source = snapshot.steering.speed_selection_source;
     telemetry.element_evidence = snapshot.steering.element_evidence;
     telemetry.visual_reference.present = snapshot.steering.visual_reference.present;
     telemetry.visual_reference.source = snapshot.steering.visual_reference.source;
@@ -70,7 +72,7 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     telemetry.turn_suppressed = snapshot.turn_suppressed;
     telemetry.target_speed_override_enabled = snapshot.target_speed_override_enabled;
     telemetry.target_speed_override_value = snapshot.target_speed_override_value;
-    telemetry.effective_speed_target = snapshot.effective_speed_target;
+    telemetry.effective_speed_target = snapshot.steering.effective_speed_target;
     telemetry.left_speed_target = snapshot.left_speed_target;
     telemetry.right_speed_target = snapshot.right_speed_target;
     telemetry.left_measured_speed = snapshot.left_measured_speed;

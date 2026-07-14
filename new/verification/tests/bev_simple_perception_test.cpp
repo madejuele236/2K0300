@@ -108,7 +108,14 @@ void DrawVehicleStripe(ls2k::port::LegacyCameraFrame& frame,
                        float lateral_max,
                        std::uint8_t value) {
     const float lateral_step = std::max(0.01F, params.bev_geometry.lateral_step_m);
-    for (const float forward : params.bev_geometry.forward_samples_m) {
+    const float forward_step =
+        (params.bev_geometry.forward_samples_m[1] -
+         params.bev_geometry.forward_samples_m[0]) /
+        64.0F;
+    const float forward_max = params.bev_geometry.forward_samples_m.back();
+    for (float forward = 0.0F;
+         forward <= forward_max + forward_step * 0.5F;
+         forward += forward_step) {
         for (float lateral = -params.bev_geometry.search_lateral_limit_m;
              lateral <= params.bev_geometry.search_lateral_limit_m + lateral_step * 0.5F;
              lateral += lateral_step) {
@@ -434,8 +441,17 @@ void TestBevLocalBoundaryFacts() {
     Expect(saw_jump_pair, "drawn BEV stripe must expose local Y boundary jumps");
     Expect(saw_row_support_stats,
            "row scanner must expose sample support stats without changing reference facts");
-    Expect(ls2k::reference::EvaluateReferenceUsability(result.reference_path, params).usable,
-           "continuous boundary spans must produce usable current facts");
+    const ls2k::port::BEVReferencePath unconstrained_reference =
+        BuildSyntheticReferencePath(result.rows, params);
+    Expect(CountPresentPathPoints(unconstrained_reference,
+                                  ls2k::port::BEVPathPointSource::kIntervalCenter) >= 3,
+           "continuous row spans must first produce ordinary center candidates");
+    const ls2k::port::ReferenceUsability usability =
+        ls2k::reference::EvaluateReferenceUsability(result.reference_path, params);
+    Expect(usability.usable,
+           "continuous boundary spans must produce usable current facts: reason=" +
+               usability.reason + " leading=" +
+               std::to_string(usability.leading_usable_samples));
     Expect(CountPresentPathPoints(result.reference_path,
                                   ls2k::port::BEVPathPointSource::kIntervalCenter) >= 3,
            "reference points must explicitly come from boundary span centers");
@@ -952,6 +968,87 @@ void TestSparseRowCountUsesOriginalForwardSamplePrefix() {
     }
 }
 
+void TestRoadPathFactsStayAlignedWithSelectedMidpointCandidate() {
+    ls2k::port::RuntimeParameters params{};
+    params.bev_geometry.boundary_trace_max_adjacent_distance_m = 2.0F;
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        rows.push_back(SyntheticRow(
+            params.bev_geometry.forward_samples_m[index], -1.0F, 1.0F));
+        AddSyntheticInterval(rows.back(), -0.60F, -0.40F);
+        AddSyntheticInterval(rows.back(), 0.30F, 0.50F);
+    }
+    ScriptedConnectivityQuery query({
+        ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+        ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+    });
+    const ls2k::vision::BEVRoadPathFacts facts =
+        ls2k::vision::BuildConnectedRoadPathFacts(rows, params, query);
+
+    Expect(facts.center[0].present &&
+               facts.actual_left_boundary[0].present &&
+               facts.actual_right_boundary[0].present,
+           "selected midpoint candidate must carry its two actual observed boundaries");
+    ExpectNear(facts.center[0].point.lateral_m, 0.40F, 1.0e-6F,
+               "selected midpoint center must remain aligned at output index zero");
+    ExpectNear(facts.actual_left_boundary[0].point.lateral_m, 0.30F, 1.0e-6F,
+               "selected midpoint must carry the left edge from its own span");
+    ExpectNear(facts.actual_right_boundary[0].point.lateral_m, 0.50F, 1.0e-6F,
+               "selected midpoint must carry the right edge from its own span");
+}
+
+void TestSingleEdgeFactsDoNotSynthesizeOppositeBoundary() {
+    ls2k::port::RuntimeParameters params{};
+    params.bev_geometry.nominal_road_half_width_m = 0.21F;
+    params.bev_geometry.boundary_trace_max_adjacent_distance_m = 0.45F;
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    for (std::size_t index = 0U; index < 4U; ++index) {
+        rows.push_back(SyntheticRow(
+            params.bev_geometry.forward_samples_m[index], -1.0F, 1.0F));
+        AddSyntheticInterval(rows.back(), -0.21F, 1.0F);
+    }
+    const AlwaysConnectedQuery query{};
+    const ls2k::vision::BEVRoadPathFacts facts =
+        ls2k::vision::BuildConnectedRoadPathFacts(rows, params, query);
+
+    for (std::size_t index = 0U; index < 3U; ++index) {
+        Expect(facts.center[index].present,
+               "supported single edge must still provide an ordinary center fact");
+        Expect(facts.actual_left_boundary[index].present,
+               "single low edge must be retained as an actual left boundary");
+        Expect(!facts.actual_right_boundary[index].present,
+               "single low edge must not synthesize an opposite right boundary");
+        ExpectNear(facts.actual_left_boundary[index].point.lateral_m, -0.21F, 1.0e-6F,
+                   "single-edge fact must retain the literal observed lateral coordinate");
+    }
+
+    const ls2k::port::BEVReferencePath literal_left =
+        ls2k::vision::BuildObservedBoundaryReferencePath(
+            facts, ls2k::vision::ObservedBoundarySide::kLeft, 3U);
+    Expect(literal_left.mode == ls2k::port::ReferenceMode::kMlObservedBoundary,
+           "three literal boundary samples must produce ML observed-boundary mode");
+    Expect(CountPresentPathPoints(
+               literal_left,
+               ls2k::port::BEVPathPointSource::kMlObservedBoundary) == 3,
+           "literal boundary output must label every sample with ML observed-boundary source");
+    ExpectNear(literal_left.sampled_path[0].point.lateral_m, -0.21F, 1.0e-6F,
+               "ML observed-boundary output must not apply the ordinary center offset");
+
+    const ls2k::port::BEVReferencePath missing_right =
+        ls2k::vision::BuildObservedBoundaryReferencePath(
+            facts, ls2k::vision::ObservedBoundarySide::kRight, 3U);
+    Expect(missing_right.mode == ls2k::port::ReferenceMode::kNone &&
+               !missing_right.sampled_path[0].present,
+           "missing opposite boundary must remain unavailable to the ML path builder");
+
+    const ls2k::port::BEVReferencePath insufficient_left =
+        ls2k::vision::BuildObservedBoundaryReferencePath(
+            facts, ls2k::vision::ObservedBoundarySide::kLeft, 4U);
+    Expect(insufficient_left.mode == ls2k::port::ReferenceMode::kNone &&
+               !insufficient_left.sampled_path[0].present,
+           "fewer than caller-required boundary samples must produce no path");
+}
+
 }  // namespace
 
 int main() {
@@ -976,6 +1073,8 @@ int main() {
         TestBoundaryJumpConnectivityRejectsLateralCrossing();
         TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange();
         TestSparseRowCountUsesOriginalForwardSamplePrefix();
+        TestRoadPathFactsStayAlignedWithSelectedMidpointCandidate();
+        TestSingleEdgeFactsDoNotSynthesizeOppositeBoundary();
     } catch (const TestFailure& failure) {
         std::cerr << "bev_simple_perception_test failed: " << failure.message << "\n";
         return EXIT_FAILURE;

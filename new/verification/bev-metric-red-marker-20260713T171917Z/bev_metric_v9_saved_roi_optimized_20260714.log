@@ -1,0 +1,33 @@
+saved_roi path=bev_metric_final_roi_0.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef852323
+replay valid=true raw_class=0 best_distance=30 margin=6 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.711 replay_avg_us=236.219 combined_avg_us=259.930
+saved_roi path=bev_metric_final_roi_1.raw
+descriptor valid=true bytes=7bf294058c5873674b4987e8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=6 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.723 replay_avg_us=235.498 combined_avg_us=259.221
+saved_roi path=bev_metric_final_roi_2.raw
+descriptor valid=true bytes=7bf294058c5873674b49c768ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi_timing descriptor_avg_us=24.023 replay_avg_us=235.465 combined_avg_us=259.487
+saved_roi path=bev_metric_final_roi_3.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7e8ef052323
+replay valid=true raw_class=0 best_distance=30 margin=6 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.656 replay_avg_us=235.302 combined_avg_us=258.958
+saved_roi path=bev_metric_final_roi_4.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.571 replay_avg_us=235.558 combined_avg_us=259.129
+saved_roi path=bev_metric_final_roi_5.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.622 replay_avg_us=235.414 combined_avg_us=259.036
+saved_roi path=bev_metric_final_roi_6.raw
+descriptor valid=true bytes=7bf294058c5873674b4987e8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=6 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.545 replay_avg_us=235.386 combined_avg_us=258.931
+saved_roi path=bev_metric_final_roi_7.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi_timing descriptor_avg_us=23.598 replay_avg_us=235.615 combined_avg_us=259.213
+benchmark_summary roi_count=8 warmup_iterations=16 measured_iterations=200 measured_samples=1600 descriptor_avg_us=23.681 replay_avg_us=235.557 combined_avg_us=259.238 parity=true

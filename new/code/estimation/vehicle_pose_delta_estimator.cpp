@@ -42,6 +42,7 @@ bool IntegrateMeasuredWindow(uint64_t start_ms,
                              uint64_t end_ms,
                              const port::MotionHistory& history,
                              const port::ReferenceTimeAlignmentParameters& params,
+                             const port::MotionOdometryParameters& odometry,
                              port::VehiclePoseDelta& out) {
     if (end_ms <= start_ms) {
         out.measured_until_ms = start_ms;
@@ -51,7 +52,7 @@ bool IntegrateMeasuredWindow(uint64_t start_ms,
         Fail(out, "motion_history_unavailable");
         return false;
     }
-    if (params.use_encoder_forward && params.encoder_ticks_to_meter <= 0.0) {
+    if (params.use_encoder_forward && odometry.encoder_ticks_to_meter <= 0.0) {
         Fail(out, "encoder_scale_unavailable");
         return false;
     }
@@ -102,7 +103,7 @@ bool IntegrateMeasuredWindow(uint64_t start_ms,
             const double mean_ticks =
                 0.5 * (static_cast<double>(curr.left_encoder_delta) +
                        static_cast<double>(curr.right_encoder_delta));
-            ds_m = mean_ticks * params.encoder_ticks_to_meter * fraction;
+            ds_m = mean_ticks * odometry.encoder_ticks_to_meter * fraction;
             out.used_encoder_forward = true;
         }
 
@@ -114,15 +115,15 @@ bool IntegrateMeasuredWindow(uint64_t start_ms,
             out.used_imu_yaw = true;
         } else if (params.use_wheel_yaw_fallback &&
                    curr.encoder_valid &&
-                   params.encoder_ticks_to_meter > 0.0 &&
+                   odometry.encoder_ticks_to_meter > 0.0 &&
                    params.wheel_track_m > 1.0e-6) {
             const double right_m =
                 static_cast<double>(curr.right_encoder_delta) *
-                params.encoder_ticks_to_meter *
+                odometry.encoder_ticks_to_meter *
                 fraction;
             const double left_m =
                 static_cast<double>(curr.left_encoder_delta) *
-                params.encoder_ticks_to_meter *
+                odometry.encoder_ticks_to_meter *
                 fraction;
             dyaw_rad = (right_m - left_m) / params.wheel_track_m;
             yaw_available = true;
@@ -217,7 +218,8 @@ port::VehiclePoseDelta EstimateVehiclePoseDelta(
     uint64_t end_time_ms,
     const port::MotionHistory& motion_history,
     const port::ControlCommandHistory& command_history,
-    const port::ReferenceTimeAlignmentParameters& params) {
+    const port::ReferenceTimeAlignmentParameters& params,
+    const port::MotionOdometryParameters& odometry) {
     port::VehiclePoseDelta out{};
     out.start_time_ms = start_time_ms;
     out.now_time_ms = now_time_ms;
@@ -230,7 +232,8 @@ port::VehiclePoseDelta EstimateVehiclePoseDelta(
     }
 
     const uint64_t measured_end_ms = std::min(now_time_ms, end_time_ms);
-    if (!IntegrateMeasuredWindow(start_time_ms, measured_end_ms, motion_history, params, out)) {
+    if (!IntegrateMeasuredWindow(start_time_ms, measured_end_ms, motion_history,
+                                 params, odometry, out)) {
         return out;
     }
     if (!PredictFutureWindow(now_time_ms, end_time_ms, command_history, params, out)) {

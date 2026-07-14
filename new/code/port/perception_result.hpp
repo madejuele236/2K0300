@@ -14,6 +14,7 @@
 
 #include "port/bev_reference_types.hpp"
 #include "port/circle_v2_types.hpp"
+#include "port/ml_types.hpp"
 #include "port/reference_control_readiness_types.hpp"
 #include "port/reference_lateral_error_types.hpp"
 #include "port/reference_tracking_geometry_types.hpp"
@@ -77,6 +78,7 @@ struct PerceptionResult {
     PerceptionHealth perception_health{};                         ///< 感知系统健康状态
     VisualElementEvidenceFrame element_evidence{};                 ///< 视觉元素证据帧
     CircleV2TelemetrySnapshot circle_v2{};                         ///< CircleV2 场景状态
+    MlTelemetrySnapshot ml{};                                      ///< ML scene/tracker facts
     VisualReferenceCandidatePathSet visual_reference_candidate_paths{};  ///< 本帧构建的视觉参考候选路径
     VisualReferenceSelection visual_reference_selection{};         ///< 视觉参考路径选择结果
     ReferenceUsability reference_usability{};                      ///< 参考路径可用性

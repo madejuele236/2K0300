@@ -1,0 +1,24 @@
+saved_roi path=bev_metric_final_roi_0.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef852323
+replay valid=true raw_class=0 best_distance=30 margin=6 prototype_index=1875
+saved_roi path=bev_metric_final_roi_1.raw
+descriptor valid=true bytes=7bf294058c5873674b4987e8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=6 prototype_index=1875
+saved_roi path=bev_metric_final_roi_2.raw
+descriptor valid=true bytes=7bf294058c5873674b49c768ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi path=bev_metric_final_roi_3.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7e8ef052323
+replay valid=true raw_class=0 best_distance=30 margin=6 prototype_index=1875
+saved_roi path=bev_metric_final_roi_4.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi path=bev_metric_final_roi_5.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875
+saved_roi path=bev_metric_final_roi_6.raw
+descriptor valid=true bytes=7bf294058c5873674b4987e8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=6 prototype_index=1875
+saved_roi path=bev_metric_final_roi_7.raw
+descriptor valid=true bytes=7bf294058c5873674b49c7c8ef05232b
+replay valid=true raw_class=0 best_distance=32 margin=4 prototype_index=1875

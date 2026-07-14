@@ -31,7 +31,8 @@ BEVSimpleRowScan ScanSparseRow(const port::CameraPixelFrameView& frame,
     row.valid = true;
     row.forward_m = params.bev_geometry.forward_samples_m[row_index];
     row.row_px = static_cast<int>(row_index);
-    const float min_width_m = std::max(0.02F, params.bev_geometry.lateral_step_m * 1.5F);
+    const float min_width_m =
+        std::max(0.022057630F, params.bev_geometry.lateral_step_m * 1.5F);
     bool have_sampleable_lateral = false;
     std::vector<BEVRowLumaSample> luma_samples;
     luma_samples.reserve(lut.lateral_sample_count);

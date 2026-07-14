@@ -26,6 +26,10 @@ void InitializeReferencePath(port::BEVReferencePath& reference,
 struct CenterCandidate {
     float forward_m = 0.0F;
     float lateral_m = 0.0F;
+    bool actual_left_present = false;
+    port::BEVPoint actual_left{};
+    bool actual_right_present = false;
+    port::BEVPoint actual_right{};
 };
 
 enum class SingleEdgeKind {
@@ -319,6 +323,13 @@ void AddSingleEdgeCandidates(const std::vector<BEVSimpleRowScan>& rows,
                                                 candidate)) {
                 continue;
             }
+            if (kind == SingleEdgeKind::kLow) {
+                candidate.actual_left_present = true;
+                candidate.actual_left = EdgePoint(row, span, kind);
+            } else {
+                candidate.actual_right_present = true;
+                candidate.actual_right = EdgePoint(row, span, kind);
+            }
             candidate_rows[row_index].push_back(candidate);
         }
     }
@@ -407,6 +418,13 @@ void AddSingleBoundaryJumpCandidates(const std::vector<BEVSimpleRowScan>& rows,
                                                 candidate)) {
                 continue;
             }
+            if (kind == SingleEdgeKind::kLow) {
+                candidate.actual_left_present = true;
+                candidate.actual_left = port::BEVPoint{row.forward_m, jump.lateral_m};
+            } else {
+                candidate.actual_right_present = true;
+                candidate.actual_right = port::BEVPoint{row.forward_m, jump.lateral_m};
+            }
             candidate_rows[row_index].push_back(candidate);
         }
     }
@@ -438,7 +456,11 @@ CenterCandidateRows BuildOrdinaryCenterCandidates(
             }
             candidate_rows[row_index].push_back(
                 CenterCandidate{row.forward_m,
-                                0.5F * (span.left_m + span.right_m)});
+                                0.5F * (span.left_m + span.right_m),
+                                true,
+                                port::BEVPoint{row.forward_m, span.left_m},
+                                true,
+                                port::BEVPoint{row.forward_m, span.right_m}});
         }
     }
 
@@ -458,19 +480,18 @@ CenterCandidateRows BuildOrdinaryCenterCandidates(
 
 }  // namespace
 
-port::BEVReferencePath BuildConnectedReferencePath(
+BEVRoadPathFacts BuildConnectedRoadPathFacts(
     const std::vector<BEVSimpleRowScan>& rows,
     const port::RuntimeParameters& params,
     const BEVSegmentConnectivityQuery& connectivity_query) {
-    port::BEVReferencePath reference{};
-    InitializeReferencePath(reference, params, port::ReferenceMode::kNone);
+    BEVRoadPathFacts facts{};
     const CenterCandidateRows candidate_rows =
         BuildOrdinaryCenterCandidates(rows, params);
     port::BEVPoint predecessor{0.0F, 0.0F};
     bool have_accepted = false;
     std::size_t output_index = 0U;
 
-    for (std::size_t index = 0; index < rows.size() && index < reference.sampled_path.size(); ++index) {
+    for (std::size_t index = 0; index < rows.size() && index < facts.center.size(); ++index) {
         const CenterCandidate* accepted = nullptr;
         for (const CenterCandidate& candidate : candidate_rows[index]) {
             const BEVSegmentVisibilityPolicy policy =
@@ -491,19 +512,50 @@ port::BEVReferencePath BuildConnectedReferencePath(
             continue;
         }
 
-        if (output_index >= reference.sampled_path.size()) {
+        if (output_index >= facts.center.size()) {
             break;
         }
-        port::BEVPathSample& sample = reference.sampled_path[output_index];
-        reference.mode = port::ReferenceMode::kIntervalCenter;
-        sample.present = true;
-        sample.point.forward_m = accepted->forward_m;
-        sample.point.lateral_m = accepted->lateral_m;
-        sample.confidence = 1.0F;
-        sample.source = port::BEVPathPointSource::kIntervalCenter;
-        predecessor = sample.point;
+        BEVRoadPathPointFact& center = facts.center[output_index];
+        center.present = true;
+        center.point = port::BEVPoint{accepted->forward_m, accepted->lateral_m};
+        center.confidence = 1.0F;
+        if (accepted->actual_left_present) {
+            BEVRoadPathPointFact& left = facts.actual_left_boundary[output_index];
+            left.present = true;
+            left.point = accepted->actual_left;
+            left.confidence = 1.0F;
+        }
+        if (accepted->actual_right_present) {
+            BEVRoadPathPointFact& right = facts.actual_right_boundary[output_index];
+            right.present = true;
+            right.point = accepted->actual_right;
+            right.confidence = 1.0F;
+        }
+        predecessor = center.point;
         have_accepted = true;
         ++output_index;
+    }
+    return facts;
+}
+
+port::BEVReferencePath BuildConnectedReferencePath(
+    const std::vector<BEVSimpleRowScan>& rows,
+    const port::RuntimeParameters& params,
+    const BEVSegmentConnectivityQuery& connectivity_query) {
+    const BEVRoadPathFacts facts =
+        BuildConnectedRoadPathFacts(rows, params, connectivity_query);
+    port::BEVReferencePath reference{};
+    InitializeReferencePath(reference, params, port::ReferenceMode::kNone);
+    for (std::size_t index = 0; index < facts.center.size(); ++index) {
+        if (!facts.center[index].present) {
+            continue;
+        }
+        port::BEVPathSample& sample = reference.sampled_path[index];
+        reference.mode = port::ReferenceMode::kIntervalCenter;
+        sample.present = true;
+        sample.point = facts.center[index].point;
+        sample.confidence = facts.center[index].confidence;
+        sample.source = port::BEVPathPointSource::kIntervalCenter;
     }
     return reference;
 }
@@ -512,6 +564,39 @@ port::BEVReferencePath BuildReferencePath(const std::vector<BEVSimpleRowScan>& r
                                           const port::RuntimeParameters& params,
                                           const BEVSegmentConnectivityQuery& connectivity_query) {
     return BuildConnectedReferencePath(rows, params, connectivity_query);
+}
+
+port::BEVReferencePath BuildObservedBoundaryReferencePath(
+    const BEVRoadPathFacts& facts,
+    ObservedBoundarySide side,
+    std::size_t min_boundary_samples) {
+    const auto& boundary =
+        side == ObservedBoundarySide::kLeft ? facts.actual_left_boundary
+                                            : facts.actual_right_boundary;
+    const std::size_t available = static_cast<std::size_t>(
+        std::count_if(boundary.begin(), boundary.end(),
+                      [](const BEVRoadPathPointFact& fact) {
+                          return fact.present;
+                      }));
+    port::BEVReferencePath reference{};
+    if (available < min_boundary_samples) {
+        return reference;
+    }
+
+    reference.mode = port::ReferenceMode::kMlObservedBoundary;
+    std::size_t output_index = 0U;
+    for (const BEVRoadPathPointFact& fact : boundary) {
+        if (!fact.present) {
+            continue;
+        }
+        port::BEVPathSample& sample = reference.sampled_path[output_index];
+        sample.present = true;
+        sample.point = fact.point;
+        sample.confidence = fact.confidence;
+        sample.source = port::BEVPathPointSource::kMlObservedBoundary;
+        ++output_index;
+    }
+    return reference;
 }
 
 }  // namespace ls2k::vision

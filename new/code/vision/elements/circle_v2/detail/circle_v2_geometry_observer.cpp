@@ -8,7 +8,7 @@ namespace ls2k::vision::detail {
 namespace {
 
 constexpr std::size_t kMinCircleV2LeadingSamples = 3U;
-constexpr float kExitTraceMaxLateralSpanM = 0.12F;
+constexpr float kExitTraceMaxLateralSpanM = 0.132345777F;
 
 bool FindOuterRowEdge(const vision::BEVSimpleRowScan& row,
                       float center_lateral_m,
