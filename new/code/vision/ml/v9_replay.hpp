@@ -17,9 +17,6 @@ port::V9AcceptanceResult StepV9Acceptance(const port::V9ReplayResult& result,
                                           const port::MlV9Parameters& acceptance,
                                           port::V9AcceptanceState& state);
 void ResetV9Acceptance(port::V9AcceptanceState& state);
-port::MlAction ParseMlAction(const std::string& token);
-port::MlAction MapV9Class(int class_id, const port::MlClassMappingParameters& mapping);
-
 }  // namespace ls2k::vision::ml
 
 #endif

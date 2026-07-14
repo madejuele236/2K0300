@@ -18,7 +18,6 @@
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
 #include "vision/ml/ml_scene.hpp"
-#include "generated_v9_artifact.hpp"
 
 namespace ls2k::runtime {
 
@@ -245,6 +244,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
     projector_configured_ = projector_.Configure(params.bev_projector);
     sample_lut_ = {};
     ml_rectangle_lut_ = {};
+    ml_classifier_ready_ = !params.ml.enabled || ml_classifier_.Initialize();
     diagnostics.Emit({projector_configured_ ? port::DiagnosticLevel::kInfo
                                             : port::DiagnosticLevel::kFailSafe,
                       projector_configured_ ? "perception.projector.configured"
@@ -252,7 +252,14 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
                       projector_configured_ ? "BEV projector configured once for runtime perception"
                                             : "BEV projector configuration failed; perception will publish fail-safe fallback",
                       port::NowMs()});
-    return projector_configured_;
+    diagnostics.Emit({ml_classifier_ready_ ? port::DiagnosticLevel::kInfo
+                                           : port::DiagnosticLevel::kFailSafe,
+                      ml_classifier_ready_ ? "perception.ml_classifier.configured"
+                                           : "perception.ml_classifier.invalid",
+                      ml_classifier_ready_ ? ml_classifier_.BackendName()
+                                           : "selected ML classifier initialization failed",
+                      port::NowMs()});
+    return projector_configured_ && ml_classifier_ready_;
 }
 
 /// 重置普通参考连续性记忆（清空 reference hold，不触碰 scene-owned 记忆）
@@ -307,7 +314,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         ml_input.road_path_facts = &current_facts.road_path_facts;
         ml_input.motion_history = &motion_history;
         ml_input.rectangle_projection_lut = &ml_rectangle_lut_;
-        ml_input.artifact = vision::ml::generated::Artifact();
+        ml_input.classifier = ml_classifier_ready_ ? &ml_classifier_ : nullptr;
         ml_input.capture_time_ms = capture.capture_time_ms;
         const vision::ml::MlSceneResult ml_result =
             vision::ml::StepMlScene(ml_input, params, prior_memory.ml_scene);

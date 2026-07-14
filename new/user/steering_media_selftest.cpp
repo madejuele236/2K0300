@@ -1444,7 +1444,14 @@ void TestServicePublishesFromRecentMatchingCapture() {
         state.control_debug_snapshot.steering.ml.roi_us = 20;
         state.control_debug_snapshot.steering.ml.descriptor_us = 30;
         state.control_debug_snapshot.steering.ml.replay_us = 40;
+        state.control_debug_snapshot.steering.ml.classifier_us = 41;
         state.control_debug_snapshot.steering.ml.total_us = 100;
+        state.control_debug_snapshot.steering.ml.classification.valid = true;
+        state.control_debug_snapshot.steering.ml.classification.backend =
+            ls2k::port::MlClassifierBackend::kTfliteInt8;
+        state.control_debug_snapshot.steering.ml.classification.class_id = 1;
+        state.control_debug_snapshot.steering.ml.classification.margin = 9;
+        state.control_debug_snapshot.steering.ml.classification.class_scores = {{-5, 17, 8}};
         state.control_debug_snapshot.steering.ml.roi.valid = true;
         for (std::size_t index = 0;
              index < state.control_debug_snapshot.steering.ml.roi.gray.size();
@@ -1483,11 +1490,14 @@ void TestServicePublishesFromRecentMatchingCapture() {
             "media snapshot must include generated artifact identity");
     Require(Contains(header_json, "\"template_codes_sha256\":\"codes-sha256\""),
             "media snapshot must include generated artifact hash");
-    Require(Contains(header_json, "\"timing_us\":{\"detector\":10,\"roi\":20,\"descriptor\":30,\"replay\":40,\"total\":100}"),
+    Require(Contains(header_json, "\"timing_us\":{\"detector\":10,\"roi\":20,\"descriptor\":30,\"replay\":40,\"classifier\":41,\"total\":100}"),
             "media snapshot must include ML stage timings");
     Require(Contains(header_json, "\"roi\":{\"valid\":true") &&
                 Contains(header_json, "\"width\":32,\"height\":32,\"pixel_format\":\"gray8\""),
             "media snapshot must declare valid 32x32 ROI metadata");
+    Require(Contains(header_json, "\"classification\":{\"valid\":true,\"backend\":\"tflite_int8\",\"class_id\":1,\"margin\":9") &&
+                Contains(header_json, "\"scores\":[-5,17,8]"),
+            "media snapshot must include backend-neutral classification facts");
     Require(Contains(header_json, "\"auxiliary\":{\"name\":\"ml_roi\""),
             "media frame must declare the ML ROI auxiliary segment");
     Require(payload.size() == 320U * 240U + ls2k::port::kMlRoiPixelCount,

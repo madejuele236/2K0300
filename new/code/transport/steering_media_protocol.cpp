@@ -239,6 +239,7 @@ void AppendMlTelemetryJson(std::ostringstream& stream,
     stream << ",\"roi\":" << ml.roi_us;
     stream << ",\"descriptor\":" << ml.descriptor_us;
     stream << ",\"replay\":" << ml.replay_us;
+    stream << ",\"classifier\":" << ml.classifier_us;
     stream << ",\"total\":" << ml.total_us << "}";
     stream << ",\"detector_valid\":";
     AppendJsonBool(stream, ml.detector_valid);
@@ -301,6 +302,18 @@ void AppendMlTelemetryJson(std::ostringstream& stream,
     stream << ",\"best_distance\":" << ml.replay.best_distance;
     stream << ",\"margin\":" << ml.replay.margin;
     stream << ",\"prototype_index\":" << ml.replay.prototype_index << "}";
+    stream << ",\"classification\":{\"valid\":";
+    AppendJsonBool(stream, ml.classification.valid);
+    stream << ",\"backend\":";
+    AppendJsonString(stream, port::MlClassifierBackendToken(ml.classification.backend));
+    stream << ",\"class_id\":" << ml.classification.class_id;
+    stream << ",\"margin\":" << ml.classification.margin;
+    stream << ",\"distance_valid\":";
+    AppendJsonBool(stream, ml.classification.distance_valid);
+    stream << ",\"best_distance\":" << ml.classification.best_distance;
+    stream << ",\"scores\":[" << ml.classification.class_scores[0] << ','
+           << ml.classification.class_scores[1] << ','
+           << ml.classification.class_scores[2] << "]}";
     stream << ",\"mapped_action\":";
     AppendJsonString(stream, port::MlActionToken(ml.mapped_action));
     stream << ",\"locked_action\":";

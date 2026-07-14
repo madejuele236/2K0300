@@ -4,6 +4,7 @@
 #include "vision/bev/bev_projector.hpp"
 #include "vision/bev/bev_sample_projection_lut.hpp"
 #include "vision/ml/red_rectangle_detector.hpp"
+#include "vision/ml/selected_ml_classifier.hpp"
 #include "port/diagnostics.hpp"
 #include "port/motion_history_types.hpp"
 #include "port/perception_result.hpp"
@@ -37,8 +38,10 @@ private:
     vision::BEVProjector projector_{};                          ///< BEV 投影器
     vision::BEVSampleProjectionLut sample_lut_{};               ///< 采样投影查找表
     vision::ml::MlRedRectangleProjectionLut ml_rectangle_lut_{}; ///< ML 红框网格投影表
+    vision::ml::SelectedMlClassifier ml_classifier_{};          ///< 编译期选中的唯一 ML 分类器
     port::SteeringPerceptionMemory perception_memory_{};        ///< 感知记忆（参考连续性）
     bool projector_configured_ = false;                         ///< 投影器是否已配置
+    bool ml_classifier_ready_ = false;                          ///< 选中分类器初始化状态
 };
 
 }  // namespace ls2k::runtime

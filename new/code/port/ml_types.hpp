@@ -72,6 +72,36 @@ struct V9ReplayResult {
     int prototype_index = -1;
 };
 
+enum class MlClassifierBackend {
+    kV9Hamming,
+    kTfliteInt8,
+};
+
+inline const char* MlClassifierBackendToken(MlClassifierBackend backend) {
+    switch (backend) {
+        case MlClassifierBackend::kV9Hamming: return "v9_hamming";
+        case MlClassifierBackend::kTfliteInt8: return "tflite_int8";
+    }
+    return "unknown";
+}
+
+struct MlClassificationResult {
+    bool valid = false;
+    MlClassifierBackend backend = MlClassifierBackend::kV9Hamming;
+    int class_id = -1;
+    int margin = 0;
+    bool distance_valid = false;
+    int best_distance = 0;
+    std::array<int, 3> class_scores{};
+    const char* reason = "not_run";
+};
+
+struct MlClassifierOutput {
+    MlClassificationResult classification{};
+    V9Descriptor v9_descriptor{};
+    V9ReplayResult v9_replay{};
+};
+
 struct V9AcceptanceState {
     int pending_class_id = -1;
     int consecutive_frames = 0;
@@ -160,6 +190,7 @@ struct MlTelemetrySnapshot {
     MlGrayRoi32 roi{};
     V9Descriptor descriptor{};
     V9ReplayResult replay{};
+    MlClassificationResult classification{};
     MlAction mapped_action = MlAction::kUnmapped;
     MlAction locked_action = MlAction::kUnmapped;
     MlScenePhase phase = MlScenePhase::kIdle;
@@ -181,6 +212,7 @@ struct MlTelemetrySnapshot {
     std::uint32_t roi_us = 0;
     std::uint32_t descriptor_us = 0;
     std::uint32_t replay_us = 0;
+    std::uint32_t classifier_us = 0;
     std::uint32_t total_us = 0;
 };
 

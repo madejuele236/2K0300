@@ -10,8 +10,7 @@
 #include "vision/ml/ml_reference_adapter.hpp"
 #include "vision/ml/red_rectangle_detector.hpp"
 #include "vision/ml/roi_sampler.hpp"
-#include "vision/ml/v9_descriptor.hpp"
-#include "vision/ml/v9_replay.hpp"
+#include "vision/ml/ml_class_mapping.hpp"
 
 namespace ls2k::vision::ml {
 namespace {
@@ -86,15 +85,11 @@ MlSceneResult StepMlScene(const MlSceneInput& input,
     MlSceneResult out{};
     out.next_memory = prior_memory;
     out.telemetry.enabled = params.ml.enabled;
-    out.telemetry.artifact_candidate_id = input.artifact.candidate_id != nullptr
-        ? input.artifact.candidate_id : "unavailable";
-    out.telemetry.descriptor_config_hash = input.artifact.descriptor_config_hash != nullptr
-        ? input.artifact.descriptor_config_hash : "unavailable";
-    out.telemetry.template_table_hash = input.artifact.template_table_hash != nullptr
-        ? input.artifact.template_table_hash : "unavailable";
-    out.telemetry.template_codes_sha256 = input.artifact.template_codes_sha256 != nullptr
-        ? input.artifact.template_codes_sha256 : "unavailable";
-    out.telemetry.artifact_prototype_count = input.artifact.prototype_count;
+    if (input.classifier != nullptr) {
+        out.telemetry.artifact_candidate_id = input.classifier->ArtifactId();
+        out.telemetry.template_codes_sha256 = input.classifier->ArtifactSha256();
+        out.telemetry.artifact_prototype_count = input.classifier->ArtifactItemCount();
+    }
     if (!params.ml.enabled) {
         ResetMlSceneMemory(out.next_memory);
         out.next_memory.phase = port::MlScenePhase::kDisabled;
@@ -158,7 +153,7 @@ MlSceneResult StepMlScene(const MlSceneInput& input,
     }
 
     if (input.frame == nullptr || input.projector == nullptr ||
-        input.road_path_facts == nullptr) {
+        input.road_path_facts == nullptr || input.classifier == nullptr) {
         out.next_memory.confirmation = {};
         out.next_memory.phase = port::MlScenePhase::kIdle;
         out.telemetry.reason = "input_unavailable";
@@ -181,26 +176,27 @@ MlSceneResult StepMlScene(const MlSceneInput& input,
     }
     const MlClock::time_point roi_end = MlClock::now();
     out.telemetry.roi_us = ElapsedUs(roi_start, roi_end);
-    const MlClock::time_point descriptor_start = roi_end;
-    if (out.telemetry.roi.valid) out.telemetry.descriptor = BuildV9Descriptor(out.telemetry.roi);
-    const MlClock::time_point descriptor_end = MlClock::now();
-    out.telemetry.descriptor_us = ElapsedUs(descriptor_start, descriptor_end);
-    const MlClock::time_point replay_start = descriptor_end;
-    if (out.telemetry.descriptor.valid) {
-        out.telemetry.replay = ReplayV9Descriptor(out.telemetry.descriptor, input.artifact);
+    const MlClock::time_point classifier_start = roi_end;
+    if (out.telemetry.roi.valid) {
+        const port::MlClassifierOutput classification =
+            input.classifier->Predict(out.telemetry.roi);
+        out.telemetry.classification = classification.classification;
+        out.telemetry.descriptor = classification.v9_descriptor;
+        out.telemetry.replay = classification.v9_replay;
     }
-    const MlClock::time_point replay_end = MlClock::now();
-    out.telemetry.replay_us = ElapsedUs(replay_start, replay_end);
-    out.telemetry.total_us = ElapsedUs(total_start, replay_end);
-    if (!AcceptV9Result(out.telemetry.replay, params.ml.v9)) {
+    const MlClock::time_point classifier_end = MlClock::now();
+    out.telemetry.replay_us = ElapsedUs(classifier_start, classifier_end);
+    out.telemetry.classifier_us = out.telemetry.replay_us;
+    out.telemetry.total_us = ElapsedUs(total_start, classifier_end);
+    if (!AcceptMlClassification(out.telemetry.classification, params.ml.v9)) {
         out.next_memory.confirmation = {};
         out.next_memory.phase = port::MlScenePhase::kIdle;
         out.telemetry.phase = port::MlScenePhase::kIdle;
         out.telemetry.reason = "not_accepted";
         return out;
     }
-    const port::MlAction action = MapV9Class(out.telemetry.replay.class_id,
-                                             params.ml.class_mapping);
+    const port::MlAction action = MapMlClass(out.telemetry.classification.class_id,
+                                            params.ml.class_mapping);
     out.telemetry.mapped_action = action;
     if (action == port::MlAction::kStraight || action == port::MlAction::kUnmapped) {
         out.next_memory.confirmation = {};

@@ -103,28 +103,73 @@ target_link_libraries(ls2k_assistant_transport PUBLIC ls2k_project_headers ls2k_
 
 find_program(PYTHON3_EXECUTABLE NAMES python3)
 if(NOT PYTHON3_EXECUTABLE)
-    message(FATAL_ERROR "python3 is required to generate the V9 firmware artifact")
+    message(FATAL_ERROR "python3 is required to generate ML classifier artifacts")
 endif()
 
-set(V9_BUNDLE_DIR
-    ${REPO_ROOT}/model_training/experiments/v9_binary_template_replay_20260522_0001/current/pruned_firmware_bundles/dct8_sign_absmedian__duplicate_code_merge)
-set(V9_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/v9)
-set(V9_GENERATED_HEADER ${V9_GENERATED_DIR}/generated_v9_artifact.hpp)
-set(V9_GENERATED_SOURCE ${V9_GENERATED_DIR}/generated_v9_artifact.cpp)
-add_custom_command(
-    OUTPUT ${V9_GENERATED_HEADER} ${V9_GENERATED_SOURCE}
-    COMMAND ${PYTHON3_EXECUTABLE}
+set(LS2K_ML_CLASSIFIER "V9" CACHE STRING "Compile exactly one ML classifier: V9 or TFLITE_INT8")
+set_property(CACHE LS2K_ML_CLASSIFIER PROPERTY STRINGS V9 TFLITE_INT8)
+set(ML_CLASSIFIER_COMMON_SOURCES
+    ../code/vision/ml/ml_class_mapping.cpp
+    ../code/vision/ml/selected_ml_classifier.cpp)
+set(ML_CLASSIFIER_LINK_LIBS)
+
+if(LS2K_ML_CLASSIFIER STREQUAL "V9")
+    add_definitions(-DLS2K_ML_CLASSIFIER_BACKEND=1)
+    set(V9_BUNDLE_DIR
+        ${REPO_ROOT}/model_training/experiments/v9_binary_template_replay_20260522_0001/current/pruned_firmware_bundles/dct8_sign_absmedian__duplicate_code_merge)
+    set(ML_CLASSIFIER_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/v9)
+    set(V9_GENERATED_HEADER ${ML_CLASSIFIER_GENERATED_DIR}/generated_v9_artifact.hpp)
+    set(V9_GENERATED_SOURCE ${ML_CLASSIFIER_GENERATED_DIR}/generated_v9_artifact.cpp)
+    add_custom_command(
+        OUTPUT ${V9_GENERATED_HEADER} ${V9_GENERATED_SOURCE}
+        COMMAND ${PYTHON3_EXECUTABLE}
+                ${REPO_ROOT}/model_training/generate_v9_firmware_artifact.py
+                ${V9_BUNDLE_DIR}
+                ${V9_GENERATED_HEADER}
+                ${V9_GENERATED_SOURCE}
+        DEPENDS
             ${REPO_ROOT}/model_training/generate_v9_firmware_artifact.py
-            ${V9_BUNDLE_DIR}
-            ${V9_GENERATED_HEADER}
-            ${V9_GENERATED_SOURCE}
-    DEPENDS
-        ${REPO_ROOT}/model_training/generate_v9_firmware_artifact.py
-        ${V9_BUNDLE_DIR}/manifest.json
-        ${V9_BUNDLE_DIR}/template_codes_packed_u8.bin
-        ${V9_BUNDLE_DIR}/template_parent_u8.bin
-    VERBATIM
-)
+            ${V9_BUNDLE_DIR}/manifest.json
+            ${V9_BUNDLE_DIR}/template_codes_packed_u8.bin
+            ${V9_BUNDLE_DIR}/template_parent_u8.bin
+        VERBATIM)
+    set(ML_CLASSIFIER_SOURCES
+        ${ML_CLASSIFIER_COMMON_SOURCES}
+        ../code/vision/ml/selected_ml_classifier_v9.cpp
+        ../code/vision/ml/v9_descriptor.cpp
+        ../code/vision/ml/v9_replay.cpp
+        ${V9_GENERATED_SOURCE})
+elseif(LS2K_ML_CLASSIFIER STREQUAL "TFLITE_INT8")
+    add_definitions(-DLS2K_ML_CLASSIFIER_BACKEND=2)
+    set(TFLITE_CLASSIFIER_MODEL
+        ${REPO_ROOT}/model_training/experiments/v8_parent_c2612_d6_d24pca2_qanchor_20260521_0002/s2d_c2_6_12_d6_shadow_init/parent_int8.tflite)
+    set(TFLITE_CLASSIFIER_SHA256 7e128f963b576a23868a4519972caa5f23cff6d69e6f74097062e7a6efe913df)
+    set(ML_CLASSIFIER_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated/tflite_classifier)
+    set(TFLITE_GENERATED_HEADER ${ML_CLASSIFIER_GENERATED_DIR}/generated_tflite_classifier_artifact.hpp)
+    set(TFLITE_GENERATED_SOURCE ${ML_CLASSIFIER_GENERATED_DIR}/generated_tflite_classifier_artifact.cpp)
+    add_custom_command(
+        OUTPUT ${TFLITE_GENERATED_HEADER} ${TFLITE_GENERATED_SOURCE}
+        COMMAND ${PYTHON3_EXECUTABLE}
+                ${REPO_ROOT}/model_training/generate_tflite_classifier_artifact.py
+                ${TFLITE_CLASSIFIER_MODEL}
+                ${TFLITE_GENERATED_HEADER}
+                ${TFLITE_GENERATED_SOURCE}
+                ${TFLITE_CLASSIFIER_SHA256}
+        DEPENDS
+            ${REPO_ROOT}/model_training/generate_tflite_classifier_artifact.py
+            ${TFLITE_CLASSIFIER_MODEL}
+        VERBATIM)
+    set(ML_CLASSIFIER_SOURCES
+        ${ML_CLASSIFIER_COMMON_SOURCES}
+        ../code/vision/ml/selected_ml_classifier_tflite.cpp
+        ${TFLITE_GENERATED_SOURCE}
+        ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro/kernels/unused/reduce_common.cc
+        ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro/kernels/unused/reduce.cc
+        ${LS2K_LIB_ROOT}/zf_components/tflm/tensorflow/lite/micro/kernels/unused/space_to_depth.cc)
+    set(ML_CLASSIFIER_LINK_LIBS vendor_tflm)
+else()
+    message(FATAL_ERROR "LS2K_ML_CLASSIFIER must be V9 or TFLITE_INT8")
+endif()
 
 set(NEW_SRCS
     ../user/main.cpp
@@ -144,13 +189,11 @@ set(NEW_SRCS
     ../code/vision/image/color_sampler.cpp
     ../code/vision/ml/red_rectangle_detector.cpp
     ../code/vision/ml/roi_sampler.cpp
-    ../code/vision/ml/v9_descriptor.cpp
-    ../code/vision/ml/v9_replay.cpp
+    ${ML_CLASSIFIER_SOURCES}
     ../code/vision/ml/ml_path_generator.cpp
     ../code/vision/ml/ml_reference_adapter.cpp
     ../code/vision/ml/ml_inertial_path_tracker.cpp
     ../code/vision/ml/ml_scene.cpp
-    ${V9_GENERATED_SOURCE}
     ../code/vision/bev/bev_projector.cpp
     ../code/vision/bev/bev_image_segment_connectivity.cpp
     ../code/vision/bev/single_boundary_offset.cpp
@@ -198,7 +241,7 @@ add_executable(
     ${PROJ_NAME}
     ${NEW_SRCS}
 )
-target_include_directories(${PROJ_NAME} PRIVATE ${V9_GENERATED_DIR})
+target_include_directories(${PROJ_NAME} PRIVATE ${ML_CLASSIFIER_GENERATED_DIR})
 target_compile_definitions(${PROJ_NAME} PRIVATE
     LS2K_PERF_ENABLED=$<BOOL:${LS2K_PERF_ENABLED}>
     LS2K_PERF_USE_CYCLE_COUNTER=$<BOOL:${LS2K_PERF_USE_CYCLE_COUNTER}>
@@ -218,6 +261,7 @@ target_link_libraries(
     ls2k_platform_camera
     ls2k_platform_motor
     ls2k_assistant_transport
+    ${ML_CLASSIFIER_LINK_LIBS}
     ${OpenCV_LIBS}
     pthread
     m
@@ -235,26 +279,38 @@ target_link_libraries(
     m
 )
 
+if(LS2K_ML_CLASSIFIER STREQUAL "V9")
+    add_executable(
+        ml_v9_board_probe
+        ../user/ml_v9_board_probe.cpp
+        ../code/vision/image/color_sampler.cpp
+        ../code/vision/ml/red_rectangle_detector.cpp
+        ../code/vision/ml/roi_sampler.cpp
+        ../code/vision/ml/v9_descriptor.cpp
+        ../code/vision/ml/v9_replay.cpp
+        ../code/vision/bev/bev_projector.cpp
+        ${V9_GENERATED_SOURCE})
+    target_include_directories(ml_v9_board_probe PRIVATE ${ML_CLASSIFIER_GENERATED_DIR})
+    target_link_libraries(
+        ml_v9_board_probe
+        ls2k_project_headers
+        ls2k_platform_camera
+        ${OpenCV_LIBS}
+        pthread
+        m)
+endif()
+
 add_executable(
-    ml_v9_board_probe
-    ../user/ml_v9_board_probe.cpp
-    ../code/vision/image/color_sampler.cpp
-    ../code/vision/ml/red_rectangle_detector.cpp
-    ../code/vision/ml/roi_sampler.cpp
-    ../code/vision/ml/v9_descriptor.cpp
-    ../code/vision/ml/v9_replay.cpp
-    ../code/vision/bev/bev_projector.cpp
-    ${V9_GENERATED_SOURCE}
-)
-target_include_directories(ml_v9_board_probe PRIVATE ${V9_GENERATED_DIR})
+    ml_classifier_board_probe
+    ../user/ml_classifier_board_probe.cpp
+    ${ML_CLASSIFIER_SOURCES})
+target_include_directories(ml_classifier_board_probe PRIVATE ${ML_CLASSIFIER_GENERATED_DIR})
 target_link_libraries(
-    ml_v9_board_probe
+    ml_classifier_board_probe
     ls2k_project_headers
-    ls2k_platform_camera
-    ${OpenCV_LIBS}
+    ${ML_CLASSIFIER_LINK_LIBS}
     pthread
-    m
-)
+    m)
 
 option(LS2K_BUILD_VERIFICATION_HELPERS "Build verification helper binaries" OFF)
 option(LS2K_TFLM_OP_BENCH "Build isolated TFLM operator benchmark binary" OFF)

@@ -99,6 +99,7 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.ml.roi_us = 102;
     snapshot.steering.ml.descriptor_us = 103;
     snapshot.steering.ml.replay_us = 104;
+    snapshot.steering.ml.classifier_us = 105;
     snapshot.steering.ml.total_us = 410;
     snapshot.steering.ml.detector_valid = true;
     snapshot.steering.ml.detector.valid = true;
@@ -109,6 +110,11 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.ml.replay.class_id = 1;
     snapshot.steering.ml.replay.best_distance = 7;
     snapshot.steering.ml.replay.margin = 11;
+    snapshot.steering.ml.classification.valid = true;
+    snapshot.steering.ml.classification.backend = ls2k::port::MlClassifierBackend::kTfliteInt8;
+    snapshot.steering.ml.classification.class_id = 1;
+    snapshot.steering.ml.classification.margin = 9;
+    snapshot.steering.ml.classification.class_scores = {{-5, 17, 8}};
     snapshot.steering.ml.mapped_action = ls2k::port::MlAction::kLeft;
     snapshot.steering.ml.locked_action = ls2k::port::MlAction::kLeft;
     snapshot.steering.ml.phase = ls2k::port::MlScenePhase::kActive;
@@ -246,13 +252,16 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must include generated artifact identity");
     Expect(Contains(json, "\"template_codes_sha256\":\"codes-sha256\""),
            "assistant telemetry must include generated artifact hash");
-    Expect(Contains(json, "\"timing_us\":{\"detector\":101,\"roi\":102,\"descriptor\":103,\"replay\":104,\"total\":410}"),
+    Expect(Contains(json, "\"timing_us\":{\"detector\":101,\"roi\":102,\"descriptor\":103,\"replay\":104,\"classifier\":105,\"total\":410}"),
            "assistant telemetry must include stage timings");
     Expect(Contains(json, "\"detector_valid\":true"),
            "assistant telemetry must include detector validity");
     Expect(Contains(json, "\"roi\":{\"valid\":true") &&
                Contains(json, "\"width\":32,\"height\":32,\"pixel_format\":\"gray8\""),
            "assistant telemetry must include ROI metadata without bytes");
+    Expect(Contains(json, "\"classification\":{\"valid\":true,\"backend\":\"tflite_int8\",\"class_id\":1,\"margin\":9") &&
+               Contains(json, "\"scores\":[-5,17,8]"),
+           "assistant telemetry must include backend-neutral classification facts");
     Expect(Contains(json, "\"mapped_action\":\"left\",\"locked_action\":\"left\""),
            "assistant telemetry must include ML actions");
     Expect(Contains(json, "\"phase\":\"active\",\"reason\":\"tracking\",\"confirm_count\":4"),

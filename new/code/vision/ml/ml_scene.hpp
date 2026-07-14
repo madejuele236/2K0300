@@ -9,6 +9,7 @@
 #include "vision/bev/bev_road_path_facts.hpp"
 #include "vision/bev/bev_projector.hpp"
 #include "vision/ml/red_rectangle_detector.hpp"
+#include "vision/ml/selected_ml_classifier.hpp"
 
 namespace ls2k::vision::ml {
 
@@ -18,7 +19,7 @@ struct MlSceneInput {
     const BEVRoadPathFacts* road_path_facts = nullptr;
     const port::MotionHistory* motion_history = nullptr;
     MlRedRectangleProjectionLut* rectangle_projection_lut = nullptr;
-    port::V9ArtifactView artifact{};
+    MlClassifier* classifier = nullptr;
     uint64_t capture_time_ms = 0;
 };
 

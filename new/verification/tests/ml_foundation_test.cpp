@@ -8,6 +8,8 @@
 #include "vision/image/color_sampler.hpp"
 #include "vision/ml/v9_descriptor.hpp"
 #include "vision/ml/v9_replay.hpp"
+#include "vision/ml/ml_class_mapping.hpp"
+#include "vision/ml/selected_ml_classifier.hpp"
 
 namespace {
 void Expect(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
@@ -146,10 +148,22 @@ void TestDescriptorReplayAcceptanceAndMapping() {
     Expect(!ls2k::vision::ml::StepV9Acceptance(result, acceptance, state).accepted &&
            ls2k::vision::ml::StepV9Acceptance(result, acceptance, state).accepted,
            "acceptance confirmation mismatch");
+    ls2k::port::MlClassificationResult classification{};
+    classification.valid = true;
+    classification.class_id = 1;
+    classification.margin = result.margin;
+    classification.distance_valid = true;
+    classification.best_distance = result.best_distance;
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, acceptance),
+           "generic acceptance must preserve V9 distance and margin gates");
+    classification.distance_valid = false;
+    classification.best_distance = 126;
+    Expect(ls2k::vision::ml::AcceptMlClassification(classification, acceptance),
+           "non-distance classifier must not inherit the V9 Hamming distance gate");
     ls2k::port::MlClassMappingParameters mapping{};
-    Expect(ls2k::vision::ml::MapV9Class(0, mapping) == ls2k::port::MlAction::kStraight &&
-           ls2k::vision::ml::MapV9Class(1, mapping) == ls2k::port::MlAction::kLeft &&
-           ls2k::vision::ml::MapV9Class(2, mapping) == ls2k::port::MlAction::kRight,
+    Expect(ls2k::vision::ml::MapMlClass(0, mapping) == ls2k::port::MlAction::kStraight &&
+           ls2k::vision::ml::MapMlClass(1, mapping) == ls2k::port::MlAction::kLeft &&
+           ls2k::vision::ml::MapMlClass(2, mapping) == ls2k::port::MlAction::kRight,
            "default class mapping mismatch");
 }
 

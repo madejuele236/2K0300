@@ -155,15 +155,10 @@ void TestSceneOwnsMappedActionConfirmation() {
            "same mapped right action must confirm on the configured frame");
 }
 
-void TestDisabledSceneDoesNoWorkButPublishesArtifactIdentity() {
+void TestDisabledSceneDoesNoWork() {
     auto params = MakeParams();
     params.ml.enabled = false;
     ls2k::vision::ml::MlSceneInput input{};
-    input.artifact.candidate_id = "candidate-v9";
-    input.artifact.descriptor_config_hash = "descriptor-hash";
-    input.artifact.template_table_hash = "table-hash";
-    input.artifact.template_codes_sha256 = "codes-hash";
-    input.artifact.prototype_count = 6267U;
     ls2k::port::MlSceneMemory prior{};
     prior.phase = ls2k::port::MlScenePhase::kActive;
     const auto result = ls2k::vision::ml::StepMlScene(input, params, prior);
@@ -171,9 +166,6 @@ void TestDisabledSceneDoesNoWorkButPublishesArtifactIdentity() {
                !result.candidate.present && !result.telemetry.detector_valid &&
                result.telemetry.total_us == 0U,
            "disabled ML must reset without scheduling detector or inference work");
-    Expect(std::string(result.telemetry.artifact_candidate_id) == "candidate-v9" &&
-               result.telemetry.artifact_prototype_count == 6267U,
-           "disabled ML telemetry must retain build-time artifact identity");
 }
 
 }  // namespace
@@ -184,6 +176,6 @@ int main() {
     TestInvalidEncoderExitsTracker();
     TestActiveCompletionEmitsNoCandidate();
     TestSceneOwnsMappedActionConfirmation();
-    TestDisabledSceneDoesNoWorkButPublishesArtifactIdentity();
+    TestDisabledSceneDoesNoWork();
     std::cout << "ml scene/inertial tests passed\n";
 }
