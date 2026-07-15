@@ -82,6 +82,7 @@ bool HasLeadingVisualReference(const port::BEVReferencePath& reference) {
 /// 3. 根据连续 absence 行数生成十字出口证据
 port::CrossExitElementEvidence DetectCrossExitEvidence(
     const std::vector<BEVSimpleRowScan>& rows,
+    const BEVSegmentConnectivityResult& origin_to_last_row_midpoint_connectivity,
     const port::RuntimeParameters& params) {
     port::CrossExitElementEvidence evidence{};
     evidence.reason = "no_sparse_rows";
@@ -129,6 +130,16 @@ port::CrossExitElementEvidence DetectCrossExitEvidence(
     evidence.boundary_absent_row_count = best.row_count;
     if (best.row_count < kCrossMinContiguousWideRows) {
         evidence.reason = "boundary_absence_rows_absent";
+        return evidence;
+    }
+    if (origin_to_last_row_midpoint_connectivity.status ==
+        BEVSegmentConnectivityStatus::kBlocked) {
+        evidence.reason = "origin_to_last_midpoint_blocked";
+        return evidence;
+    }
+    if (origin_to_last_row_midpoint_connectivity.status ==
+        BEVSegmentConnectivityStatus::kUnobservable) {
+        evidence.reason = "origin_to_last_midpoint_unobservable";
         return evidence;
     }
 

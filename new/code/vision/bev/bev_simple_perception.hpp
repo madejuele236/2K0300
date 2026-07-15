@@ -9,6 +9,7 @@
 #include "vision/bev/bev_reference_path_builder.hpp"
 #include "vision/bev/bev_row_facts.hpp"
 #include "vision/bev/bev_sample_projection_lut.hpp"
+#include "vision/bev/bev_segment_connectivity.hpp"
 #include "port/bev_reference_types.hpp"
 #include "port/camera_frame_types.hpp"
 #include "port/runtime_parameter_types.hpp"
@@ -21,6 +22,7 @@ struct BEVSimplePerceptionResult {
     std::vector<BEVSimpleRowScan> rows{};        ///< 各行的扫描结果
     std::size_t boundary_jump_count = 0;         ///< V9 局部 Y 边界跳变数量
     std::size_t boundary_span_count = 0;         ///< V9 同行边界 span 数量
+    BEVSegmentConnectivityResult origin_to_last_row_midpoint_connectivity{};
     BEVRoadPathFacts road_path_facts{};           ///< 普通路径选中候选的对齐中心/实际边界事实
     port::BEVReferencePath reference_path{};      ///< 构建的参考路径
     std::string reference_mode = "none";          ///< 参考路径模式字符串

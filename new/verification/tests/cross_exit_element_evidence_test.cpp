@@ -35,10 +35,21 @@ std::vector<ls2k::vision::BEVSimpleRowScan> BoundaryAbsentRows(std::size_t count
     return rows;
 }
 
+ls2k::vision::BEVSegmentConnectivityResult Connectivity(
+    ls2k::vision::BEVSegmentConnectivityStatus status) {
+    ls2k::vision::BEVSegmentConnectivityResult result{};
+    result.status = status;
+    result.sampled_point_count = 10U;
+    return result;
+}
+
 void TestTwoRowsRemainAbsent() {
     const ls2k::port::RuntimeParameters params{};
     const ls2k::port::CrossExitElementEvidence evidence =
-        ls2k::vision::DetectCrossExitEvidence(BoundaryAbsentRows(2U), params);
+        ls2k::vision::DetectCrossExitEvidence(
+            BoundaryAbsentRows(2U),
+            Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
+            params);
     Expect(!evidence.present, "two boundary-absent rows must remain below the cross threshold");
     Expect(evidence.boundary_absent_row_count == 2U,
            "two-row evidence must preserve the longest absence run");
@@ -49,17 +60,47 @@ void TestTwoRowsRemainAbsent() {
 void TestThreeRowsRemainPresent() {
     const ls2k::port::RuntimeParameters params{};
     const ls2k::port::CrossExitElementEvidence evidence =
-        ls2k::vision::DetectCrossExitEvidence(BoundaryAbsentRows(3U), params);
+        ls2k::vision::DetectCrossExitEvidence(
+            BoundaryAbsentRows(3U),
+            Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
+            params);
     Expect(evidence.present, "three boundary-absent rows must still satisfy cross detection");
     Expect(evidence.boundary_absent_row_count == 3U,
            "three-row evidence must preserve the longest absence run");
     Expect(evidence.reason == "present", "three-row evidence must retain the present reason");
 }
 
+void TestBlockedOriginToLastMidpointRejectsCross() {
+    const ls2k::port::RuntimeParameters params{};
+    const ls2k::port::CrossExitElementEvidence evidence =
+        ls2k::vision::DetectCrossExitEvidence(
+            BoundaryAbsentRows(3U),
+            Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kBlocked),
+            params);
+    Expect(!evidence.present, "blocked origin-to-last-midpoint segment must reject cross");
+    Expect(evidence.reason == "origin_to_last_midpoint_blocked",
+           "blocked segment must expose the connectivity rejection reason");
+}
+
+void TestUnobservableOriginToLastMidpointRejectsCross() {
+    const ls2k::port::RuntimeParameters params{};
+    const ls2k::port::CrossExitElementEvidence evidence =
+        ls2k::vision::DetectCrossExitEvidence(
+            BoundaryAbsentRows(3U),
+            Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable),
+            params);
+    Expect(!evidence.present, "unobservable origin-to-last-midpoint segment must reject cross");
+    Expect(evidence.reason == "origin_to_last_midpoint_unobservable",
+           "unobservable segment must expose the observability rejection reason");
+}
+
 void TestCandidateStillCopiesLineReference() {
     const ls2k::port::RuntimeParameters params{};
     const ls2k::port::CrossExitElementEvidence evidence =
-        ls2k::vision::DetectCrossExitEvidence(BoundaryAbsentRows(3U), params);
+        ls2k::vision::DetectCrossExitEvidence(
+            BoundaryAbsentRows(3U),
+            Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
+            params);
     ls2k::port::VisualReferenceCandidate line{};
     line.present = true;
     line.kind = ls2k::port::VisualReferenceCandidateKind::kLine;
@@ -87,6 +128,8 @@ int main() {
     try {
         TestTwoRowsRemainAbsent();
         TestThreeRowsRemainPresent();
+        TestBlockedOriginToLastMidpointRejectsCross();
+        TestUnobservableOriginToLastMidpointRejectsCross();
         TestCandidateStillCopiesLineReference();
     } catch (const TestFailure& failure) {
         std::cerr << "cross_exit_element_evidence_test failed: " << failure.message << "\n";

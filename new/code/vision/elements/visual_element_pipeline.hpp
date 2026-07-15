@@ -8,12 +8,14 @@
 #include "port/visual_element_evidence_types.hpp"
 #include "port/visual_reference_orchestration_types.hpp"
 #include "vision/bev/bev_row_facts.hpp"
+#include "vision/bev/bev_segment_connectivity.hpp"
 
 namespace ls2k::vision {
 
 /// 视觉元素管线输入，runtime V1 只接受稀疏行事实和按需 ROI 上下文。
 struct VisualElementPipelineInput {
     const std::vector<BEVSimpleRowScan>* sparse_rows = nullptr;  ///< 稀疏行扫描结果指针（可为nullptr）
+    BEVSegmentConnectivityResult origin_to_last_row_midpoint_connectivity{};
     port::VisualReferenceCandidate line_candidate{};             ///< 车道线参考候选
 };
 

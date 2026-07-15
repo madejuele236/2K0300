@@ -11,6 +11,7 @@
 
 #include "vision/bev/bev_projector.hpp"
 #include "vision/bev/bev_boundary_trace_clip.hpp"
+#include "vision/bev/bev_image_segment_connectivity.hpp"
 #include "vision/bev/bev_reference_path_builder.hpp"
 #include "vision/bev/bev_segment_connectivity.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
@@ -968,6 +969,80 @@ void TestSparseRowCountUsesOriginalForwardSamplePrefix() {
     }
 }
 
+void TestOriginToLastActiveRowMidpointConnectivity() {
+    ls2k::port::RuntimeParameters default_params{};
+    ls2k::vision::BEVProjector default_projector = MakeProjector(default_params);
+    ls2k::port::LegacyCameraFrame default_uniform_frame = MakeFrame(100U);
+    TestPixelFrame default_uniform_pixel =
+        MakeYuyvPixelFrame(default_uniform_frame, 9U, 9U);
+    ls2k::vision::BEVSampleProjectionLut default_lut{};
+    const ls2k::vision::BEVSimplePerceptionResult default_result =
+        ls2k::vision::RunBEVSimplePerception(
+            default_uniform_pixel.view, default_params, default_projector, &default_lut);
+    Expect(default_result.origin_to_last_row_midpoint_connectivity.status ==
+               ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+           "uniform center segment must connect through the default last active row");
+
+    ls2k::port::RuntimeParameters params{};
+    params.bev_geometry.sparse_row_count = 12;
+    ls2k::vision::BEVProjector projector = MakeProjector(params);
+    ls2k::port::LegacyCameraFrame uniform_frame = MakeFrame(100U);
+    TestPixelFrame uniform_pixel = MakeYuyvPixelFrame(uniform_frame, 10U, 10U);
+    ls2k::vision::BEVSampleProjectionLut uniform_lut{};
+
+    const ls2k::vision::BEVSimplePerceptionResult uniform_result =
+        ls2k::vision::RunBEVSimplePerception(
+            uniform_pixel.view, params, projector, &uniform_lut);
+    const ls2k::vision::BEVImageSegmentConnectivity direct_query(
+        uniform_pixel.view, projector, params.bev_boundary);
+    const ls2k::vision::BEVSegmentConnectivityResult expected =
+        direct_query.Evaluate(
+            {0.0F, 0.0F},
+            {params.bev_geometry.forward_samples_m[11], 0.0F},
+            ls2k::vision::BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
+
+    Expect(uniform_result.origin_to_last_row_midpoint_connectivity.status == expected.status,
+           "BEV perception must reuse the direct origin-to-last-active-row connectivity result");
+    Expect(uniform_result.origin_to_last_row_midpoint_connectivity.sampled_point_count ==
+               expected.sampled_point_count,
+           "origin-to-last-active-row query must use the configured sparse prefix endpoint");
+    Expect(uniform_result.origin_to_last_row_midpoint_connectivity.visible_segment_clipped ==
+               expected.visible_segment_clipped,
+           "origin-to-last-active-row query must preserve the original visibility policy");
+    Expect(expected.status == ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+           "uniform center segment must be connected");
+
+    ls2k::port::ImagePoint from_image{};
+    ls2k::port::ImagePoint to_image{};
+    Expect(projector.ProjectVehicleToImage({0.0F, 0.0F}, from_image) &&
+               projector.ProjectVehicleToImage(
+                   {params.bev_geometry.forward_samples_m[11], 0.0F}, to_image),
+           "origin and last active row midpoint must project for the integration fixture");
+    ls2k::port::LegacyCameraFrame blocked_frame = uniform_frame;
+    DrawPatch(blocked_frame,
+              from_image.row_px + 0.75F * (to_image.row_px - from_image.row_px),
+              from_image.col_px + 0.75F * (to_image.col_px - from_image.col_px),
+              255U);
+    TestPixelFrame blocked_pixel = MakeYuyvPixelFrame(blocked_frame, 11U, 11U);
+    ls2k::vision::BEVSampleProjectionLut blocked_lut{};
+    const ls2k::vision::BEVSimplePerceptionResult blocked_result =
+        ls2k::vision::RunBEVSimplePerception(
+            blocked_pixel.view, params, projector, &blocked_lut);
+    Expect(blocked_result.origin_to_last_row_midpoint_connectivity.status ==
+               ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+           "a center-segment luma jump must block origin-to-last-row connectivity");
+
+    const ls2k::port::CameraPixelFrameView invalid_frame{};
+    ls2k::vision::BEVSampleProjectionLut invalid_lut{};
+    const ls2k::vision::BEVSimplePerceptionResult invalid_result =
+        ls2k::vision::RunBEVSimplePerception(
+            invalid_frame, params, projector, &invalid_lut);
+    Expect(invalid_result.rows.empty(), "invalid frame must not produce sparse rows");
+    Expect(invalid_result.origin_to_last_row_midpoint_connectivity.status ==
+               ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,
+           "missing sparse rows must keep center-segment connectivity unobservable");
+}
+
 void TestRoadPathFactsStayAlignedWithSelectedMidpointCandidate() {
     ls2k::port::RuntimeParameters params{};
     params.bev_geometry.boundary_trace_max_adjacent_distance_m = 2.0F;
@@ -1073,6 +1148,7 @@ int main() {
         TestBoundaryJumpConnectivityRejectsLateralCrossing();
         TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange();
         TestSparseRowCountUsesOriginalForwardSamplePrefix();
+        TestOriginToLastActiveRowMidpointConnectivity();
         TestRoadPathFactsStayAlignedWithSelectedMidpointCandidate();
         TestSingleEdgeFactsDoNotSynthesizeOppositeBoundary();
     } catch (const TestFailure& failure) {

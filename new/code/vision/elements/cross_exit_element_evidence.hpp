@@ -7,6 +7,7 @@
 #include "port/visual_element_evidence_types.hpp"
 #include "port/visual_reference_orchestration_types.hpp"
 #include "vision/bev/bev_row_facts.hpp"
+#include "vision/bev/bev_segment_connectivity.hpp"
 
 namespace ls2k::vision {
 
@@ -16,6 +17,7 @@ namespace ls2k::vision {
 /// @return 十字出口元素证据检测结果
 port::CrossExitElementEvidence DetectCrossExitEvidence(
     const std::vector<BEVSimpleRowScan>& rows,
+    const BEVSegmentConnectivityResult& origin_to_last_row_midpoint_connectivity,
     const port::RuntimeParameters& params);
 
 /// 构建十字出口视觉参考候选

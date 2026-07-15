@@ -333,6 +333,8 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
 
         vision::VisualElementPipelineInput element_input{};
         element_input.sparse_rows = &current_facts.rows;
+        element_input.origin_to_last_row_midpoint_connectivity =
+            current_facts.origin_to_last_row_midpoint_connectivity;
         element_input.line_candidate = line_candidate;
         element_result = vision::RunVisualElementPipeline(element_input, params);
         element_evidence = element_result.evidence;

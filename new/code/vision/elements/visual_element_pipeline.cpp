@@ -11,7 +11,10 @@ VisualElementPipelineResult RunVisualElementPipeline(const VisualElementPipeline
     const std::vector<BEVSimpleRowScan>& rows =
         input.sparse_rows == nullptr ? empty_rows : *input.sparse_rows;
 
-    result.evidence.cross_exit = DetectCrossExitEvidence(rows, params);
+    result.evidence.cross_exit =
+        DetectCrossExitEvidence(rows,
+                                input.origin_to_last_row_midpoint_connectivity,
+                                params);
     port::VisualElementCandidateSummary cross_candidate_summary{};
     const port::VisualReferenceCandidate cross_candidate =
         BuildCrossExitVisualReferenceCandidate(result.evidence.cross_exit,

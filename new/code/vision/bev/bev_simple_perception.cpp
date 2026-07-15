@@ -61,6 +61,12 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
         result.boundary_span_count += row.spans.size();
     }
     const BEVImageSegmentConnectivity connectivity(frame, projector, params.bev_boundary);
+    if (!result.rows.empty()) {
+        result.origin_to_last_row_midpoint_connectivity =
+            connectivity.Evaluate({0.0F, 0.0F},
+                                  {result.rows.back().forward_m, 0.0F},
+                                  BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
+    }
     result.road_path_facts =
         BuildConnectedRoadPathFacts(result.rows, params, connectivity);
     for (std::size_t index = 0; index < result.road_path_facts.center.size(); ++index) {
