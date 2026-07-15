@@ -12,6 +12,23 @@ struct V4l2CaptureTimestampSelection {
     bool v4l2_timestamp_valid = false;
 };
 
+inline constexpr std::uint64_t kV4l2CaptureTimestampFutureSlackMs = 5;
+inline constexpr std::uint64_t kV4l2CaptureTimestampMaxAgeMs = 1000;
+
+inline bool IsV4l2CaptureTimestampPlausible(
+    std::uint64_t capture_time_ms,
+    std::uint64_t dequeue_time_ms) noexcept {
+    if (capture_time_ms == 0 || dequeue_time_ms == 0) {
+        return false;
+    }
+    if (capture_time_ms > dequeue_time_ms) {
+        return capture_time_ms - dequeue_time_ms <=
+               kV4l2CaptureTimestampFutureSlackMs;
+    }
+    return dequeue_time_ms - capture_time_ms <=
+           kV4l2CaptureTimestampMaxAgeMs;
+}
+
 inline std::uint64_t V4l2TimevalToMs(const timeval& value) {
     if (value.tv_sec <= 0 && value.tv_usec <= 0) {
         return 0;
@@ -29,19 +46,8 @@ inline V4l2CaptureTimestampSelection SelectV4l2CaptureTimestamp(
 
     const std::uint64_t timestamp_ms = V4l2TimevalToMs(timestamp);
     const std::uint32_t timestamp_kind = flags & V4L2_BUF_FLAG_TIMESTAMP_MASK;
-    if (timestamp_ms == 0 ||
-        timestamp_kind != V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC ||
-        dequeue_time_ms == 0) {
-        return selection;
-    }
-
-    constexpr std::uint64_t kFutureSlackMs = 5;
-    constexpr std::uint64_t kMaxCaptureAgeMs = 1000;
-    if (timestamp_ms > dequeue_time_ms + kFutureSlackMs) {
-        return selection;
-    }
-    if (dequeue_time_ms > timestamp_ms &&
-        dequeue_time_ms - timestamp_ms > kMaxCaptureAgeMs) {
+    if (timestamp_kind != V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC ||
+        !IsV4l2CaptureTimestampPlausible(timestamp_ms, dequeue_time_ms)) {
         return selection;
     }
 

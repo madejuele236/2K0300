@@ -39,7 +39,6 @@ std::string MinimalRuntimeParametersJson(const std::string& element_block) {
         "{\n"
         "  \"RUNNING_SPEED_TARGET\": 300,\n"
         "  \"YAW_RATE_PID\": {\"P\": 12, \"I\": 0, \"D\": 0},\n"
-        "  \"exp_light\": 65,\n"
         "  \"LEFT_WHEEL_PID\": {\"P\": 0, \"I\": 0, \"D\": 0, \"INTEGRAL_LIMIT\": 1000},\n"
         "  \"RIGHT_WHEEL_PID\": {\"P\": 0, \"I\": 0, \"D\": 0, \"INTEGRAL_LIMIT\": 1000},\n"
         "  \"assistant_tcp\": {\"host\": \"127.0.0.1\", \"port\": 8888}";
@@ -796,6 +795,31 @@ int main(int argc, char** argv) {
                "decel scale fallback should keep default");
         Expect(malformed_decel_scale_diagnostics.SawCode("params.parse"),
                "malformed wheel_turn_decel_delta_scale should emit params.parse");
+
+        const std::string unsupported_camera_path = base + "_unsupported_camera.json";
+        WriteText(unsupported_camera_path,
+                  MinimalRuntimeParametersJson(
+                      "  \"CAMERA_SOURCE\": {\"BACKEND\": \"unsupported_backend\"}"));
+        CaptureDiagnostics unsupported_camera_diagnostics{};
+        const ls2k::port::RuntimeParameters unsupported_camera =
+            LoadFixture(unsupported_camera_path, unsupported_camera_diagnostics);
+        Expect(unsupported_camera.loaded_from_defaults && unsupported_camera.parse_failure,
+               "unsupported camera backend should fail validation instead of aliasing a source");
+        Expect(unsupported_camera_diagnostics.SawCode("params.parse"),
+               "unsupported camera backend should emit params.parse");
+
+        const std::string single_dequeue_path = base + "_single_dequeue.json";
+        WriteText(single_dequeue_path,
+                  MinimalRuntimeParametersJson(
+                      "  \"CAMERA_SOURCE\": {\"BACKEND\": \"v4l2_yuyv\","
+                      "\"DRAIN_READY_BUFFERS\": 0}"));
+        CaptureDiagnostics single_dequeue_diagnostics{};
+        const ls2k::port::RuntimeParameters single_dequeue =
+            LoadFixture(single_dequeue_path, single_dequeue_diagnostics);
+        Expect(!single_dequeue.loaded_from_defaults && !single_dequeue.parse_failure,
+               "disabled camera drain should pass validation");
+        Expect(!single_dequeue.camera_source.drain_ready_buffers,
+               "DRAIN_READY_BUFFERS=0 should map to single-dequeue policy");
 
         std::cout << "param_store_load_runtime_parameters_test passed\n";
         return 0;

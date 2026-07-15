@@ -217,15 +217,6 @@ bool RunStartup(const port::HardwareProfile& profile,
         return false;
     }
 
-    platform.params->ApplyStartupCritical(params, diagnostics);
-    if (!params.startup_critical_applied) {
-        diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
-                          "startup.params.critical",
-                          "exp_light could not be applied before bring-up",
-                          port::NowMs()});
-        return false;
-    }
-
     platform.power->ConfigureLowVoltageThreshold(params.low_voltage_raw_threshold, diagnostics);
     if (!ApplyStartupLowVoltage(platform, state, degraded_startup, diagnostics)) {
         return false;

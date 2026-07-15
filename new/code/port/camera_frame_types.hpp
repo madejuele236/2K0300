@@ -195,9 +195,9 @@ struct CameraRawFrameMetadata {
     uint64_t dequeue_time_ms = 0;         ///< DQBUF 或 backend 返回时间
     uint32_t v4l2_sequence = 0;           ///< V4L2 sequence
     bool v4l2_timestamp_valid = false;    ///< capture_time 是否来自 V4L2 timestamp
-    int drained_buffer_count = 0;         ///< 本次 wait drain 的 buffer 数
+    int drained_buffer_count = 0;         ///< 本次 capture 成功 DQBUF 的原始次数（含后续判无效的 buffer）
     uint64_t poll_wait_us = 0;            ///< poll 等待耗时
-    uint64_t dequeue_us = 0;              ///< dequeue/drain 耗时
+    uint64_t dequeue_us = 0;              ///< 完整 dequeue/drain 阶段耗时（DQBUF、终止探测、旧 buffer 回队）
     uint64_t yuyv_to_gray_us = 0;         ///< YUYV 转灰度耗时
     uint64_t store_submit_us = 0;         ///< 提交到 frame store 耗时
 };

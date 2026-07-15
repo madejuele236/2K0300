@@ -46,6 +46,19 @@ void TestV4l2TimestampSelectionTrustsOnlyMonotonicSameDomainTime() {
     Expect(trusted.v4l2_timestamp_valid, "monotonic same-domain timestamp must be trusted");
     Expect(trusted.capture_time_ms == 10123, "trusted timestamp conversion mismatch");
 
+    timeval future_slack_timestamp{};
+    future_slack_timestamp.tv_sec = 10;
+    future_slack_timestamp.tv_usec = 135000;
+    const ls2k::platform::V4l2CaptureTimestampSelection future_slack =
+        ls2k::platform::SelectV4l2CaptureTimestamp(
+            future_slack_timestamp,
+            V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC,
+            10130);
+    Expect(future_slack.v4l2_timestamp_valid,
+           "timestamp within shared future slack must be trusted");
+    Expect(future_slack.capture_time_ms == 10135,
+           "future-slack timestamp conversion mismatch");
+
     const ls2k::platform::V4l2CaptureTimestampSelection unknown =
         ls2k::platform::SelectV4l2CaptureTimestamp(
             timestamp,

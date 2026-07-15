@@ -174,17 +174,6 @@ bool ReadIntegerValue(const cv::FileNode& node, int& value) {
 }
 
 /**
- * 读取必填整数值（封装 ReadIntegerValue 的键查找版本）。
- * @param root JSON 根节点
- * @param key 参数键名
- * @param value 输出参数，读取到的整数值
- * @return true 表示读取成功
- */
-bool ReadRequiredInt(const cv::FileNode& root, const char* key, int& value) {
-    return ReadIntegerValue(root[key], value);
-}
-
-/**
  * 读取布尔值，支持整数（非零为 true）和字符串表示（true/TRUE/1/yes/on/false/FALSE/0/no/off）。
  * @param node OpenCV JSON 节点
  * @param value 输出参数，读取到的布尔值
@@ -632,7 +621,7 @@ bool ValidateReferenceTimeAlignment(const port::ReferenceTimeAlignmentParameters
 }
 
 bool ValidateCameraSource(const port::CameraSourceParameters& params) {
-    return !params.backend.empty() &&
+    return params.backend == "v4l2_yuyv" &&
            !params.device.empty() &&
            params.width > 0 &&
            params.height > 0 &&
@@ -725,7 +714,6 @@ bool ReadRequiredRuntimeParams(const cv::FileNode& root, port::RuntimeParameters
     bool all_ok = true;
     all_ok &= ReadRequiredNumber(root, "RUNNING_SPEED_TARGET", parsed.running_speed_target);
     all_ok &= ReadRequiredNestedNumber(root, "YAW_RATE_PID", "D", parsed.yaw_rate_pid_d);
-    all_ok &= ReadRequiredInt(root, "exp_light", parsed.exp_light);
     all_ok &= ReadRequiredNestedNumber(root, "LEFT_WHEEL_PID", "P", parsed.left_wheel_pid.p);
     all_ok &= ReadRequiredNestedNumber(root, "LEFT_WHEEL_PID", "I", parsed.left_wheel_pid.i);
     all_ok &= ReadRequiredNestedNumber(root, "LEFT_WHEEL_PID", "D", parsed.left_wheel_pid.d);
@@ -1195,8 +1183,6 @@ void ReadCameraSourceParams(const cv::FileNode& root, port::RuntimeParameters& p
                            "DRAIN_READY_BUFFERS",
                            parsed.camera_source.drain_ready_buffers,
                            optional_malformed);
-    ReadOptionalNestedString(
-        root, "CAMERA_SOURCE", "FALLBACK_BACKEND", parsed.camera_source.fallback_backend, optional_malformed);
     if (!ValidateCameraSource(parsed.camera_source)) {
         optional_malformed = true;
     }
@@ -1373,31 +1359,6 @@ public:
         return true;
     }
 
-    /**
-     * 应用启动关键参数的有效性校验。
-     * 检查 exp_light（曝光值）是否在 [0, 2500] 区间内，
-     * 如果不合法则标记 startup_critical_applied 为 false 阻止执行器布署。
-     * 当 exp_light 为非默认值（65）时发出额外警告，提示可能缺少适配钩子。
-     * @param params 运行时参数（将被修改，设置 startup_critical_applied 标志）
-     * @param diagnostics 诊断输出接收器
-     */
-    void ApplyStartupCritical(port::RuntimeParameters& params, port::DiagnosticSink& diagnostics) override {
-        const bool exposure_ok = params.exp_light >= 0 && params.exp_light <= 2500;
-        params.startup_critical_applied = exposure_ok;
-        diagnostics.Emit({params.startup_critical_applied ? port::DiagnosticLevel::kInfo
-                                                          : port::DiagnosticLevel::kFailSafe,
-                          "params.critical.apply",
-                          params.startup_critical_applied
-                              ? "applied startup-critical exp_light before adapter bring-up"
-                              : "startup-critical exp_light invalid; refusing actuator arming",
-                          port::NowMs()});
-        if (params.startup_critical_applied && params.exp_light != 65) {
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
-                              "params.critical.exp_light",
-                              "non-default exp_light requests explicit true-baseline camera support; direct-match camera path may fail closed without an adaptation hook",
-                              port::NowMs()});
-        }
-    }
 };
 
 }  // namespace

@@ -9,7 +9,7 @@ frame -> sparse BEV boundary facts -> visual reference facts -> reference usabil
 -> reference-control readiness -> safety gate -> yaw-control terms -> actuator
 ```
 
-`new/config/default_params.json` 是人工编辑的运行默认合同。`RuntimeParameters` 内建默认值只用于缺文件或解析失败时的 fallback 镜像，必须通过 `run_runtime_parameter_defaults_test.sh` 保持同步。
+`new/config/default_params.json` 是人工编辑的运行默认合同。`RuntimeParameters` 内建默认值只用于缺文件或解析失败时的 fallback 镜像，必须通过 `run_param_store_load_runtime_parameters_test.sh` 校验活动 JSON 的 schema、解析与参数约束。
 
 ## 1. 调参前提
 
@@ -42,7 +42,7 @@ Windows 热点链路优先使用当前高端口配置。`debug.sh` 会在 `BOARD
 最小离线回归：
 
 ```bash
-rtk bash new/verification/tests/run_runtime_parameter_defaults_test.sh
+rtk bash new/verification/tests/run_param_store_load_runtime_parameters_test.sh
 rtk bash new/verification/tests/run_power_adapter_threshold_test.sh
 rtk bash new/verification/tests/run_startup_low_voltage_order_test.sh
 rtk bash new/verification/tests/run_bev_simple_perception_test.sh
@@ -51,7 +51,6 @@ rtk bash new/verification/tests/run_reference_usability_lateral_error_test.sh
 rtk bash new/verification/tests/run_assistant_telemetry_selftest.sh
 rtk bash new/verification/tests/run_steering_media_selftest.sh
 rtk bash new/verification/tests/run_perf_counter_test.sh
-rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 ```
 
 ## 2. 加载语义
@@ -60,14 +59,11 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 
 - 缺文件：回退到内建默认值，并发布 `params.missing`。
 - JSON 非法、必填字段缺失、字段类型错误：回退到内建默认值，并发布 `params.parse`。
-- `exp_light` 是启动关键字段，必须在 `0..2500`；非法时触发 fail-safe。
-- `exp_light != 65` 允许加载，但会发布曝光告警；当前相机基线仍以 `65` 为默认。
 
 当前必填键：
 
 - `RUNNING_SPEED_TARGET`
 - `YAW_RATE_PID.D`
-- `exp_light`
 - `LEFT_WHEEL_PID.{P,I,D,INTEGRAL_LIMIT}`
 - `RIGHT_WHEEL_PID.{P,I,D,INTEGRAL_LIMIT}`
 - `assistant_tcp.{host,port}`
@@ -77,7 +73,7 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 ## 3. 诊断到参数的顺序
 
 1. 没有 host 连接或数据很少：先看 `assistant_tcp.*`、`assistant_enabled`、`steering_media_*`，再看板端 `assistant.backoff`、`steering_media.backoff`、`steering_media.summary`。
-2. 边界事实不对：先看 `exp_light`、`BEV_PROJECTOR`、`BEV_GEOMETRY`、`BEV_BOUNDARY`，并对照 raw/BEV 图像和 `boundary_jump_count/boundary_span_count`。
+2. 边界事实不对：先看真实 raw/BEV 图像、`BEV_PROJECTOR`、`BEV_GEOMETRY`、`BEV_BOUNDARY` 和 `boundary_jump_count/boundary_span_count`；当前 runtime 不提供曝光控制参数。
 3. 边界事实对但 `eligibility.usable=false`：看 hold 周期 `BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES`、`BEV_CONTROL_MODEL.MIN_LEADING_REFERENCE_SAMPLES`、`BEV_GEOMETRY.FORWARD_SAMPLE_*`。
 4. reference 对但 `reference_tracking_geometry` 不合理：看 leading reference path、boundary spans/traces、`BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES`，并用 `lateral_error` 只做迁移期对照。
 5. tracking geometry 合理但转向幅度不对：看 `BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN`、`BEV_CONTROL_MODEL.HEADING_ERROR_TO_WHEEL_DELTA_GAIN`、`BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN`、`YAW_RATE_PID.*`、`raw_turn_output_limit`、`wheel_turn_accel_delta_scale`、`wheel_turn_decel_delta_scale`。
@@ -108,15 +104,13 @@ rtk bash new/verification/tests/run_bev_simple_residual_check.sh
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `exp_light` | `65` | camera startup critical | 曝光/亮度基线。边界跳变整体不足可上调，背景纹理或高光产生过多边界时下调。改动后必须看原始 raw/BEV、`boundary_jump_count`、`boundary_span_count` 和 `reference`；不要用控制结果倒推曝光。 |
 | `CAMERA_SOURCE.BACKEND` | `v4l2_yuyv` | camera capture worker | 主相机源。默认直接走 V4L2 YUYV，避免 supplier MJPG/OpenCV 转换进入 foreground perception path。 |
 | `CAMERA_SOURCE.DEVICE` | `/dev/video0` | camera frame source | V4L2 设备路径。换摄像头设备名时只改这里。 |
 | `CAMERA_SOURCE.WIDTH` / `HEIGHT` | `320` / `240` | camera frame source | source 输出几何，必须不超过编译期 frame storage。 |
 | `CAMERA_SOURCE.FPS` | `60` | camera frame source | 请求帧率；driver 可能协商失败，实际以 camera source health/perf 为准。 |
 | `CAMERA_SOURCE.BUFFER_COUNT` | `3` | camera frame source | V4L2 mmap buffer 数。过小容易丢帧，过大可能增加队列滞后。 |
 | `CAMERA_SOURCE.POLL_TIMEOUT_MS` | `50` | camera capture worker | capture thread 内等待上限；不阻塞 main/control loop。 |
-| `CAMERA_SOURCE.DRAIN_READY_BUFFERS` | `1` | camera frame source | 一次 wait 中 drain 已就绪 buffer，减少 backend queue 旧帧。latest 仍只属于 Frame Store。 |
-| `CAMERA_SOURCE.FALLBACK_BACKEND` | `vendor_uvc` | camera frame source | V4L2 startup 失败时的 supplier fallback；fallback 仍被包在 frame source 边界内。 |
+| `CAMERA_SOURCE.DRAIN_READY_BUFFERS` | `1` | V4L2 capture owner | `0` 时 poll 后只尝试一次成功 DQBUF；`1` 时在 mmap buffer 数量上界内继续非阻塞 DQBUF，直到 `EAGAIN`，旧 buffer 立即回队并保留最新有效 buffer。`drained_buffer_count` 记录本次所有成功 DQBUF 次数。 |
 | `control_period_ms` | `5` | control timer | 控制 tick 周期。减小会提高 CPU/IO 压力；增大会降低控制响应。看 perf、`control.tick` 和实际电机稳定性。 |
 | `perception_stale_ms` | `120` | safety gate | 最新 perception 超过该时间即 stale。摄像头偶发慢帧可适当增大；过大则会让旧 reference 继续影响控制。看 `safety_gate.reason=perception_stale`。 |
 | `control_snapshot_emit_interval_ms` | `100` | debug reporter | 板端 `control.snapshot` 与 `control.steering_snapshot` 输出周期。只影响日志密度，不改变控制。 |

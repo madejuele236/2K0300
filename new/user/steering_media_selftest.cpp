@@ -1013,6 +1013,8 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
             "image frame must expose v4l2 sequence");
     Require(Contains(header_json, "\"v4l2_timestamp_valid\":true"),
             "image frame must expose v4l2 timestamp validity");
+    Require(Contains(header_json, "\"drained_buffer_count\":3"),
+            "image frame must expose owner-reported dequeued buffer count");
     Require(Contains(header_json, "\"poll_wait_us\":101"),
             "image frame must expose camera poll timing");
     Require(Contains(header_json, "\"dequeue_us\":202"),

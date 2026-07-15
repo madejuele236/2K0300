@@ -144,10 +144,6 @@ public:
                              ls2k::port::DiagnosticSink&) override {
         return false;
     }
-    void ApplyStartupCritical(ls2k::port::RuntimeParameters& params,
-                              ls2k::port::DiagnosticSink&) override {
-        params.startup_critical_applied = true;
-    }
 };
 
 ls2k::port::HardwareProfile DirectProfile() {

@@ -29,7 +29,7 @@ class CameraAdapter final : public port::ICameraAdapter {
 public:
     /// @brief 初始化相机适配器
     /// @param profile 硬件描述文件（检查相机子系统是否启用及其模式）
-    /// @param params 运行时参数（含帧宽高、曝光参数）
+    /// @param params 运行时参数（含相机帧宽高）
     /// @param diagnostics 诊断输出接口
     /// @return 初始化成功返回 true
     bool Initialize(const port::HardwareProfile& profile,

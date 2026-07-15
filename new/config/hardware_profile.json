@@ -1,7 +1,7 @@
 {
   "camera": {
     "mode": "direct-match",
-    "hook": "parameterized-direct-gray-no-exp-light-control"
+    "hook": "parameterized-direct-gray-camera-source"
   },
   "imu": {
     "mode": "direct-match",

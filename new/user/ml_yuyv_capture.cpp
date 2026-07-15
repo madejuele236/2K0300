@@ -45,16 +45,19 @@ int main(int argc, char** argv) {
 
     platform::CameraConfig config{};
     platform::CameraDevice camera;
-    if (!camera.Start(config)) {
+    const platform::CameraStartResult start = camera.Start(config);
+    if (!start.ok()) {
         std::cerr << "camera start failed device=" << config.device
                   << " width=" << config.width
                   << " height=" << config.height
-                  << " fps=" << config.fps << '\n';
+                  << " fps=" << config.fps
+                  << " stage=" << platform::CameraLifecycleStageCode(start.stage)
+                  << " status=" << platform::CameraStartStatusCode(start.status) << '\n';
         return 3;
     }
 
     for (int index = 0; index < warmup_frames; ++index) {
-        if (!camera.Capture().valid()) {
+        if (!camera.Capture().ok()) {
             std::cerr << "camera warmup capture failed frame=" << (index + 1)
                       << " requested=" << warmup_frames << '\n';
             camera.Stop();
@@ -62,12 +65,13 @@ int main(int argc, char** argv) {
         }
     }
 
-    const platform::CameraFrameView frame = camera.Capture();
-    if (!frame.valid()) {
+    const platform::CameraCaptureResult capture = camera.Capture();
+    if (!capture.ok()) {
         std::cerr << "camera output capture failed after_warmup=" << warmup_frames << '\n';
         camera.Stop();
         return 5;
     }
+    const platform::CameraFrameView& frame = capture.frame;
 
     const std::size_t height = static_cast<std::size_t>(frame.height);
     const std::size_t stride = static_cast<std::size_t>(frame.stride);

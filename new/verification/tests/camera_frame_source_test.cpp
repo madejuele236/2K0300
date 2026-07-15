@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "platform/camera_frame_source_v4l2_selection.hpp"
+#include "platform/camera_frame_source.hpp"
 #include "port/camera_frame_source.hpp"
 
 namespace {
@@ -14,7 +14,7 @@ void Expect(bool condition, const char* message) {
     }
 }
 
-class OwningFallbackSource final : public ls2k::port::ICameraFrameSource {
+class OwningFrameSource final : public ls2k::port::ICameraFrameSource {
 public:
     bool Start(const ls2k::port::CameraSourceParameters&,
                ls2k::port::DiagnosticSink&) override {
@@ -97,17 +97,24 @@ public:
     void Emit(const ls2k::port::DiagnosticEvent&) override {}
 };
 
-class RecordingRequeue final : public ls2k::platform::detail::IV4l2BufferRequeue {
+class RecordingDiagnostics final : public ls2k::port::DiagnosticSink {
 public:
-    void Requeue(v4l2_buffer buffer) override {
-        requeued_indices.push_back(buffer.index);
+    void Emit(const ls2k::port::DiagnosticEvent& event) override { events.push_back(event); }
+
+    bool Saw(const std::string& code, const std::string& message_fragment) const {
+        for (const auto& event : events) {
+            if (event.code == code && event.message.find(message_fragment) != std::string::npos) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    std::vector<unsigned int> requeued_indices{};
+    std::vector<ls2k::port::DiagnosticEvent> events{};
 };
 
 void TestDefaultCaptureRawFrameWrapsOwningFrame() {
-    OwningFallbackSource source;
+    OwningFrameSource source;
     NullDiagnostics diagnostics;
     bool called = false;
     const bool ok = source.CaptureRawFrame(1,
@@ -183,42 +190,61 @@ void TestRawFrameViewValidRequiresFormatStride() {
     Expect(view.PixelView().Valid(), "YUYV pixel view with bytesperline stride should be valid");
 }
 
-void TestV4l2NewestSelectionRequeuesStaleAndReleasesSelectedAfterScope() {
-    RecordingRequeue requeue;
-    {
-        ls2k::platform::detail::DequeuedBufferGuard selected(requeue);
-        v4l2_buffer first{};
-        first.index = 0;
-        v4l2_buffer second{};
-        second.index = 1;
-        v4l2_buffer invalid{};
-        invalid.index = 5;
+void TestConfiguredSourceSelectionAndStartupDiagnostics() {
+    ls2k::port::RuntimeParameters params{};
+    RecordingDiagnostics diagnostics;
+    params.camera_source.backend = "unsupported_backend";
+    auto unsupported = ls2k::platform::MakeStartedCameraFrameSource(params, diagnostics);
+    Expect(unsupported == nullptr, "unsupported backend must not create a frame source");
 
-        const ls2k::platform::detail::V4l2DequeuedSelection first_selection =
-            ls2k::platform::detail::SelectNewestDequeuedBufferForProcessing(first, 3, selected);
-        Expect(first_selection.has_selected, "first valid V4L2 buffer should be selected");
-        Expect(selected.Active(), "selected guard should be active after first selection");
-        Expect(requeue.requeued_indices.empty(),
-               "first selected buffer must not be requeued before replacement or scope exit");
+    params.camera_source.backend = "v4l2_yuyv";
+    params.camera_source.device = "/definitely/not/a/video/device";
+    auto failed = ls2k::platform::MakeStartedCameraFrameSource(params, diagnostics);
+    Expect(failed == nullptr, "failed V4L2 startup must not invent a fallback");
+    Expect(diagnostics.Saw("camera_source.start.open_failed",
+                           "stage=open status=open_failed"),
+           "source boundary must expose typed owner startup stage/status");
+}
 
-        const ls2k::platform::detail::V4l2DequeuedSelection second_selection =
-            ls2k::platform::detail::SelectNewestDequeuedBufferForProcessing(second, 3, selected);
-        Expect(second_selection.has_selected, "second valid V4L2 buffer should be selected");
-        Expect(requeue.requeued_indices.size() == 1U &&
-                   requeue.requeued_indices[0] == 0U,
-               "replacing selected buffer must requeue stale first buffer");
-        Expect(selected.Active() && selected.Buffer().index == 1U,
-               "newest valid V4L2 buffer should remain selected");
+void TestActiveConfigAndMetadataMapping() {
+    ls2k::port::CameraSourceParameters params{};
+    params.device = "/dev/test-video";
+    params.width = 160;
+    params.height = 120;
+    params.fps = 55;
+    params.buffer_count = 4;
+    params.poll_timeout_ms = 37;
+    params.drain_ready_buffers = false;
+    const auto single = ls2k::platform::BuildCameraDeviceConfig(params);
+    Expect(std::string(single.device) == params.device, "device mapping mismatch");
+    Expect(single.width == 160 && single.height == 120 && single.fps == 55,
+           "geometry/fps mapping mismatch");
+    Expect(single.buffer_count == 4 && single.timeout_ms == 37,
+           "buffer/timeout mapping mismatch");
+    Expect(!single.drain_ready_buffers, "disabled drain mapping mismatch");
+    params.drain_ready_buffers = true;
+    Expect(ls2k::platform::BuildCameraDeviceConfig(params).drain_ready_buffers,
+           "enabled drain mapping mismatch");
 
-        const ls2k::platform::detail::V4l2DequeuedSelection invalid_selection =
-            ls2k::platform::detail::SelectNewestDequeuedBufferForProcessing(invalid, 3, selected);
-        Expect(!invalid_selection.has_selected, "invalid V4L2 buffer index must not be selected");
-        Expect(requeue.requeued_indices.size() == 1U,
-               "invalid buffer must not disturb current selected buffer");
-    }
-    Expect(requeue.requeued_indices.size() == 2U &&
-               requeue.requeued_indices[1] == 1U,
-           "selected newest V4L2 buffer must be requeued when callback scope exits");
+    ls2k::platform::true_ls2k0300::CameraCaptureResult capture{};
+    capture.capture_time_ms = 4100;
+    capture.dequeue_time_ms = 4123;
+    capture.v4l2_sequence = 0xFEDCBA98U;
+    capture.v4l2_timestamp_valid = true;
+    capture.drained_buffer_count = 3;
+    capture.poll_wait_us = 101;
+    capture.dequeue_us = 202;
+    const auto metadata =
+        ls2k::platform::BuildCameraRawFrameMetadata("v4l2_yuyv", 77, capture);
+    Expect(metadata.source == "v4l2_yuyv" && metadata.frame_id == 77,
+           "source/frame-id metadata mapping mismatch");
+    Expect(metadata.capture_time_ms == 4100 && metadata.dequeue_time_ms == 4123,
+           "capture/dequeue time metadata mapping mismatch");
+    Expect(metadata.v4l2_sequence == 0xFEDCBA98U && metadata.v4l2_timestamp_valid,
+           "V4L2 sequence/timestamp metadata mapping mismatch");
+    Expect(metadata.drained_buffer_count == 3 && metadata.poll_wait_us == 101 &&
+               metadata.dequeue_us == 202,
+           "drain timing metadata mapping mismatch");
 }
 
 }  // namespace
@@ -228,7 +254,8 @@ int main() {
         TestDefaultCaptureRawFrameWrapsOwningFrame();
         TestDirectCaptureRawFrameScope();
         TestRawFrameViewValidRequiresFormatStride();
-        TestV4l2NewestSelectionRequeuesStaleAndReleasesSelectedAfterScope();
+        TestConfiguredSourceSelectionAndStartupDiagnostics();
+        TestActiveConfigAndMetadataMapping();
     } catch (const std::exception& error) {
         std::cerr << "camera_frame_source_test failed: " << error.what() << "\n";
         return 1;

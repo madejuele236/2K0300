@@ -16,6 +16,9 @@ CXX_BIN="${CXX:-c++}"
   -I"${REPO_ROOT}/new/code/port" \
   -I"${REPO_ROOT}/new/code/platform" \
   "${REPO_ROOT}/new/verification/tests/camera_frame_source_test.cpp" \
+  "${REPO_ROOT}/new/code/platform/camera_frame_source.cpp" \
+  "${REPO_ROOT}/new/code/platform/true_ls2k0300/camera_bridge.cpp" \
+  "${REPO_ROOT}/new/code/platform/linux/linux_io.cpp" \
   -o "${OUT_BIN}"
 
 "${OUT_BIN}"

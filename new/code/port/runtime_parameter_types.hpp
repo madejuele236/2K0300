@@ -72,8 +72,7 @@ struct CameraSourceParameters {
     int fps = 60;                          ///< 目标帧率
     int buffer_count = 3;                  ///< V4L2 mmap buffer 数
     int poll_timeout_ms = 50;              ///< capture thread 内 poll 超时
-    bool drain_ready_buffers = true;       ///< 一次 wait 中 drain ready buffers
-    std::string fallback_backend = "vendor_uvc";  ///< primary startup 失败时 fallback 后端
+    bool drain_ready_buffers = true;       ///< 在 mmap buffer 数量上界内 drain 到最新 ready buffer
 };
 
 struct MotionOdometryParameters {
@@ -160,8 +159,6 @@ struct RuntimeParameters {
     double yaw_rate_pid_p = 0.0;          ///< 偏航角速率PID比例增益
     double yaw_rate_pid_i = 0.0;          ///< 偏航角速率PID积分增益
     double yaw_rate_pid_d = 0.0;          ///< 偏航角速率PID微分增益
-    int exp_light = 65;                   ///< 相机曝光值
-
     // 安全与低电压
     int low_voltage_raw_threshold = 200; ///< 低电压原始阈值
 
@@ -219,7 +216,6 @@ struct RuntimeParameters {
     MlParameters ml{};
 
     // 状态标记
-    bool startup_critical_applied = false;  ///< 启动阶段关键参数是否已应用
     bool loaded_from_defaults = false;      ///< 是否从默认值加载（非JSON文件）
     bool parse_failure = false;             ///< JSON解析是否失败
 };

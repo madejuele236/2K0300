@@ -172,8 +172,6 @@ public:
     virtual bool LoadHardwareProfile(const std::string& path,
                                      HardwareProfile& out,
                                      DiagnosticSink& diagnostics) = 0;
-    /** @brief 应用启动阶段的关键运行参数 */
-    virtual void ApplyStartupCritical(RuntimeParameters& params, DiagnosticSink& diagnostics) = 0;
 };
 
 /**

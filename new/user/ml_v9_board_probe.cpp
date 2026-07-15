@@ -543,15 +543,18 @@ int main(int argc, char** argv) {
     platform::CameraConfig camera_config{};
     camera_config.device = device;
     platform::CameraDevice camera;
-    if (!camera.Start(camera_config)) {
+    const platform::CameraStartResult start = camera.Start(camera_config);
+    if (!start.ok()) {
         std::cerr << "camera start failed device=" << device
                   << " width=" << camera_config.width
                   << " height=" << camera_config.height
-                  << " fps=" << camera_config.fps << '\n';
+                  << " fps=" << camera_config.fps
+                  << " stage=" << platform::CameraLifecycleStageCode(start.stage)
+                  << " status=" << platform::CameraStartStatusCode(start.status) << '\n';
         return 6;
     }
     for (int index = 0; index < warmup_frames; ++index) {
-        if (!camera.Capture().valid()) {
+        if (!camera.Capture().ok()) {
             std::cerr << "camera warmup capture failed frame=" << (index + 1) << '\n';
             camera.Stop();
             return 7;
@@ -559,13 +562,14 @@ int main(int argc, char** argv) {
     }
 
     const Clock::time_point capture_begin = Clock::now();
-    const platform::CameraFrameView captured = camera.Capture();
+    const platform::CameraCaptureResult capture = camera.Capture();
     const Clock::time_point capture_end = Clock::now();
-    if (!captured.valid()) {
+    if (!capture.ok()) {
         std::cerr << "camera probe capture failed after_warmup=" << warmup_frames << '\n';
         camera.Stop();
         return 7;
     }
+    const platform::CameraFrameView& captured = capture.frame;
     const ls2k::port::CameraPixelFrameView frame{
         true,
         ls2k::port::CameraFrameFormat::kYuyv,
