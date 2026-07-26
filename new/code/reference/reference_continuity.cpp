@@ -5,6 +5,10 @@
 #include <cmath>
 #include <cstddef>
 
+#include "port/perf_counter.hpp"
+#include "reference/reference_tracking_geometry.hpp"
+#include "reference/reference_usability.hpp"
+
 namespace ls2k::reference {
 namespace {
 
@@ -114,6 +118,59 @@ port::ReferenceContinuityResult BuildReferenceHoldCandidate(
     result.next_hold_state = prior_hold;
     result.next_hold_state.hold_cycles = prior_hold.hold_cycles + 1;
     return result;
+}
+
+ReferenceContinuitySelection ResolveReferenceContinuity(
+    const port::BEVReferencePath& current_visual_reference,
+    const std::string& current_source,
+    uint64_t reference_capture_time_ms,
+    const port::ReferenceHoldState& prior_hold,
+    const port::RuntimeParameters& params) {
+    ReferenceContinuitySelection selection{};
+    selection.usability = EvaluateReferenceUsability(current_visual_reference, params);
+    selection.tracking_geometry =
+        ComputeReferenceTrackingGeometry(current_visual_reference,
+                                         selection.usability,
+                                         params.bev_control_model);
+    if (selection.tracking_geometry.computed) {
+        selection.continuity.reference_path = current_visual_reference;
+        selection.continuity.mode = current_visual_reference.mode;
+        selection.continuity.source = current_source;
+        selection.continuity.reference_capture_time_ms = reference_capture_time_ms;
+        selection.continuity.next_hold_state =
+            MakeReferenceHoldState(current_visual_reference,
+                                   reference_capture_time_ms,
+                                   params);
+        return selection;
+    }
+
+    port::ReferenceContinuityResult hold{};
+    port::ReferenceUsability hold_usability{};
+    port::ReferenceTrackingGeometry hold_tracking_geometry{};
+    {
+        LS2K_PERF_SCOPE(port::PerfStage::kReferenceHold);
+        hold = BuildReferenceHoldCandidate(prior_hold, params);
+        hold_usability = EvaluateReferenceUsability(hold.reference_path, params);
+        hold_tracking_geometry =
+            ComputeReferenceTrackingGeometry(hold.reference_path,
+                                             hold_usability,
+                                             params.bev_control_model);
+    }
+    if (hold_tracking_geometry.computed) {
+        selection.continuity = hold;
+        selection.usability = hold_usability;
+        selection.tracking_geometry = hold_tracking_geometry;
+        return selection;
+    }
+
+    selection.continuity = {};
+    selection.usability =
+        EvaluateReferenceUsability(selection.continuity.reference_path, params);
+    selection.tracking_geometry =
+        ComputeReferenceTrackingGeometry(selection.continuity.reference_path,
+                                         selection.usability,
+                                         params.bev_control_model);
+    return selection;
 }
 
 }  // namespace ls2k::reference

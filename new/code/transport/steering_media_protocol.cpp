@@ -843,10 +843,10 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
            << snapshot.param_snapshot.bev_control_model.tracking_fit_min_samples;
     header << "}";
     header << ",\"BEV_ELEMENT\":{";
-    header << "\"CROSS_EXIT_TAKEOVER_ENABLED\":";
-    AppendJsonBool(header, snapshot.param_snapshot.bev_element.cross_exit_takeover_enabled);
-    header << ",\"CROSS_MIN_SAMPLEABLE_PER_ROW\":"
+    header << "\"CROSS_MIN_SAMPLEABLE_PER_ROW\":"
            << snapshot.param_snapshot.bev_element.cross_min_sampleable_per_row;
+    header << ",\"CROSS_CONNECTIVITY_SAMPLE_INDEX\":"
+           << snapshot.param_snapshot.bev_element.cross_connectivity_sample_index;
     header << ",\"CIRCLE_V2_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.circle_v2_enabled);
     header << ",\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":";

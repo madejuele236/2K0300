@@ -35,6 +35,18 @@ std::vector<ls2k::vision::BEVSimpleRowScan> BoundaryAbsentRows(std::size_t count
     return rows;
 }
 
+ls2k::vision::BEVSimpleRowScan ConnectedFovOpenRow(float forward_m) {
+    ls2k::vision::BEVSimpleRowScan row = BoundaryAbsentRow(forward_m);
+    row.jumps.push_back({});
+    ls2k::vision::BEVWhiteRun run{};
+    run.left_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kFovEdge;
+    run.right_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kBoundary;
+    run.origin_connectivity =
+        ls2k::vision::BEVWhiteRunOriginConnectivity::kConnected;
+    row.white_runs.push_back(run);
+    return row;
+}
+
 ls2k::vision::BEVSegmentConnectivityResult Connectivity(
     ls2k::vision::BEVSegmentConnectivityStatus status) {
     ls2k::vision::BEVSegmentConnectivityResult result{};
@@ -70,6 +82,53 @@ void TestThreeRowsRemainPresent() {
     Expect(evidence.reason == "present", "three-row evidence must retain the present reason");
 }
 
+void TestConnectedFovOpeningIgnoresUnrelatedRowBoundary() {
+    const ls2k::port::RuntimeParameters params{};
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows{};
+    rows.push_back(ConnectedFovOpenRow(0.20F));
+    rows.push_back(ConnectedFovOpenRow(0.24F));
+    rows.push_back(ConnectedFovOpenRow(0.28F));
+    const auto evidence = ls2k::vision::DetectCrossExitEvidence(
+        rows,
+        Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
+        params);
+    Expect(evidence.present,
+           "the unique origin-connected run reaching FOV must define an open Cross row");
+}
+
+void TestBoundaryBoundConnectedRunIsNotOpen() {
+    const ls2k::port::RuntimeParameters params{};
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows{};
+    for (float forward_m : {0.20F, 0.24F, 0.28F}) {
+        auto row = ConnectedFovOpenRow(forward_m);
+        row.white_runs.front().left_endpoint =
+            ls2k::vision::BEVWhiteRunEndpointState::kBoundary;
+        rows.push_back(row);
+    }
+    const auto evidence = ls2k::vision::DetectCrossExitEvidence(
+        rows,
+        Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
+        params);
+    Expect(!evidence.present,
+           "a connected run bounded by two observed edges must remain a normal road row");
+}
+
+void TestMultipleConnectedRunsAreAmbiguous() {
+    const ls2k::port::RuntimeParameters params{};
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows{};
+    for (float forward_m : {0.20F, 0.24F, 0.28F}) {
+        auto row = ConnectedFovOpenRow(forward_m);
+        row.white_runs.push_back(row.white_runs.front());
+        rows.push_back(row);
+    }
+    const auto evidence = ls2k::vision::DetectCrossExitEvidence(
+        rows,
+        Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
+        params);
+    Expect(!evidence.present,
+           "multiple origin-connected runs must not choose a Cross opening arbitrarily");
+}
+
 void TestBlockedOriginToLastMidpointRejectsCross() {
     const ls2k::port::RuntimeParameters params{};
     const ls2k::port::CrossExitElementEvidence evidence =
@@ -78,7 +137,7 @@ void TestBlockedOriginToLastMidpointRejectsCross() {
             Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kBlocked),
             params);
     Expect(!evidence.present, "blocked origin-to-last-midpoint segment must reject cross");
-    Expect(evidence.reason == "origin_to_last_midpoint_blocked",
+    Expect(evidence.reason == "origin_to_cross_sample_midpoint_blocked",
            "blocked segment must expose the connectivity rejection reason");
 }
 
@@ -90,36 +149,8 @@ void TestUnobservableOriginToLastMidpointRejectsCross() {
             Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable),
             params);
     Expect(!evidence.present, "unobservable origin-to-last-midpoint segment must reject cross");
-    Expect(evidence.reason == "origin_to_last_midpoint_unobservable",
+    Expect(evidence.reason == "origin_to_cross_sample_midpoint_unobservable",
            "unobservable segment must expose the observability rejection reason");
-}
-
-void TestCandidateStillCopiesLineReference() {
-    const ls2k::port::RuntimeParameters params{};
-    const ls2k::port::CrossExitElementEvidence evidence =
-        ls2k::vision::DetectCrossExitEvidence(
-            BoundaryAbsentRows(3U),
-            Connectivity(ls2k::vision::BEVSegmentConnectivityStatus::kConnected),
-            params);
-    ls2k::port::VisualReferenceCandidate line{};
-    line.present = true;
-    line.kind = ls2k::port::VisualReferenceCandidateKind::kLine;
-    line.reference_path.mode = ls2k::port::ReferenceMode::kIntervalCenter;
-    line.reference_path.sampled_path[0].present = true;
-    line.reference_path.sampled_path[0].point.forward_m = 0.1F;
-    line.reference_path.sampled_path[0].point.lateral_m = 0.02F;
-
-    ls2k::port::VisualElementCandidateSummary summary{};
-    const ls2k::port::VisualReferenceCandidate candidate =
-        ls2k::vision::BuildCrossExitVisualReferenceCandidate(evidence, line, params, summary);
-
-    Expect(candidate.present, "present cross evidence with a valid line must still build a candidate");
-    Expect(candidate.kind == ls2k::port::VisualReferenceCandidateKind::kCrossExit,
-           "built candidate must remain a cross-exit candidate");
-    Expect(candidate.reference_path.sampled_path[0].point.lateral_m == 0.02F,
-           "cross candidate must still copy the line reference path");
-    Expect(summary.included_in_arbitration,
-           "default-enabled cross takeover must still include the candidate in arbitration");
 }
 
 }  // namespace
@@ -128,9 +159,11 @@ int main() {
     try {
         TestTwoRowsRemainAbsent();
         TestThreeRowsRemainPresent();
+        TestConnectedFovOpeningIgnoresUnrelatedRowBoundary();
+        TestBoundaryBoundConnectedRunIsNotOpen();
+        TestMultipleConnectedRunsAreAmbiguous();
         TestBlockedOriginToLastMidpointRejectsCross();
         TestUnobservableOriginToLastMidpointRejectsCross();
-        TestCandidateStillCopiesLineReference();
     } catch (const TestFailure& failure) {
         std::cerr << "cross_exit_element_evidence_test failed: " << failure.message << "\n";
         return EXIT_FAILURE;

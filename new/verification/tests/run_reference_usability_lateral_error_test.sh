@@ -12,6 +12,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/reference/reference_usability.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_lateral_error.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_tracking_geometry.cpp" \
+  "${REPO_ROOT}/new/code/reference/reference_continuity.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_control_readiness.cpp" \
   "${REPO_ROOT}/new/code/control/steering_yaw_controller.cpp" \
   "${REPO_ROOT}/new/code/safety/control_gate.cpp" \

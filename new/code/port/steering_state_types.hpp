@@ -37,7 +37,7 @@ struct BEVControllerMemory {
  * @struct SteeringPerceptionMemory
  * @brief 转向感知系统跨帧记忆
  *
- * 携带参考路径的保持状态，使感知流水线能够在短暂丢失跟踪时维持上一帧的参考路径。
+ * 携带 reference continuity 与 scene-owned 的跨帧状态。
  */
 struct SteeringPerceptionMemory {
     ReferenceHoldState reference_hold{};  ///< 参考路径保持状态

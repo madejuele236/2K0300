@@ -315,8 +315,8 @@ int main(int argc, char** argv) {
                       "\"CURVATURE_TO_WHEEL_DELTA_GAIN\": 67,"
                       "\"TRACKING_FIT_MIN_SAMPLES\": 5},\n"
                       "  \"BEV_ELEMENT\": {"
-                      "\"CROSS_EXIT_TAKEOVER_ENABLED\": 1,"
                       "\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 11,"
+                      "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 7,"
                       "\"CIRCLE_V2_ENABLED\": 1,"
                       "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\": 300,"
                       "\"CIRCLE_V2_EXIT_HOLD_FRAMES\": 4,"
@@ -407,10 +407,10 @@ int main(int argc, char** argv) {
                "BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN should parse");
         Expect(enabled.bev_control_model.tracking_fit_min_samples == 5,
                "BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES should parse");
-        Expect(enabled.bev_element.cross_exit_takeover_enabled,
-               "CROSS_EXIT_TAKEOVER_ENABLED=1 should parse true");
         Expect(enabled.bev_element.cross_min_sampleable_per_row == 11,
                "CROSS_MIN_SAMPLEABLE_PER_ROW should parse");
+        Expect(enabled.bev_element.cross_connectivity_sample_index == 7,
+               "CROSS_CONNECTIVITY_SAMPLE_INDEX should parse");
         Expect(enabled.bev_element.circle_v2_enabled,
                "CIRCLE_V2_ENABLED=1 should parse true");
         Expect(std::abs(enabled.bev_element.circle_v2_exit_yaw_threshold_deg - 300.0F) <
@@ -489,12 +489,12 @@ int main(int argc, char** argv) {
         Expect(absent.drive_pwm_step_limit == 1000 &&
                    builtin_defaults.drive_pwm_step_limit == 1000,
                "missing drive_pwm_step_limit should keep safe global default");
-        Expect(absent.bev_element.cross_exit_takeover_enabled ==
-                   builtin_defaults.bev_element.cross_exit_takeover_enabled,
-               "missing BEV_ELEMENT should keep takeover enabled");
         Expect(absent.bev_element.cross_min_sampleable_per_row ==
                    builtin_defaults.bev_element.cross_min_sampleable_per_row,
                "missing BEV_ELEMENT should keep cross sampleable threshold default");
+        Expect(absent.bev_element.cross_connectivity_sample_index == 9 &&
+                   builtin_defaults.bev_element.cross_connectivity_sample_index == 9,
+               "missing BEV_ELEMENT should keep cross connectivity sample index default");
         Expect(absent.bev_element.circle_v2_enabled ==
                    builtin_defaults.bev_element.circle_v2_enabled,
                "missing BEV_ELEMENT should keep CircleV2 enabled");
@@ -1137,14 +1137,6 @@ int main(int argc, char** argv) {
                               "params.validation",
                               "malformed or out-of-range optional field");
 
-        const std::string malformed_optional_path = base + "_malformed_optional.json";
-        WriteText(malformed_optional_path,
-                  MinimalRuntimeParametersJson(
-                      "  \"BEV_ELEMENT\": {\"CROSS_EXIT_TAKEOVER_ENABLED\": {\"bad\": 1}}"));
-        ExpectRejectedFixture(malformed_optional_path,
-                              "params.validation",
-                              "malformed or out-of-range optional field");
-
         const std::string invalid_optional_value_path = base + "_invalid_optional_value.json";
         WriteText(invalid_optional_value_path,
                   MinimalRuntimeParametersJson("  \"steering_media_downsample\": 0"));
@@ -1157,6 +1149,10 @@ int main(int argc, char** argv) {
              "  \"ML\": {\"TFLITE_IDENTITY\": {\"MAX_BEST_DISTANCE\": 260101}}"},
             {"invalid_cross_sampleable",
              "  \"BEV_ELEMENT\": {\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 0}"},
+            {"invalid_cross_connectivity_index_negative",
+             "  \"BEV_ELEMENT\": {\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": -1}"},
+            {"invalid_cross_connectivity_index_too_large",
+             "  \"BEV_ELEMENT\": {\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 24}"},
             {"invalid_geometry",
              "  \"BEV_GEOMETRY\": {\"NOMINAL_ROAD_HALF_WIDTH_M\": 0}"},
             {"invalid_boundary_trace",

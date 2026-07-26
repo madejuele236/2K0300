@@ -84,12 +84,13 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
                 }
             }
         }
-        if (!result.rows.empty()) {
-            result.origin_to_last_row_midpoint_connectivity =
-                connectivity.Evaluate({0.0F, 0.0F},
-                                      {result.rows.back().forward_m, 0.0F},
-                                      BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
-        }
+        const std::size_t cross_sample_index =
+            static_cast<std::size_t>(params.bev_element.cross_connectivity_sample_index);
+        result.origin_to_cross_sample_midpoint_connectivity =
+            connectivity.Evaluate(
+                {0.0F, 0.0F},
+                {params.bev_geometry.forward_samples_m[cross_sample_index], 0.0F},
+                BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
         result.road_path_facts =
             BuildConnectedRoadPathFacts(result.rows, params, connectivity);
     }

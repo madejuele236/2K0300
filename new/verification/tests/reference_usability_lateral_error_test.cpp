@@ -4,6 +4,7 @@
 #include <string>
 
 #include "reference/reference_control_readiness.hpp"
+#include "reference/reference_continuity.hpp"
 #include "reference/reference_lateral_error.hpp"
 #include "reference/reference_tracking_geometry.hpp"
 #include "reference/reference_usability.hpp"
@@ -308,6 +309,62 @@ void TestReferenceControlReadinessRejectsLayerFailures() {
            "uncomputed tracking geometry must stop reference-control readiness");
 }
 
+void TestTrackingGeometryFailureUsesLastGeometryValidReference() {
+    ls2k::port::RuntimeParameters params{};
+    const ls2k::port::BEVReferencePath valid = MakePath(params, 6, 0.10F);
+    const auto current = ls2k::reference::ResolveReferenceContinuity(
+        valid, "line", 100U, {}, params);
+    Expect(!current.continuity.hold_selected && current.tracking_geometry.computed,
+           "geometry-valid current reference must be selected directly");
+
+    ls2k::port::BEVReferencePath degenerate = MakePath(params, 6, -0.30F);
+    for (std::size_t index = 0; index < 6U; ++index) {
+        degenerate.sampled_path[index].point.forward_m = 0.20F;
+    }
+    Expect(ls2k::reference::EvaluateReferenceUsability(degenerate, params).usable,
+           "fixture must remain usable before tracking geometry evaluation");
+    const auto held = ls2k::reference::ResolveReferenceContinuity(
+        degenerate, "line", 200U, current.continuity.next_hold_state, params);
+    Expect(held.continuity.hold_selected && held.tracking_geometry.computed,
+           "tracking-geometry failure must select the last geometry-valid reference");
+    const auto held_readiness = ls2k::reference::EvaluateReferenceControlReadiness(
+        held.usability, held.tracking_geometry, held.continuity.hold_selected);
+    Expect(held_readiness.ready && held_readiness.degraded &&
+               held_readiness.reason == "reference_hold",
+           "geometry fallback must publish control-ready degraded HOLD facts");
+    Expect(held.continuity.reference_path.mode == ls2k::port::ReferenceMode::kHoldLast &&
+               held.continuity.reference_capture_time_ms == 100U,
+           "held reference must preserve the prior reference identity and capture time");
+    ExpectNear(held.continuity.reference_path.sampled_path[0].point.lateral_m,
+               0.10F,
+               1.0e-6F,
+               "geometry-invalid current reference must not replace held geometry");
+
+    const auto held_again = ls2k::reference::ResolveReferenceContinuity(
+        degenerate, "line", 300U, held.continuity.next_hold_state, params);
+    Expect(held_again.continuity.hold_selected && held_again.tracking_geometry.computed,
+           "continued geometry failure must remain on the original valid hold");
+    ExpectNear(held_again.continuity.reference_path.sampled_path[0].point.lateral_m,
+               0.10F,
+               1.0e-6F,
+               "repeated invalid current references must not pollute hold memory");
+}
+
+void TestTrackingGeometryFailureWithoutHoldPublishesNoReference() {
+    ls2k::port::RuntimeParameters params{};
+    ls2k::port::BEVReferencePath degenerate = MakePath(params, 6, 0.0F);
+    for (std::size_t index = 0; index < 6U; ++index) {
+        degenerate.sampled_path[index].point.forward_m = 0.20F;
+    }
+
+    const auto selection = ls2k::reference::ResolveReferenceContinuity(
+        degenerate, "line", 100U, {}, params);
+    Expect(!selection.continuity.hold_selected &&
+               selection.continuity.reference_path.mode == ls2k::port::ReferenceMode::kNone &&
+               !selection.tracking_geometry.computed,
+           "geometry failure without a valid hold must remain unavailable");
+}
+
 void TestSafetyGateOwnsProjectorAndLowVoltageVetoes() {
     ls2k::safety::ControlGateInputs inputs{};
     inputs.perception_published = true;
@@ -361,6 +418,8 @@ int main() {
         TestGyroTurnUsesGateApprovedGyroValueOnly();
         TestReferenceControlReadinessUsesHoldSelectedNotReferenceSource();
         TestReferenceControlReadinessRejectsLayerFailures();
+        TestTrackingGeometryFailureUsesLastGeometryValidReference();
+        TestTrackingGeometryFailureWithoutHoldPublishesNoReference();
         TestSafetyGateOwnsProjectorAndLowVoltageVetoes();
     } catch (const TestFailure& failure) {
         std::cerr << "reference_usability_lateral_error_test failed: " << failure.message << "\n";

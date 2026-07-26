@@ -50,10 +50,6 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.element_evidence.cross_exit.boundary_span_count = 0;
     snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count = 3;
     snapshot.steering.element_evidence.cross_exit.reason = "present";
-    snapshot.steering.element_evidence.cross_exit.candidate.built = true;
-    snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
-    snapshot.steering.element_evidence.cross_exit.candidate.included_in_arbitration = false;
-    snapshot.steering.element_evidence.cross_exit.candidate.reason = "takeover_disabled";
     snapshot.steering.circle_v2.enabled = true;
     snapshot.steering.circle_v2.frame_phase = "approach";
     snapshot.steering.circle_v2.next_phase = "inner_trace";
@@ -207,10 +203,6 @@ void TestSnapshotFactsMapToAssistantView() {
            "cross evidence presence must be copied");
     Expect(telemetry.element_evidence.cross_exit.reason == "present",
            "cross evidence reason must be copied");
-    Expect(telemetry.element_evidence.cross_exit.candidate.built,
-           "cross candidate build state must be copied");
-    Expect(!telemetry.element_evidence.cross_exit.candidate.included_in_arbitration,
-           "disabled cross candidate inclusion must be copied");
     Expect(telemetry.element_evidence.records.size() == 1U,
            "generic element evidence records must be copied");
     Expect(telemetry.element_evidence.records[0].id == "synthetic_marker",
@@ -288,10 +280,8 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must include element evidence object");
     Expect(!Contains(json, "\"cross_exit\":{\"present\":true,\"confidence\":"),
            "assistant telemetry must not expose removed cross confidence");
-    Expect(Contains(json, "\"candidate\":{\"built\":true"),
-           "assistant telemetry must include element candidate summary");
-    Expect(Contains(json, "\"included_in_arbitration\":false"),
-           "assistant telemetry must expose disabled arbitration inclusion");
+    Expect(Contains(json, "\"boundary_absent_row_count\":3,\"reason\":\"present\"}"),
+           "cross telemetry must close after detection evidence");
     Expect(Contains(json, "\"records\":[{\"id\":\"synthetic_marker\""),
            "assistant telemetry must serialize generic element records");
     Expect(Contains(json,

@@ -243,12 +243,6 @@ port::CircleV2TelemetrySnapshot BuildCircleV2TelemetrySnapshot(bool enabled,
     return snapshot;
 }
 
-bool CrossExitSuppressesCircleV2(const vision::VisualElementPipelineResult& element_result,
-                                 const port::RuntimeParameters& params) {
-    return params.bev_element.cross_exit_takeover_enabled &&
-           element_result.evidence.cross_exit.present;
-}
-
 }  // namespace
 
 /// 配置感知管线：初始化 BEV 投影器、重置采样 LUT
@@ -288,7 +282,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
     return projector_configured_ && ml_classifier_ready_;
 }
 
-/// 重置普通参考连续性记忆（清空 reference hold，不触碰 scene-owned 记忆）
+/// 重置帧源相关的 reference/ML 记忆，不触碰 CircleV2 场景状态
 void SteeringFramePipeline::ResetReferenceMemory() {
     ResetSteeringReferenceHoldMemory(perception_memory_);
     vision::ml::ResetMlSceneMemory(perception_memory_.ml_scene);
@@ -357,17 +351,13 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
 
         vision::VisualElementPipelineInput element_input{};
         element_input.sparse_rows = &current_facts.rows;
-        element_input.origin_to_last_row_midpoint_connectivity =
-            current_facts.origin_to_last_row_midpoint_connectivity;
-        element_input.line_candidate = line_candidate;
+        element_input.origin_to_cross_sample_midpoint_connectivity =
+            current_facts.origin_to_cross_sample_midpoint_connectivity;
         element_result = vision::RunVisualElementPipeline(element_input, params);
         element_evidence = element_result.evidence;
 
         std::optional<port::VisualReferenceCandidate> circle_candidate{};
-        const bool cross_exit_takeover_active =
-            CrossExitSuppressesCircleV2(element_result, params);
-        const bool circle_v2_should_step =
-            params.bev_element.circle_v2_enabled && !cross_exit_takeover_active;
+        const bool circle_v2_should_step = params.bev_element.circle_v2_enabled;
         if (circle_v2_should_step) {
             MotionArcQueryContext motion_query{};
             motion_query.history = &motion_history;
@@ -399,7 +389,6 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                                idle_telemetry);
         }
 
-        port::ReferenceUsability current_usability{};
         {
             std::array<port::VisualReferenceCandidate,
                        port::kVisualReferenceCandidatePathCapacity>
@@ -407,12 +396,6 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             std::size_t candidate_count = 0;
             candidates[candidate_count++] = line_candidate;
             if (!ml_result.suppress_other_scene_candidates) {
-                for (const port::VisualReferenceCandidate& candidate :
-                     element_result.candidates) {
-                    if (candidate_count < candidates.size()) {
-                        candidates[candidate_count++] = candidate;
-                    }
-                }
                 if (circle_candidate.has_value() && candidate_count < candidates.size()) {
                     candidates[candidate_count++] = *circle_candidate;
                 }
@@ -429,45 +412,18 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             visual_selection = reference::SelectVisualReference(candidates.data(),
                                                                 candidate_count);
         }
-        current_usability =
-            reference::EvaluateReferenceUsability(visual_selection.reference_path, params);
-        if (current_usability.usable) {
-            continuity.reference_path = visual_selection.reference_path;
-            continuity.mode = visual_selection.reference_path.mode;
-            continuity.source = visual_selection.source;
-            continuity.hold_selected = false;
-            continuity.reference_capture_time_ms = capture.capture_time_ms;
-            continuity.next_hold_state =
-                reference::MakeReferenceHoldState(visual_selection.reference_path,
+        const reference::ReferenceContinuitySelection reference_selection =
+            reference::ResolveReferenceContinuity(visual_selection.reference_path,
+                                                  visual_selection.source,
                                                   capture.capture_time_ms,
+                                                  prior_memory.reference_hold,
                                                   params);
-            selected_usability = current_usability;
-        } else {
-            port::ReferenceContinuityResult hold_candidate{};
-            port::ReferenceUsability hold_usability{};
-            {
-                LS2K_PERF_SCOPE(port::PerfStage::kReferenceHold);
-                hold_candidate =
-                    reference::BuildReferenceHoldCandidate(prior_memory.reference_hold, params);
-                hold_usability =
-                    reference::EvaluateReferenceUsability(hold_candidate.reference_path, params);
-            }
-            if (hold_usability.usable) {
-                continuity = hold_candidate;
-                selected_usability = hold_usability;
-            } else {
-                continuity = {};
-                selected_usability =
-                    reference::EvaluateReferenceUsability(continuity.reference_path, params);
-            }
-        }
+        continuity = reference_selection.continuity;
+        selected_usability = reference_selection.usability;
+        reference_tracking_geometry = reference_selection.tracking_geometry;
         lateral_error = reference::ComputeReferenceLateralError(continuity.reference_path,
                                                                 selected_usability,
                                                                 params);
-        reference_tracking_geometry =
-            reference::ComputeReferenceTrackingGeometry(continuity.reference_path,
-                                                        selected_usability,
-                                                        params.bev_control_model);
         reference_control = reference::EvaluateReferenceControlReadiness(selected_usability,
                                                                          reference_tracking_geometry,
                                                                          continuity.hold_selected);

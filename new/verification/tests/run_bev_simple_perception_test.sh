@@ -20,6 +20,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
   "${REPO_ROOT}/new/code/vision/image/otsu_threshold.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_usability.cpp" \
+  "${REPO_ROOT}/new/code/reference/reference_tracking_geometry.cpp" \
   "${REPO_ROOT}/new/code/reference/reference_continuity.cpp" \
   -o "${OUT_BIN}"
 

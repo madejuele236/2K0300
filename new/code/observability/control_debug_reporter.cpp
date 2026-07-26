@@ -177,14 +177,6 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count
                      << " element_evidence.cross_exit.reason="
                      << snapshot.steering.element_evidence.cross_exit.reason
-                     << " element_evidence.cross_exit.candidate.built="
-                     << BoolToken(snapshot.steering.element_evidence.cross_exit.candidate.built)
-                     << " element_evidence.cross_exit.candidate.takeover_enabled="
-                     << BoolToken(snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled)
-	                     << " element_evidence.cross_exit.candidate.included_in_arbitration="
-	                     << BoolToken(snapshot.steering.element_evidence.cross_exit.candidate.included_in_arbitration)
-	                     << " element_evidence.cross_exit.candidate.reason="
-	                     << snapshot.steering.element_evidence.cross_exit.candidate.reason
                      << " circle_v2.enabled=" << BoolToken(snapshot.steering.circle_v2.enabled)
                      << " circle_v2.frame_phase=" << snapshot.steering.circle_v2.frame_phase
                      << " circle_v2.next_phase=" << snapshot.steering.circle_v2.next_phase

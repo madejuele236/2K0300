@@ -269,10 +269,6 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.element_evidence.cross_exit.boundary_span_count = 0;
     snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count = 3;
     snapshot.steering.element_evidence.cross_exit.reason = "present";
-    snapshot.steering.element_evidence.cross_exit.candidate.built = true;
-    snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
-    snapshot.steering.element_evidence.cross_exit.candidate.included_in_arbitration = false;
-    snapshot.steering.element_evidence.cross_exit.candidate.reason = "takeover_disabled";
     snapshot.steering.circle_v2.enabled = true;
     snapshot.steering.circle_v2.frame_phase = "exit_trace";
     snapshot.steering.circle_v2.next_phase = "idle";
@@ -458,8 +454,6 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose cross-exit evidence presence");
     Require(Contains(message, "element_evidence.cross_exit.reason=present"),
             "steering snapshot must expose cross-exit evidence reason");
-    Require(Contains(message, "element_evidence.cross_exit.candidate.included_in_arbitration=false"),
-            "steering snapshot must expose cross-exit arbitration inclusion");
     Require(Contains(message, "circle_v2.enabled=true"),
             "steering snapshot must expose CircleV2 enablement");
     Require(Contains(message, "circle_v2.frame_phase=exit_trace"),
@@ -605,8 +599,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_control_model.heading_error_to_wheel_delta_gain = 12.0;
     config.param_snapshot.bev_control_model.curvature_to_wheel_delta_gain = 34.0;
     config.param_snapshot.bev_control_model.tracking_fit_min_samples = 5;
-    config.param_snapshot.bev_element.cross_exit_takeover_enabled = false;
     config.param_snapshot.bev_element.cross_min_sampleable_per_row = 9;
+    config.param_snapshot.bev_element.cross_connectivity_sample_index = 6;
     config.param_snapshot.reference_time_alignment.enabled = true;
     config.param_snapshot.reference_time_alignment.max_age_ms = 120;
     config.param_snapshot.reference_time_alignment.effective_delay_ms = 25;
@@ -722,10 +716,12 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include tracking fit minimum");
     Require(Contains(header_json, "\"BEV_ELEMENT\""),
             "config snapshot must include BEV element group");
-    Require(Contains(header_json, "\"CROSS_EXIT_TAKEOVER_ENABLED\":false"),
-            "config snapshot must include default-off cross-exit takeover");
+    Require(!Contains(header_json, "\"CROSS_EXIT_TAKEOVER_ENABLED\""),
+            "config snapshot must not expose removed cross-exit takeover");
     Require(Contains(header_json, "\"CROSS_MIN_SAMPLEABLE_PER_ROW\":9"),
             "config snapshot must include cross per-row sampleable minimum");
+    Require(Contains(header_json, "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\":6"),
+            "config snapshot must include cross connectivity sample index");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "config snapshot must not include removed cross white-ratio threshold");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
@@ -1265,10 +1261,6 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.element_evidence.cross_exit.boundary_span_count = 0;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.boundary_absent_row_count = 3;
         state.control_debug_snapshot.steering.element_evidence.cross_exit.reason = "present";
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.candidate.built = true;
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.candidate.included_in_arbitration = false;
-        state.control_debug_snapshot.steering.element_evidence.cross_exit.candidate.reason = "takeover_disabled";
         state.control_debug_snapshot.steering.circle_v2.enabled = true;
         state.control_debug_snapshot.steering.circle_v2.frame_phase = "inner_trace";
         state.control_debug_snapshot.steering.circle_v2.next_phase = "inner_trace";
@@ -1499,10 +1491,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include perception health");
     Require(Contains(header_json, "\"element_evidence\":{\"cross_exit\":{\"present\":true"),
             "image frame must include cross-exit element evidence");
-    Require(Contains(header_json, "\"candidate\":{\"built\":true"),
-            "image frame must include cross-exit candidate summary");
-    Require(Contains(header_json, "\"included_in_arbitration\":false"),
-            "image frame must expose cross-exit arbitration inclusion");
+    Require(Contains(header_json, "\"boundary_absent_row_count\":3,\"reason\":\"present\"}"),
+            "cross image telemetry must close after detection evidence");
     Require(Contains(header_json, "\"circle_v2\":{\"enabled\":true"),
             "image frame must include CircleV2 telemetry");
     Require(Contains(header_json, "\"reference_role\":\"inner_trace\""),

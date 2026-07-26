@@ -33,8 +33,7 @@ struct VisualElementCandidateSummary {
  * @struct CrossExitElementEvidence
  * @brief 十字路口出口元素证据
  *
- * 描述十字路口出口处检测到的视觉元素（如斑马线、路口标记）的
- * 位置范围、V9 边界事实统计和候选状态。
+ * 描述 Cross 开口检测的位置范围、稀疏边界事实统计和判定原因。
  */
 struct CrossExitElementEvidence {
     bool present = false;              ///< 元素是否存在
@@ -43,11 +42,10 @@ struct CrossExitElementEvidence {
     float lateral_min_m = 0.0F;        ///< 元素横向最小位置（米）
     float lateral_max_m = 0.0F;        ///< 元素横向最大位置（米）
     std::size_t sampleable_count = 0;      ///< 可采样的栅格单元数
-    std::size_t boundary_jump_count = 0;    ///< V9 边界跳变事实数量
-    std::size_t boundary_span_count = 0;    ///< V9 同行边界 span 事实数量
-    std::size_t boundary_absent_row_count = 0; ///< V9 连续无边界事实行数
+    std::size_t boundary_jump_count = 0;    ///< 边界跳变事实数量
+    std::size_t boundary_span_count = 0;    ///< 同行边界 span 事实数量
+    std::size_t boundary_absent_row_count = 0; ///< 连续开口行数
     std::string reason = "not_evaluated";  ///< 未评估的原因
-    VisualElementCandidateSummary candidate{};  ///< 元素候选摘要
 };
 
 /**
@@ -110,8 +108,8 @@ struct VisualElementEvidenceFrame {
  */
 struct BEVElementParameters {
     // 十字路口出口检测参数
-    bool cross_exit_takeover_enabled = true;   ///< 是否启用十字路口出口接管
     int cross_min_sampleable_per_row = 8;       ///< cross 判定每行最少可采样点数
+    int cross_connectivity_sample_index = 9;    ///< 原点连通性目标的 BEV 前向采样点索引，[0,23]
 
     // Circle V2 场景状态机参数
     bool circle_v2_enabled = true;                  ///< 是否注册 CircleV2Scene

@@ -108,8 +108,6 @@ inline void AppendCrossExitJson(std::ostream& stream,
     stream << ",\"boundary_absent_row_count\":" << cross_exit.boundary_absent_row_count;
     stream << ",\"reason\":";
     AppendJsonString(stream, cross_exit.reason);
-    stream << ",\"candidate\":";
-    AppendCandidateJson(stream, cross_exit.candidate);
     stream << "}";
 }
 

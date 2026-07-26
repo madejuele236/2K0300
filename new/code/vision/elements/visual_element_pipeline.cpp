@@ -13,18 +13,8 @@ VisualElementPipelineResult RunVisualElementPipeline(const VisualElementPipeline
 
     result.evidence.cross_exit =
         DetectCrossExitEvidence(rows,
-                                input.origin_to_last_row_midpoint_connectivity,
+                                input.origin_to_cross_sample_midpoint_connectivity,
                                 params);
-    port::VisualElementCandidateSummary cross_candidate_summary{};
-    const port::VisualReferenceCandidate cross_candidate =
-        BuildCrossExitVisualReferenceCandidate(result.evidence.cross_exit,
-                                               input.line_candidate,
-                                               params,
-                                               cross_candidate_summary);
-    result.evidence.cross_exit.candidate = cross_candidate_summary;
-    if (cross_candidate_summary.included_in_arbitration) {
-        result.candidates.push_back(cross_candidate);
-    }
     return result;
 }
 
