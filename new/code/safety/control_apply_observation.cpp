@@ -15,17 +15,12 @@ ControlCycleObservation ObserveControlCycle(const ControlCycleInputs& inputs) {
     observation.motion_phase = inputs.motion_phase;
     observation.hold_disarmed = inputs.hold_disarmed;
     observation.requested_nonzero_output = IsNonZeroDriveCommand(inputs.command);
-    observation.applied_left_drive_pwm = inputs.command.left_drive_pwm;
-    observation.applied_right_drive_pwm = inputs.command.right_drive_pwm;
-    observation.applied_left_brushless_pwm = inputs.command.left_brushless_pwm;
-    observation.applied_right_brushless_pwm = inputs.command.right_brushless_pwm;
-
-    if (inputs.apply_suppressed_by_profile) {
+    if (!inputs.apply_ok) {
+        observation.apply_outcome = ControlApplyOutcome::kApplyFailed;
+    } else if (inputs.apply_suppressed_by_profile) {
         observation.apply_outcome = ControlApplyOutcome::kSuppressedByProfile;
     } else if (inputs.hold_disarmed) {
         observation.apply_outcome = ControlApplyOutcome::kHeldDisarmedApplied;
-    } else if (!inputs.apply_ok) {
-        observation.apply_outcome = ControlApplyOutcome::kApplyFailed;
     } else if (inputs.command.emergency_stop) {
         observation.apply_outcome = ControlApplyOutcome::kEmergencyStopApplied;
     } else if (observation.requested_nonzero_output) {
@@ -34,8 +29,18 @@ ControlCycleObservation ObserveControlCycle(const ControlCycleInputs& inputs) {
         observation.apply_outcome = ControlApplyOutcome::kZeroCommandApplied;
     }
 
-    observation.actuators_armed = !inputs.apply_suppressed_by_profile && !inputs.hold_disarmed &&
-                                  inputs.apply_ok && !inputs.command.emergency_stop;
+    port::ActuatorCommand confirmed_command = inputs.previous_confirmed_command;
+    observation.actuators_armed = inputs.previously_armed;
+    if (inputs.apply_ok) {
+        confirmed_command = inputs.applied_command;
+        observation.actuators_armed =
+            !inputs.apply_suppressed_by_profile && !inputs.hold_disarmed &&
+            !inputs.command.emergency_stop;
+    }
+    observation.applied_left_drive_pwm = confirmed_command.left_drive_pwm;
+    observation.applied_right_drive_pwm = confirmed_command.right_drive_pwm;
+    observation.applied_left_brushless_pwm = confirmed_command.left_brushless_pwm;
+    observation.applied_right_brushless_pwm = confirmed_command.right_brushless_pwm;
     observation.arming_transition = observation.actuators_armed != inputs.previously_armed;
     return observation;
 }

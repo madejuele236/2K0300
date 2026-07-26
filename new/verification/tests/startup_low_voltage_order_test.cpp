@@ -71,9 +71,12 @@ public:
         ready_ = true;
         return true;
     }
-    bool Apply(const ls2k::port::ActuatorCommand&, ls2k::port::DiagnosticSink&) override { return true; }
-    void Disable(ls2k::port::DiagnosticSink&) override {}
-    void Shutdown(ls2k::port::DiagnosticSink&) override {}
+    ls2k::port::ActuatorApplyResult Apply(const ls2k::port::ActuatorCommand& command,
+                                          ls2k::port::DiagnosticSink&) override {
+        return {true, command};
+    }
+    bool Disable(ls2k::port::DiagnosticSink&) override { return true; }
+    bool Shutdown(ls2k::port::DiagnosticSink&) override { return true; }
     bool Ready() const override { return ready_; }
 
 private:

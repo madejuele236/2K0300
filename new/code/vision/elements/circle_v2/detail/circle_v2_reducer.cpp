@@ -103,10 +103,7 @@ CircleV2Telemetry BuildCircleV2Telemetry(const CircleV2Decision& decision,
     telemetry.geometry_available = geometry.available;
     telemetry.inner_trace_elapsed_ms = events.inner_trace_elapsed_ms;
     telemetry.directed_turn_angle_rad = events.directed_turn_angle_rad;
-    telemetry.entry_points.left.available = expansion.left_p_available;
-    telemetry.entry_points.left.point = expansion.left_p;
-    telemetry.entry_points.right.available = expansion.right_p_available;
-    telemetry.entry_points.right.point = expansion.right_p;
+    telemetry.openings = expansion.openings;
     if (decision.reference.role == CircleV2ReferenceRole::kInnerTrace) {
         telemetry.frame_phase = CirclePhase::kInnerTrace;
     } else if (decision.reference.role == CircleV2ReferenceRole::kExitTrace) {

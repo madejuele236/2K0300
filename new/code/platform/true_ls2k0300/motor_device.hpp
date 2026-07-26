@@ -29,12 +29,6 @@ enum class MotorIoPolicy : std::uint8_t {
     kPreferPersistent,
 };
 
-struct MotorResult final {
-    MotorStatus status{MotorStatus::kNotInitialized};
-    int system_errno{0};
-    [[nodiscard]] constexpr bool ok() const noexcept { return status == MotorStatus::kOk; }
-};
-
 struct MotorPaths final {
     const char* left_pwm = kLeftMotorPwmPath;
     const char* right_pwm = kRightMotorPwmPath;
@@ -49,6 +43,13 @@ struct MotorCommand final {
     int right_drive_pwm = 0;
     int left_esc_pwm = 0;
     int right_esc_pwm = 0;
+};
+
+struct MotorResult final {
+    MotorStatus status{MotorStatus::kNotInitialized};
+    int system_errno{0};
+    MotorCommand applied_command{};
+    [[nodiscard]] constexpr bool ok() const noexcept { return status == MotorStatus::kOk; }
 };
 
 class MotorDevice final {
@@ -84,6 +85,7 @@ private:
         bool direction_known{false};
         int direction_sign{1};
         bool pwm_zero{true};
+        int applied_duty{0};
     };
 
     [[nodiscard]] MotorResult Probe(const WritableDevice& device) noexcept;

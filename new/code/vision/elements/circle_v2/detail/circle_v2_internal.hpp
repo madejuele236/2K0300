@@ -19,14 +19,7 @@ struct CircleV2Events {
 
 struct CircleSideExpansionObservation {
     CircleDir detected_dir = CircleDir::kNone;
-    bool left_phase1_open = false;
-    bool right_phase1_open = false;
-    bool left_entry_gate_reached = false;
-    bool right_entry_gate_reached = false;
-    bool left_p_available = false;
-    bool right_p_available = false;
-    port::BEVPoint left_p{};
-    port::BEVPoint right_p{};
+    CircleOpeningPairObservation openings{};
 };
 
 struct CircleV2ReferenceContext {

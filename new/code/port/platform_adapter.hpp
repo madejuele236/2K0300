@@ -97,12 +97,13 @@ public:
     virtual ~IActuatorAdapter() = default;
     /** @brief 初始化执行器硬件 */
     virtual bool Initialize(const HardwareProfile& profile, DiagnosticSink& diagnostics) = 0;
-    /** @brief 执行执行器指令（设置PWM） */
-    virtual bool Apply(const ActuatorCommand& command, DiagnosticSink& diagnostics) = 0;
-    /** @brief 禁用执行器输出 */
-    virtual void Disable(DiagnosticSink& diagnostics) = 0;
-    /** @brief 关闭执行器硬件 */
-    virtual void Shutdown(DiagnosticSink& diagnostics) = 0;
+    /** @brief 执行执行器指令，并返回本周期硬件实际接受的输出 */
+    virtual ActuatorApplyResult Apply(const ActuatorCommand& command,
+                                      DiagnosticSink& diagnostics) = 0;
+    /** @brief 禁用执行器输出；仅在安全零输出已成功提交时返回 true */
+    virtual bool Disable(DiagnosticSink& diagnostics) = 0;
+    /** @brief 关闭执行器硬件；仅在最终安全停止与资源释放均成功时返回 true */
+    virtual bool Shutdown(DiagnosticSink& diagnostics) = 0;
     /** @brief 检查执行器是否就绪 */
     virtual bool Ready() const = 0;
 };
@@ -164,7 +165,10 @@ public:
 class IParamStore {
 public:
     virtual ~IParamStore() = default;
-    /** @brief 从文件加载运行时参数 */
+    /**
+     * @brief 从文件加载运行时参数
+     * @return 参数完整有效且已写入 out 时返回 true；文件、解析或校验失败时返回 false，out 不变
+     */
     virtual bool LoadRuntimeParameters(const std::string& path,
                                        RuntimeParameters& out,
                                        DiagnosticSink& diagnostics) = 0;

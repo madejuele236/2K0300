@@ -102,6 +102,8 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "camera.frame_age";
         case PerfStage::kPerceptionPublish:
             return "perception.publish";
+        case PerfStage::kPerceptionOtsu:
+            return "perception.otsu";
         case PerfStage::kPerceptionBev:
             return "perception.bev";
         case PerfStage::kBevSimple:
@@ -110,6 +112,8 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "bev.simple.lut";
         case PerfStage::kBevSimpleScanRows:
             return "bev.simple.scan_rows";
+        case PerfStage::kBevSimpleConnectivity:
+            return "bev.connectivity";
         case PerfStage::kBevSimpleBuildReference:
             return "bev.simple.build_reference";
         case PerfStage::kCirclePhase1Rows:

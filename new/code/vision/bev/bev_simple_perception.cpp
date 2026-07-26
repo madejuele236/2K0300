@@ -39,10 +39,12 @@ const char* ToString(port::BEVPathPointSource source) {
 }
 
 BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameView& frame,
+                                                 const port::OtsuThresholdState& threshold,
                                                  const port::RuntimeParameters& params,
                                                  const BEVProjector& projector,
                                                  BEVSampleProjectionLut* lut) {
     BEVSimplePerceptionResult result{};
+    result.otsu = threshold;
     BEVSampleProjectionLut local_lut{};
     BEVSampleProjectionLut& active_lut = lut == nullptr ? local_lut : *lut;
     {
@@ -54,21 +56,43 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
 
     {
         LS2K_PERF_SCOPE(port::PerfStage::kBevSimpleScanRows);
-        result.rows = ScanSparseRows(frame, params, active_lut);
+        result.rows = ScanSparseRows(frame, threshold, params, active_lut);
     }
     for (const BEVSimpleRowScan& row : result.rows) {
         result.boundary_jump_count += row.jumps.size();
         result.boundary_span_count += row.spans.size();
     }
-    const BEVImageSegmentConnectivity connectivity(frame, projector, params.bev_boundary);
-    if (!result.rows.empty()) {
-        result.origin_to_last_row_midpoint_connectivity =
-            connectivity.Evaluate({0.0F, 0.0F},
-                                  {result.rows.back().forward_m, 0.0F},
-                                  BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
+    {
+        LS2K_PERF_SCOPE(port::PerfStage::kBevSimpleConnectivity);
+        const BEVImageSegmentConnectivity connectivity(frame, projector, threshold);
+        for (BEVSimpleRowScan& row : result.rows) {
+            for (BEVWhiteRun& run : row.white_runs) {
+                const BEVSegmentConnectivityResult status =
+                    connectivity.Evaluate({0.0F, 0.0F},
+                                          {run.forward_m, 0.5F * (run.left_m + run.right_m)},
+                                          BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
+                switch (status.status) {
+                    case BEVSegmentConnectivityStatus::kConnected:
+                        run.origin_connectivity = BEVWhiteRunOriginConnectivity::kConnected;
+                        break;
+                    case BEVSegmentConnectivityStatus::kBlocked:
+                        run.origin_connectivity = BEVWhiteRunOriginConnectivity::kBlocked;
+                        break;
+                    case BEVSegmentConnectivityStatus::kUnobservable:
+                        run.origin_connectivity = BEVWhiteRunOriginConnectivity::kUnobservable;
+                        break;
+                }
+            }
+        }
+        if (!result.rows.empty()) {
+            result.origin_to_last_row_midpoint_connectivity =
+                connectivity.Evaluate({0.0F, 0.0F},
+                                      {result.rows.back().forward_m, 0.0F},
+                                      BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
+        }
+        result.road_path_facts =
+            BuildConnectedRoadPathFacts(result.rows, params, connectivity);
     }
-    result.road_path_facts =
-        BuildConnectedRoadPathFacts(result.rows, params, connectivity);
     for (std::size_t index = 0; index < result.road_path_facts.center.size(); ++index) {
         result.reference_path.sampled_path[index].point.forward_m =
             params.bev_geometry.forward_samples_m[index];

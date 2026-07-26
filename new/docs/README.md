@@ -6,7 +6,9 @@ Use these active documents instead:
 
 - `new/docs/path-evaluation-boundary-continuity-v7.zh-CN.md`: V7 path-evaluation discussion record for clipping discontinuous raw boundary points before single-boundary offset / double-edge midpoint candidate generation.
 - `new/docs/actuator-unified-brushless-esc-v8.zh-CN.md`: actuator V8 unified command and brushless ESC boundary record.
-- `new/docs/bev-local-y-boundary-v9.zh-CN.md`: V9 implementation record for replacing global Otsu/gray classification authority with local Y boundary facts and removing active runtime YUYV-to-gray materialization.
+- `new/docs/bev-sparse-otsu-binary.zh-CN.md`: current active perception authority: one sparse Otsu state shared by boundary generation and image connectivity.
+- `new/docs/visual-element-sparse-circle-v2.zh-CN.md`: active CircleV2 contract: white-run topology, directed opening distance, FOV lower bound, and metric ROIs.
+- `new/docs/bev-local-y-boundary-v9.zh-CN.md`: historical V9 implementation record; it no longer describes the active classification authority.
 - Root `README.md`: rules for extending the current simple BEV reference pipeline.
 - `new/docs/visual-element-sparse-circle-v4.zh-CN.md`: V4 ordinary-reference lost-boundary fix contract; handles single-side lost line with nominal half-width and delegates double-side loss to existing hold continuity.
 - `new/docs/visual-element-sparse-circle-v4-single-boundary-helper.zh-CN.md`: V4 appendix for the reusable single-boundary signed-normal-offset helper shared by ordinary lost-line repair and single-boundary scene path generation.

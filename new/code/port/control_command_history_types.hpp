@@ -7,15 +7,17 @@
 
 namespace ls2k::port {
 
-/// 控制命令历史采样：只记录已经请求/已经施加到执行器路径的事实。
+/// 控制命令历史采样：记录执行器请求结果及已施加到执行器路径的事实。
 struct ControlCommandHistorySample {
     uint64_t time_ms = 0;
 
     bool valid = false;
+    bool actuator_request_succeeded = false;
     bool actuator_applied = false;
     bool diagnostics_only = false;
     bool hold_disarmed = false;
     bool emergency_stop = false;
+    bool actuators_armed = false;  ///< 本周期结束时最后确认的硬件 armed 状态
 
     int raw_turn_output = 0;
     int applied_turn_output = 0;
@@ -27,6 +29,11 @@ struct ControlCommandHistorySample {
     int right_drive_pwm = 0;
     int left_brushless_pwm = 0;
     int right_brushless_pwm = 0;
+
+    int last_confirmed_left_drive_pwm = 0;
+    int last_confirmed_right_drive_pwm = 0;
+    int last_confirmed_left_brushless_pwm = 0;
+    int last_confirmed_right_brushless_pwm = 0;
 };
 
 struct ControlCommandHistory {

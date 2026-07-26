@@ -96,6 +96,10 @@ TestPixelFrame MakeYuyvPixelFrame(const ls2k::port::LegacyCameraFrame& frame,
     return pixel;
 }
 
+ls2k::port::OtsuThresholdState Threshold(int value = 40) {
+    return {true, value, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
+}
+
 ls2k::vision::BEVProjector MakeProjector(const ls2k::port::RuntimeParameters& params) {
     ls2k::vision::BEVProjector projector{};
     Expect(projector.Configure(params.bev_projector), "default projector must configure");
@@ -423,7 +427,7 @@ void TestBevLocalBoundaryFacts() {
     ls2k::vision::BEVSampleProjectionLut lut{};
     TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 1U, 1U);
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, Threshold(), params, projector, &lut);
 
     Expect(result.rows.size() == ls2k::port::kBevReferenceSampleCount,
            "row scanner must scan the configured BEV forward samples");
@@ -439,7 +443,7 @@ void TestBevLocalBoundaryFacts() {
                                  row.sampleable_width_m > 0.0F);
     }
     Expect(saw_span, "drawn BEV stripe must expose boundary span facts");
-    Expect(saw_jump_pair, "drawn BEV stripe must expose local Y boundary jumps");
+    Expect(saw_jump_pair, "drawn BEV stripe must expose Otsu binary boundary jumps");
     Expect(saw_row_support_stats,
            "row scanner must expose sample support stats without changing reference facts");
     const ls2k::port::BEVReferencePath unconstrained_reference =
@@ -468,7 +472,7 @@ void TestBevGeometryControlsWideImageScan() {
     ls2k::vision::BEVSampleProjectionLut lut{};
     TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 1U, 1U);
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, Threshold(), params, projector, &lut);
 
     bool saw_wide_right_span = false;
     for (const ls2k::vision::BEVSimpleRowScan& row : result.rows) {
@@ -489,7 +493,7 @@ void TestHoldIsExplicitNonVisualSource() {
     ls2k::vision::BEVSampleProjectionLut lut{};
     TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 1U, 1U);
     const ls2k::vision::BEVSimplePerceptionResult first =
-        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, Threshold(), params, projector, &lut);
     const ls2k::port::ReferenceUsability first_usability =
         ls2k::reference::EvaluateReferenceUsability(first.reference_path, params);
     Expect(first_usability.usable, "first frame must produce usable visual facts");
@@ -499,7 +503,7 @@ void TestHoldIsExplicitNonVisualSource() {
     ls2k::port::LegacyCameraFrame blank = MakeFrame(0U);
     TestPixelFrame blank_pixel = MakeYuyvPixelFrame(blank, 2U, 2U);
     const ls2k::vision::BEVSimplePerceptionResult blank_facts =
-        ls2k::vision::RunBEVSimplePerception(blank_pixel.view, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(blank_pixel.view, Threshold(), params, projector, &lut);
     const ls2k::port::ReferenceUsability blank_usability =
         ls2k::reference::EvaluateReferenceUsability(blank_facts.reference_path, params);
     Expect(!blank_usability.usable, "blank current frame must be selected only if hold is unavailable");
@@ -892,9 +896,9 @@ void TestProjectionLutMatchesUncachedSparseScanAndRebuildsOnIdentityChange() {
     ls2k::vision::BEVSampleProjectionLut lut{};
     TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 7U, 7U);
     const ls2k::vision::BEVSimplePerceptionResult cached =
-        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, Threshold(), params, projector, &lut);
     const ls2k::vision::BEVSimplePerceptionResult uncached =
-        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, nullptr);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, Threshold(), params, projector, nullptr);
 
     Expect(lut.valid, "sparse projection LUT must be built for a valid frame/projector identity");
     Expect(lut.entries.size() ==
@@ -949,7 +953,7 @@ void TestSparseRowCountUsesOriginalForwardSamplePrefix() {
     ls2k::vision::BEVSampleProjectionLut lut{};
     TestPixelFrame pixel = MakeYuyvPixelFrame(frame, 9U, 9U);
     const ls2k::vision::BEVSimplePerceptionResult result =
-        ls2k::vision::RunBEVSimplePerception(pixel.view, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(pixel.view, Threshold(), params, projector, &lut);
 
     Expect(result.rows.size() == 12U,
            "SPARSE_ROW_COUNT=12 must scan exactly the first 12 sparse rows");
@@ -978,7 +982,7 @@ void TestOriginToLastActiveRowMidpointConnectivity() {
     ls2k::vision::BEVSampleProjectionLut default_lut{};
     const ls2k::vision::BEVSimplePerceptionResult default_result =
         ls2k::vision::RunBEVSimplePerception(
-            default_uniform_pixel.view, default_params, default_projector, &default_lut);
+            default_uniform_pixel.view, Threshold(40), default_params, default_projector, &default_lut);
     Expect(default_result.origin_to_last_row_midpoint_connectivity.status ==
                ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
            "uniform center segment must connect through the default last active row");
@@ -992,9 +996,11 @@ void TestOriginToLastActiveRowMidpointConnectivity() {
 
     const ls2k::vision::BEVSimplePerceptionResult uniform_result =
         ls2k::vision::RunBEVSimplePerception(
-            uniform_pixel.view, params, projector, &uniform_lut);
+            uniform_pixel.view, Threshold(40), params, projector, &uniform_lut);
     const ls2k::vision::BEVImageSegmentConnectivity direct_query(
-        uniform_pixel.view, projector, params.bev_boundary);
+        uniform_pixel.view,
+        projector,
+        Threshold(40));
     const ls2k::vision::BEVSegmentConnectivityResult expected =
         direct_query.Evaluate(
             {0.0F, 0.0F},
@@ -1022,21 +1028,21 @@ void TestOriginToLastActiveRowMidpointConnectivity() {
     DrawPatch(blocked_frame,
               from_image.row_px + 0.75F * (to_image.row_px - from_image.row_px),
               from_image.col_px + 0.75F * (to_image.col_px - from_image.col_px),
-              255U);
+              0U);
     TestPixelFrame blocked_pixel = MakeYuyvPixelFrame(blocked_frame, 11U, 11U);
     ls2k::vision::BEVSampleProjectionLut blocked_lut{};
     const ls2k::vision::BEVSimplePerceptionResult blocked_result =
         ls2k::vision::RunBEVSimplePerception(
-            blocked_pixel.view, params, projector, &blocked_lut);
+            blocked_pixel.view, Threshold(40), params, projector, &blocked_lut);
     Expect(blocked_result.origin_to_last_row_midpoint_connectivity.status ==
                ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
-           "a center-segment luma jump must block origin-to-last-row connectivity");
+           "a black center-segment pixel must block origin-to-last-row connectivity");
 
     const ls2k::port::CameraPixelFrameView invalid_frame{};
     ls2k::vision::BEVSampleProjectionLut invalid_lut{};
     const ls2k::vision::BEVSimplePerceptionResult invalid_result =
         ls2k::vision::RunBEVSimplePerception(
-            invalid_frame, params, projector, &invalid_lut);
+            invalid_frame, Threshold(40), params, projector, &invalid_lut);
     Expect(invalid_result.rows.empty(), "invalid frame must not produce sparse rows");
     Expect(invalid_result.origin_to_last_row_midpoint_connectivity.status ==
                ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,

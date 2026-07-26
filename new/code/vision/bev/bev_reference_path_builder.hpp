@@ -1,15 +1,30 @@
 #ifndef LS2K_VISION_BEV_REFERENCE_PATH_BUILDER_HPP
 #define LS2K_VISION_BEV_REFERENCE_PATH_BUILDER_HPP
 
+#include <array>
 #include <vector>
 
 #include "port/bev_reference_types.hpp"
 #include "port/runtime_parameter_types.hpp"
-#include "vision/bev/bev_road_path_facts.hpp"
 #include "vision/bev/bev_row_facts.hpp"
 #include "vision/bev/bev_segment_connectivity.hpp"
 
 namespace ls2k::vision {
+
+struct BEVRoadPathPointFact {
+    bool present = false;
+    port::BEVPoint point{};
+    float confidence = 0.0F;
+};
+
+/// Selected ordinary-road facts. Entries at the same index come from the same
+/// accepted row candidate. A missing boundary remains absent; it is never
+/// reconstructed from the center or the opposite boundary.
+struct BEVRoadPathFacts {
+    std::array<BEVRoadPathPointFact, port::kBevReferenceSampleCount> center{};
+    std::array<BEVRoadPathPointFact, port::kBevReferenceSampleCount> actual_left_boundary{};
+    std::array<BEVRoadPathPointFact, port::kBevReferenceSampleCount> actual_right_boundary{};
+};
 
 enum class ObservedBoundarySide {
     kLeft,

@@ -251,9 +251,14 @@ void AssistantService::Tick(RuntimeState& state, port::DiagnosticSink& diagnosti
         return;
     }
 
+    // FAIL_SAFE_LATCHED stays filtered unless the control snapshot carries the
+    // persisted yaw fault that originated that latch.
     const bool telemetry_phase_allowed =
         snapshot.motion_phase == MotionPhase::kRunning ||
-        snapshot.motion_phase == MotionPhase::kStopping;
+        snapshot.motion_phase == MotionPhase::kStopping ||
+        (snapshot.motion_phase == MotionPhase::kFailSafeLatched &&
+         !snapshot.steering.yaw_control.valid &&
+         snapshot.steering.yaw_control.reason != "not_computed");
     if (telemetry_phase_allowed && snapshot.valid &&
         snapshot.cycle_count != last_telemetry_cycle_ &&
         (last_telemetry_publish_ms_ == 0 ||

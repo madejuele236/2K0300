@@ -1,14 +1,76 @@
 #ifndef LS2K_LEGACY_STEERING_YAW_CONTROLLER_HPP
 #define LS2K_LEGACY_STEERING_YAW_CONTROLLER_HPP
 
+#include <cmath>
+#include <limits>
+
 #include "port/reference_tracking_geometry_types.hpp"
 #include "port/runtime_parameter_types.hpp"
+#include "port/sensor_sample_types.hpp"
 #include "port/steering_state_types.hpp"
 
 namespace ls2k::control {
 
+inline constexpr float kYawIntegralAccumulatorMagnitudeLimit = 1200.0F;
+inline constexpr float kMaximumYawErrorMagnitude =
+    port::kMaximumProducedGyroMagnitudeRadPerSec;
+inline constexpr float kMaximumYawDerivativeInputMagnitude =
+    2.0F * kMaximumYawErrorMagnitude;
+inline constexpr float kMaximumTurnOutputTargetMagnitude =
+    static_cast<float>(std::numeric_limits<int>::max());
+
+/// YAW_RATE_PID 参数必须能以有限值进入生产 float 类型，并且在 producer 可达的
+/// target/error/integral/derivative 极值下，按控制器真实求和顺序保持有限。
+[[nodiscard]] inline bool YawRatePidArithmeticIsFinite(double p, double i, double d) noexcept {
+    const auto convert = [](double value, float& converted) {
+        if (!std::isfinite(value) ||
+            value < -static_cast<double>(std::numeric_limits<float>::max()) ||
+            value > static_cast<double>(std::numeric_limits<float>::max())) {
+            return false;
+        }
+        converted = static_cast<float>(value);
+        return std::isfinite(converted);
+    };
+    float p_float = 0.0F;
+    float i_float = 0.0F;
+    float d_float = 0.0F;
+    if (!convert(p, p_float) || !convert(i, i_float) || !convert(d, d_float)) {
+        return false;
+    }
+    const float p_term = std::abs(p_float) * kMaximumYawErrorMagnitude;
+    const float i_term = std::abs(i_float) * kYawIntegralAccumulatorMagnitudeLimit;
+    const float d_term = std::abs(d_float) * kMaximumYawDerivativeInputMagnitude;
+    if (!std::isfinite(p_term) || !std::isfinite(i_term) || !std::isfinite(d_term)) {
+        return false;
+    }
+    float worst_case_sum = kMaximumTurnOutputTargetMagnitude + p_term;
+    if (!std::isfinite(worst_case_sum)) {
+        return false;
+    }
+    worst_case_sum += i_term;
+    if (!std::isfinite(worst_case_sum)) {
+        return false;
+    }
+    worst_case_sum += d_term;
+    return std::isfinite(worst_case_sum);
+}
+
+enum class SteeringYawStatus {
+    kNotComputed,
+    kOk,
+    kInvalidConfiguration,
+    kInvalidTurnInput,
+    kInvalidGyroInput,
+    kInvalidControllerMemory,
+    kNonFiniteArithmetic,
+};
+
+[[nodiscard]] const char* ToString(SteeringYawStatus status) noexcept;
+
 /// 转向输出目标计算结果，包含跟踪几何三项、速度缩放和转向候选/目标值
 struct TurnOutputTargetComputation {
+    bool valid = false;
+    SteeringYawStatus status = SteeringYawStatus::kNotComputed;
     float lateral_offset_gain = 0.0F;      ///< 横向位置项增益
     float heading_error_gain = 0.0F;       ///< 航向误差项增益
     float curvature_gain = 0.0F;           ///< 曲率前馈项增益
@@ -22,6 +84,8 @@ struct TurnOutputTargetComputation {
 
 /// 陀螺仪转向计算结果，包含角速度、误差、P/D项和原始输出
 struct GyroTurnComputation {
+    bool valid = false;
+    SteeringYawStatus status = SteeringYawStatus::kNotComputed;
     float gyro_z = 0.0F;          ///< 陀螺仪Z轴角速度测量值
     float gyro_error = 0.0F;      ///< 角速度误差（负的测量值）
     float gyro_p_term = 0.0F;     ///< 比例项
@@ -33,7 +97,7 @@ struct GyroTurnComputation {
 class SteeringYawController {
 public:
     /// 从运行时参数配置控制器参数
-    void Configure(const port::RuntimeParameters& params);
+    [[nodiscard]] bool Configure(const port::RuntimeParameters& params);
     /// 重置控制器内部状态
     void Reset();
 
@@ -64,6 +128,7 @@ private:
     float lateral_offset_to_wheel_delta_gain_ = 180.0F; ///< 横向位置项到轮距增量的增益
     float heading_error_to_wheel_delta_gain_ = 0.0F;    ///< 航向误差项到轮距增量的增益
     float curvature_to_wheel_delta_gain_ = 0.0F;        ///< 曲率前馈项到轮距增量的增益
+    bool configured_valid_ = false;                     ///< 配置是否满足生产 float/算术合同
 };
 
 }  // namespace ls2k::control

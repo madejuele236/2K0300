@@ -6,14 +6,25 @@
 namespace ls2k::vision::detail {
 namespace {
 
-bool EntryGateReached(const CircleSideExpansionObservation& expansion, CircleDir dir) {
+const CircleOpeningObservation* OpeningForDir(
+    const CircleSideExpansionObservation& expansion,
+    CircleDir dir) {
     if (dir == CircleDir::kLeft) {
-        return expansion.left_entry_gate_reached;
+        return &expansion.openings.left;
     }
     if (dir == CircleDir::kRight) {
-        return expansion.right_entry_gate_reached;
+        return &expansion.openings.right;
     }
-    return false;
+    return nullptr;
+}
+
+bool EntryGateReached(const CircleSideExpansionObservation& expansion,
+                      CircleDir dir,
+                      const CircleV2Params& params) {
+    const CircleOpeningObservation* opening = OpeningForDir(expansion, dir);
+    return opening != nullptr && opening->available &&
+           opening->frontier_forward_m >= params.entry_forward_min_m &&
+           opening->frontier_forward_m <= params.entry_forward_max_m;
 }
 
 float CircleTurnSign(CircleDir dir) {
@@ -51,7 +62,7 @@ CircleV2Events ObserveCircleV2Events(const SceneFrameView& frame,
             events.detected_dir = expansion.detected_dir;
             break;
         case CirclePhase::kApproach:
-            events.entry_gate_reached = EntryGateReached(expansion, prior.dir);
+            events.entry_gate_reached = EntryGateReached(expansion, prior.dir, params);
             break;
         case CirclePhase::kInnerTrace: {
             events.inner_trace_elapsed_ms = InnerTraceElapsedMs(prior, frame.stamp);

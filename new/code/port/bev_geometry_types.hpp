@@ -129,15 +129,6 @@ inline bool IsValidBEVClassificationParameters(
            params.hold_last_max_cycles >= 0;
 }
 
-/// BEV 局部边界提取参数
-struct BEVBoundaryParameters {
-    int local_jump_min_y = 32;  ///< 相邻采样点构成边界跳变所需的最小 Y 差
-};
-
-inline bool IsValidBEVBoundaryParameters(const BEVBoundaryParameters& params) {
-    return params.local_jump_min_y > 0 && params.local_jump_min_y <= 255;
-}
-
 /**
  * @struct BEVControlModelParameters
  * @brief BEV控制模型参数

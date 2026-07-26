@@ -81,7 +81,8 @@ public:
         return true;
     }
 
-    bool Apply(const port::ActuatorCommand& command, port::DiagnosticSink& diagnostics) override {
+    port::ActuatorApplyResult Apply(const port::ActuatorCommand& command,
+                                    port::DiagnosticSink& diagnostics) override {
         if (!enabled_ || !ready_) {
             port::EmitRateLimited(diagnostics,
                                   {port::DiagnosticLevel::kFailSafe,
@@ -89,7 +90,7 @@ public:
                                    "actuator apply requested while actuator adapter not ready",
                                    port::NowMs()},
                                   1000);
-            return false;
+            return {};
         }
 
         if (adaptation_hook_) {
@@ -100,11 +101,11 @@ public:
                                        hook_name_ + "; suppressing actuator output",
                                    port::NowMs()},
                                   1000);
-            return false;
+            return {};
         }
 
         if (command.emergency_stop) {
-            return DisableAllForApply(diagnostics, "actuator.emergency_stop.failed");
+            return {DisableAllForApply(diagnostics, "actuator.emergency_stop.failed"), {}};
         }
 
         const true_ls2k0300::MotorResult result = motor_.Apply(
@@ -120,15 +121,22 @@ public:
                                    MotorStatusText(result.status),
                                    port::NowMs()},
                                   1000);
-            return false;
+            return {};
         }
 
-        return true;
+        return {
+            true,
+            {result.applied_command.left_drive_pwm,
+             result.applied_command.right_drive_pwm,
+             result.applied_command.left_esc_pwm,
+             result.applied_command.right_esc_pwm,
+             false},
+        };
     }
 
-    void Disable(port::DiagnosticSink& diagnostics) override {
+    bool Disable(port::DiagnosticSink& diagnostics) override {
         if (!enabled_ || adaptation_hook_) {
-            return;
+            return true;
         }
         const true_ls2k0300::MotorResult result = motor_.Apply({});
         if (!result.ok()) {
@@ -139,18 +147,33 @@ public:
                                    MotorStatusText(result.status),
                                    port::NowMs()},
                                   1000);
+            return false;
         }
+        return true;
     }
 
-    void Shutdown(port::DiagnosticSink& diagnostics) override {
+    bool Shutdown(port::DiagnosticSink& diagnostics) override {
+        bool stop_ok = true;
         if (enabled_ && !adaptation_hook_) {
-            static_cast<void>(motor_.Stop());
+            const true_ls2k0300::MotorResult result = motor_.Stop();
+            stop_ok = result.ok();
+            if (!stop_ok) {
+                port::EmitRateLimited(diagnostics,
+                                      {port::DiagnosticLevel::kFailSafe,
+                                       "actuator.shutdown.failed",
+                                       MotorStatusText(result.status),
+                                       port::NowMs()},
+                                      1000);
+            }
         }
         ready_ = false;
-        diagnostics.Emit({port::DiagnosticLevel::kInfo,
-                          "actuator.shutdown",
-                          "actuator adapter shutdown complete",
+        diagnostics.Emit({stop_ok ? port::DiagnosticLevel::kInfo
+                                 : port::DiagnosticLevel::kFailSafe,
+                          stop_ok ? "actuator.shutdown" : "actuator.shutdown.unconfirmed",
+                          stop_ok ? "actuator adapter shutdown complete"
+                                  : "actuator adapter resources released but final motor stop was not confirmed",
                           port::NowMs()});
+        return stop_ok;
     }
 
     bool Ready() const override { return ready_; }

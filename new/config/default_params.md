@@ -5,11 +5,11 @@
 当前闭环固定为：
 
 ```text
-frame -> sparse BEV boundary facts -> visual reference facts -> reference usability -> tracking geometry
+frame -> 80x60 full-frame Otsu -> sparse BEV binary boundary facts -> visual reference facts -> reference usability -> tracking geometry
 -> reference-control readiness -> safety gate -> yaw-control terms -> actuator
 ```
 
-`new/config/default_params.json` 是人工编辑的运行默认合同。`RuntimeParameters` 内建默认值只用于缺文件或解析失败时的 fallback 镜像，必须通过 `run_param_store_load_runtime_parameters_test.sh` 校验活动 JSON 的 schema、解析与参数约束。
+`new/config/default_params.json` 是人工编辑的运行默认合同。`RuntimeParameters` 内建值只为可选字段缺省提供逐字段初值；缺文件、JSON 解析失败或任何字段/组合校验失败都会拒绝启动，绝不会整包 fallback 到内建参数。必须通过 `run_param_store_load_runtime_parameters_test.sh` 校验活动 JSON 的 schema、解析与参数约束。
 
 ## 1. 调参前提
 
@@ -19,9 +19,9 @@ frame -> sparse BEV boundary facts -> visual reference facts -> reference usabil
 
 ```bash
 cd new/user
-rtk ./debug.sh assistant on 192.168.137.1 39011 39012
+rtk ./debug.sh assistant on 192.168.137.1 43011 43012
 rtk ./start_with_upload.sh no-motion
-rtk env LS2K_HOST_CAPTURE_BACKEND=windows ./debug.sh steering host-capture --listen-host 0.0.0.0 --listen-port 39011 --media-listen-port 39012 --duration-s 20
+rtk env LS2K_HOST_CAPTURE_BACKEND=windows ./debug.sh steering host-capture --listen-host 0.0.0.0 --listen-port 43011 --media-listen-port 43012 --duration-s 20
 ```
 
 Windows 热点链路优先使用当前高端口配置。`debug.sh` 会在 `BOARD_IP` 未显式设置时自动发现热点板端，并在 `192.168.137.x` 下自动使用 Windows OpenSSH/SCP；`host-capture` 的 Windows 后端会先写本地临时目录，结束后再复制回 WSL evidence 目录。
@@ -55,10 +55,13 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 
 ## 2. 加载语义
 
+<!-- contract:params-load-fail-closed codes=params.missing,params.parse,params.validation out=unchanged startup=refused -->
+
 运行时由 `new/code/platform/param_store.cpp` 读取 `new/config/default_params.json`。
 
-- 缺文件：回退到内建默认值，并发布 `params.missing`。
-- JSON 非法、必填字段缺失、字段类型错误：回退到内建默认值，并发布 `params.parse`。
+- 缺文件：发布 `params.missing` 并拒绝启动，输出参数保持不变。
+- JSON 语法非法或根节点不是 object：发布 `params.parse` 并拒绝启动，输出参数保持不变。
+- 必填字段缺失、字段类型/范围错误或可选字段违反生产算术合同：发布 `params.validation` 并拒绝启动，输出参数保持不变。
 
 当前必填键：
 
@@ -68,12 +71,12 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 - `RIGHT_WHEEL_PID.{P,I,D,INTEGRAL_LIMIT}`
 - `assistant_tcp.{host,port}`
 
-其余键都是可选覆盖；缺省时使用内建默认值。可选键格式错误仍会触发整体 parse fallback。
+其余键都是可选覆盖；缺省时使用内建默认值。可选键格式错误或越界仍会触发整体 `params.validation`，拒绝启动而不是回退后继续运行。
 
 ## 3. 诊断到参数的顺序
 
 1. 没有 host 连接或数据很少：先看 `assistant_tcp.*`、`assistant_enabled`、`steering_media_*`，再看板端 `assistant.backoff`、`steering_media.backoff`、`steering_media.summary`。
-2. 边界事实不对：先看真实 raw/BEV 图像、`BEV_PROJECTOR`、`BEV_GEOMETRY`、`BEV_BOUNDARY` 和 `boundary_jump_count/boundary_span_count`；当前 runtime 不提供曝光控制参数。
+2. 边界事实不对：先看对齐的 raw/binary 图像、`otsu.{valid,threshold,source,stale_frames}`、`BEV_PROJECTOR`、`BEV_GEOMETRY` 和 `boundary_jump_count/boundary_span_count`；当前 runtime 不提供曝光控制参数。
 3. 边界事实对但 `eligibility.usable=false`：看 hold 周期 `BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES`、`BEV_CONTROL_MODEL.MIN_LEADING_REFERENCE_SAMPLES`、`BEV_GEOMETRY.FORWARD_SAMPLE_*`。
 4. reference 对但 `reference_tracking_geometry` 不合理：看 leading reference path、boundary spans/traces、`BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES`，并用 `lateral_error` 只做迁移期对照。
 5. tracking geometry 合理但转向幅度不对：看 `BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN`、`BEV_CONTROL_MODEL.HEADING_ERROR_TO_WHEEL_DELTA_GAIN`、`BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN`、`YAW_RATE_PID.*`、`raw_turn_output_limit`、`wheel_turn_accel_delta_scale`、`wheel_turn_decel_delta_scale`。
@@ -85,20 +88,28 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `RUNNING_SPEED_TARGET` | `400.0` | motion supervisor / yaw speed scale | 运行轮速目标单位，不是 m/s。增大后车速更高，yaw target 也会按 speed scale 变化。看 `effective_speed_target`、左右 `*_speed_target`、encoder measured。先用低值确认闭环再上调。 |
-| `YAW_RATE_PID.P` | `0.0` | gyro feedback | gyro yaw-rate 对 turn-output 的反馈修正增益。它不承担 reference tracking geometry 前馈/反馈幅度；摆动或 raw turn 频繁反向时先看它，单纯欠转先看 BEV control model 的三项 gain。 |
-| `YAW_RATE_PID.I` | `0.0` | gyro feedback | gyro 反馈积分。当前默认不用。只有长期同向 gyro 偏差且 P/D 不能解决时小幅增加；积分过大会拖尾。 |
-| `YAW_RATE_PID.D` | `0.0` | gyro feedback | 抑制 gyro 反馈误差变化。抖动和过冲明显时增加；过大时转向变钝。 |
+| `RUNNING_SPEED_TARGET` | `200.0` | motion supervisor / yaw speed scale | 运行轮速目标单位，不是 m/s，合法范围为 `[0, 5000]`。增大后车速更高，yaw target 也会按 speed scale 变化。看 `effective_speed_target`、左右 `*_speed_target`、encoder measured。先用低值确认闭环再上调。 |
+| `YAW_RATE_PID.P` | `0.0` | gyro feedback | gyro yaw-rate 对 turn-output 的反馈修正增益。它不承担 reference tracking geometry 前馈/反馈幅度；摆动或 raw turn 频繁反向时先看它，单纯欠转先看 BEV control model 的三项 gain。该值不是任意 `double`：必须能转换为有限生产 `float`，并与 I/D 一起通过联合最坏算术检查。 |
+| `YAW_RATE_PID.I` | `0.0` | gyro feedback | gyro 反馈积分。当前默认不用。只有长期同向 gyro 偏差且 P/D 不能解决时小幅增加；积分过大会拖尾。该值必须能转换为有限生产 `float`，并与 P/D 一起通过联合最坏算术检查。 |
+| `YAW_RATE_PID.D` | `0.0` | gyro feedback | 抑制 gyro 反馈误差变化。抖动和过冲明显时增加；过大时转向变钝。该值必须能转换为有限生产 `float`，并与 P/I 一起通过联合最坏算术检查。 |
 | `LEFT_WHEEL_PID.P` | `84.0` | 左轮速度 PID | 左轮速度误差主增益。左轮跟随慢增大；PWM 抖或超调减小。看 `left_speed_target`、`left_measured_speed`、`left_drive_pwm_command`。 |
-| `LEFT_WHEEL_PID.I` | `2.4` | 左轮速度 PID | 左轮长期误差积分。稳态低于目标时增大；起步后拖尾或积累过冲时减小。 |
+| `LEFT_WHEEL_PID.I` | `4.8` | 左轮速度 PID | 左轮长期误差积分。稳态低于目标时增大；起步后拖尾或积累过冲时减小。 |
 | `LEFT_WHEEL_PID.D` | `0.75` | 左轮速度 PID | 左轮速度变化阻尼。速度抖动可增大；响应迟钝可减小。 |
-| `LEFT_WHEEL_PID.INTEGRAL_LIMIT` | `100.0` | 左轮速度 PID | 左轮积分上限。积分饱和导致恢复慢时减小；长期负载跟不上且 I 有效时可增大。 |
+| `LEFT_WHEEL_PID.INTEGRAL_LIMIT` | `5000.0` | 左轮速度 PID | 左轮积分上限。积分饱和导致恢复慢时减小；长期负载跟不上且 I 有效时可增大。 |
 | `LEFT_WHEEL_PID.MEASUREMENT_FILTER_ALPHA` | `0.4` | 左轮速度测量滤波 | 越大越信当前测量，响应快但噪声多；越小越平滑但滞后。看 measured speed 噪声和 PWM 震荡。 |
-| `RIGHT_WHEEL_PID.P` | `96.0` | 右轮速度 PID | 右轮速度误差主增益，方法同左轮。左右默认不同，不要为了对称而强行改成一样。 |
-| `RIGHT_WHEEL_PID.I` | `2.2` | 右轮速度 PID | 右轮长期误差积分，方法同左轮。 |
+| `RIGHT_WHEEL_PID.P` | `96.0` | 右轮速度 PID | 右轮速度误差主增益，方法同左轮。左右参数可独立调节，不要为了对称而强行改成一样。 |
+| `RIGHT_WHEEL_PID.I` | `4.4` | 右轮速度 PID | 右轮长期误差积分，方法同左轮。 |
 | `RIGHT_WHEEL_PID.D` | `0.2` | 右轮速度 PID | 右轮速度变化阻尼，方法同左轮。 |
-| `RIGHT_WHEEL_PID.INTEGRAL_LIMIT` | `100.0` | 右轮速度 PID | 右轮积分上限，方法同左轮。 |
+| `RIGHT_WHEEL_PID.INTEGRAL_LIMIT` | `5000.0` | 右轮速度 PID | 右轮积分上限，方法同左轮。 |
 | `RIGHT_WHEEL_PID.MEASUREMENT_FILTER_ALPHA` | `0.4` | 右轮速度测量滤波 | 右轮测量滤波，方法同左轮。 |
+
+`YAW_RATE_PID.P/I/D` 没有三个彼此独立的固定上限。loader 和控制器复用同一个联合合同：IMU producer 的 raw 与启动 bias 都是 `int16`，最大计数差为 `65535`，乘 `0.0010641 rad/s/count` 后，生产 `gyro_z`/error 的可达幅值约为 `69.75 rad/s`，derivative 输入幅值最多约为其两倍；积分记忆限制为 `1200`，turn target 限制为生产 `float(INT_MAX)`。P/I/D 必须先各自转换为有限 `float`，再保证按控制器真实的 `turn target + P + I + D` 顺序，在上述 producer 可达极值下每一步都保持有限。输出 clamp 位于这些检查之后，不能把 `NaN` 或溢出的中间结果“消毒”为合法输出。
+
+<!-- contract:yaw-path assistant=yaw_control.valid/reason media=steering_snapshot.yaw_control.valid/reason -->
+
+如果 JSON 中的 YAW 配置违反该合同，参数加载会以 `params.validation` fail closed，程序不会带着该配置启动。若程序化状态或运行输入为非有限值、越过 producer/控制器合同，yaw 计算会返回 `valid=false` 和具体 `reason`；control loop 会在整数 `round/cast` 前将 gate 置为 `yaw_control_invalid`，让 MotionSupervisor 进入现有 `FAIL_SAFE_LATCHED`/emergency-stop 路径，并跳过 wheel mixer 与 wheel PID、清零 turn/轮速目标。排查时看 `control.steering_snapshot` 的 `yaw_control.valid/reason`：assistant telemetry 的 JSON 根级路径为 `yaw_control.valid/reason`，steering media 的路径为 `steering_snapshot.yaw_control.valid/reason`。同时检查 `control.yaw.invalid` 与 `control.veto.yaw_control_invalid` 诊断。
+
+左右轮 PID 使用基于最终有刷驱动 PWM 的条件积分 anti-windup。硬限幅、全局步进限制和禁止反转会提供明确的正/负方向 blocking facts；只有候选积分继续把输出推向该受阻方向时，才冻结本周期积分，候选积分能帮助退出受阻方向时仍允许提交。`pwm_floor` 只调整最低非零幅值，整数 rounding 只完成 PWM 量化，两者都不单独设置 blocking direction，因此不会仅因 floor/rounding 冻结积分，也允许积分穿越 floor 和零点。执行器未实际施加命令时冻结积分。遥测可通过 `*_drive_pwm_unconstrained/requested/desired/command`、`*_drive_pwm_step_limited/reverse_suppressed/floor_adjusted`、`*_pid_error/integral/integral_candidate` 与 `*_pid_anti_windup_active/reason` 还原该决策链；若未施加冻结，reason 为 `not_applied`，受明确方向约束冻结时为 `actuator_limit`，未冻结时为 `none`。
 
 ## 5. 相机与基础时序
 
@@ -111,9 +122,9 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 | `CAMERA_SOURCE.BUFFER_COUNT` | `3` | camera frame source | V4L2 mmap buffer 数。过小容易丢帧，过大可能增加队列滞后。 |
 | `CAMERA_SOURCE.POLL_TIMEOUT_MS` | `50` | camera capture worker | capture thread 内等待上限；不阻塞 main/control loop。 |
 | `CAMERA_SOURCE.DRAIN_READY_BUFFERS` | `1` | V4L2 capture owner | `0` 时 poll 后只尝试一次成功 DQBUF；`1` 时在 mmap buffer 数量上界内继续非阻塞 DQBUF，直到 `EAGAIN`，旧 buffer 立即回队并保留最新有效 buffer。`drained_buffer_count` 记录本次所有成功 DQBUF 次数。 |
-| `control_period_ms` | `5` | control timer | 控制 tick 周期。减小会提高 CPU/IO 压力；增大会降低控制响应。看 perf、`control.tick` 和实际电机稳定性。 |
-| `perception_stale_ms` | `120` | safety gate | 最新 perception 超过该时间即 stale。摄像头偶发慢帧可适当增大；过大则会让旧 reference 继续影响控制。看 `safety_gate.reason=perception_stale`。 |
-| `control_snapshot_emit_interval_ms` | `100` | debug reporter | 板端 `control.snapshot` 与 `control.steering_snapshot` 输出周期。只影响日志密度，不改变控制。 |
+| `control_period_ms` | `5` | control timer | 控制 tick 周期，合法范围 `[1, 1000]ms`。减小会提高 CPU/IO 压力；增大会降低控制响应。看 perf、`control.tick` 和实际电机稳定性。 |
+| `perception_stale_ms` | `120` | safety gate | 最新 perception 超过该时间即 stale，合法范围 `[1, 86400000]ms`（最大 24h）。摄像头偶发慢帧可适当增大；过大则会让旧 reference 继续影响控制。看 `safety_gate.reason=perception_stale`。 |
+| `control_snapshot_emit_interval_ms` | `100` | debug reporter | 板端 `control.snapshot` 与 `control.steering_snapshot` 输出周期，合法范围 `[1, 86400000]ms`（最大 24h）。只影响日志密度，不改变控制。 |
 
 `REFERENCE_TIME_ALIGNMENT` 是控制侧 reference 时间坐标对齐参数，不属于视觉识别：
 
@@ -142,43 +153,50 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 `USE_WHEEL_YAW_FALLBACK=1` 要求该共享比例大于 0 且
 `WHEEL_TRACK_M > 0`；`COMMAND_YAW_PREDICTION_ENABLED=1` 要求
 `FUTURE_PREDICTION_ENABLED=1` 且 `TURN_OUTPUT_TO_YAW_RATE_GAIN != 0`。
-这些组合不满足时配置加载回退默认参数，而不是等 estimator 运行时再 fail closed。
+<!-- contract:reference-time-alignment-invalid action=params.validation out=unchanged startup=refused -->
+
+这些组合不满足时，参数加载发布 `params.validation`、保持输出参数不变并拒绝启动；不会回退默认参数，也不会把错误组合留到 estimator 运行时处理。
 
 ## 6. 执行器与运动状态机
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
 | `pwm_limit` | `5000` | actuator safety | 左右轮 PWM 绝对限幅。车无力且 PID 未饱和时不要先改它；只有确认输出长期被限幅且硬件允许时上调。 |
-| `raw_turn_output_limit` | `20000` | turn output safety | turn-output 绝对限幅，单位与左右轮速半差一致。它是兜底边界，不是常规转向幅度调参旋钮；满幅时目标大约是 `speed ± raw_turn_output_limit`。 |
-| `wheel_turn_accel_delta_scale` | `2.0` | wheel target mixer | 差速混合中加速侧 turn delta 缩放系数。默认 `1.0` 保持旧行为；合法值为有限非负数，不设上限。正 turn 时左轮使用该系数，负 turn 时右轮使用该系数。 |
-| `wheel_turn_decel_delta_scale` | `1.0` | wheel target mixer | 差速混合中减速侧 turn delta 缩放系数。默认 `1.0` 保持旧行为；合法值为有限非负数，不设上限。正 turn 时右轮使用该系数，负 turn 时左轮使用该系数；减速侧目标低于 0 时仍 clamp 到 0。 |
+| `raw_turn_output_limit` | `20000` | turn output safety | 配置值合法范围为 `[0, INT_MAX]`，正 `INT_MAX` 仍合法，单位与左右轮速半差一致。实际进入 wheel mixer 的幅值上限为 `T = min(raw_turn_output_limit, 9000)`；它是兜底边界，不是常规转向幅度调参旋钮。 |
+| `wheel_turn_accel_delta_scale` | `1.0` | wheel target mixer | 差速混合中加速侧 turn delta 缩放系数，必须有限且非负。正 turn 时左轮使用该系数，负 turn 时右轮使用该系数；参数加载还会验证 `T * scale` 和 `base + T * scale` 按生产运算顺序均保持 finite。 |
+| `wheel_turn_decel_delta_scale` | `2.0` | wheel target mixer | 差速混合中减速侧 turn delta 缩放系数，必须有限且非负。正 turn 时右轮使用该系数，负 turn 时左轮使用该系数；参数加载还会验证 `T * scale` 保持 finite，减速侧目标低于 0 时仍 clamp 到 0。 |
 | `pwm_floor` | `0` | actuator shaping | 非零 PWM 的最小地板。低速克服静摩擦可小幅上调；过高会让轻微控制也变成突跳。 |
-| `prohibit_reverse_pwm` | `0` | actuator safety | 禁止输出反向 PWM。需要禁止反向时显式开启；关闭会扩大硬件风险。 |
-| `prohibit_reverse_pwm_step_limit` | `1000` | actuator safety | 反转保护/输出变化步进限制。反向突变风险高时减小；输出响应太慢且无反向风险时增大。 |
-| `brushless_debug_fixed_pwm_enabled` | `1` | actuator debug | 启用后，正常可驱动周期把左右无刷电调命令固定为 `brushless_debug_fixed_pwm`；关闭后左右无刷电调命令为 `0`。 |
-| `brushless_debug_fixed_pwm` | `600` | actuator debug | 无刷电调固定调试 PWM，合法范围 `[0, 1000]`。该值只进入统一 `ActuatorCommand` 的左右无刷字段，不在 adapter/bridge 内隐藏生成。 |
-| `motion_unveto_confirm_cycles` | `3` | motion supervisor | safety gate 解除后需要连续干净周期数。误解除风险高时增大；恢复太慢时减小。 |
-| `motion_spinup_ms` | `800` | motion supervisor | 起步速度爬升时间。起步打滑或冲击大时增大；起步太慢时减小。 |
-| `motion_turn_limit_spinup` | `1.0` | motion supervisor | 起步阶段转向限幅比例。起步时转向过猛减小；起步弯道跟不上增大。 |
-| `motion_pwm_step_limit` | `3000` | motion supervisor | motion 阶段 PWM 步进限制。输出突变大时减小；响应太慢时增大。 |
-| `motion_stop_ms` | `300` | motion supervisor | stop 阶段速度衰减时间。停车太急增大；停车拖尾减小。 |
-| `motion_stop_encoder_threshold` | `8` | motion supervisor | 判定停止的 encoder 阈值。车已停但不退出 STOPPING 可增大；未停就退出可减小。 |
-| `motion_fault_rearm_hold_ms` | `600` | motion supervisor | fail-safe latch 后允许 rearm 前的保持时间。现场排障保守时增大；恢复流程过慢时减小。 |
+| `prohibit_reverse_pwm` | `1` | actuator safety | 禁止输出反向 PWM。负请求先变为期望值 `0`，再由全局驱动 PWM 步进限制缓降。 |
+| `drive_pwm_step_limit` | `2000` | actuator safety | 左右有刷驱动 PWM 每控制周期最大变化量；覆盖 SPINUP、RUNNING 和受控 STOPPING，急停立即归零。 |
+| `brushless_debug_fixed_pwm_enabled` | `0` | actuator debug | 启用后，正常可驱动周期把左右无刷电调命令固定为 `brushless_debug_fixed_pwm`；关闭后左右无刷电调命令为 `0`。 |
+| `brushless_debug_fixed_pwm` | `900` | actuator debug | 无刷电调固定调试 PWM，合法范围 `[0, 1000]`。该值只进入统一 `ActuatorCommand` 的左右无刷字段，不在 adapter/bridge 内隐藏生成。 |
+| `motion_unveto_confirm_cycles` | `3` | motion supervisor | safety gate 解除后需要连续干净周期数，必须至少为 `1`，且 `motion_unveto_confirm_cycles * control_period_ms <= 86400000ms`（24h）。误解除风险高时增大；恢复太慢时减小。 |
+| `motion_spinup_ms` | `800` | motion supervisor | 起步速度爬升时间，合法范围 `[0, 86400000]ms`；`0` 表示立即完成 spinup。起步打滑或冲击大时增大；起步太慢时减小。 |
+| `motion_turn_limit_spinup` | `1.0` | motion supervisor | 起步阶段转向限幅比例，必须 finite 且在 `[0, 1]`。起步时转向过猛减小；起步弯道跟不上增大。 |
+| `motion_stop_ms` | `300` | motion supervisor | stop 阶段速度衰减时间，合法范围 `[0, 86400000]ms`；`0` 表示立即完成时间衰减，但退出 STOPPING 仍要求 encoder quiet 且 shaped command 为零。停车太急增大；停车拖尾减小。 |
+| `motion_stop_encoder_threshold` | `8` | motion supervisor | 判定停止的 encoder 阈值，合法范围 `[0, 5000]`。车已停但不退出 STOPPING 可增大；未停就退出可减小。 |
+| `motion_fault_rearm_hold_ms` | `600` | motion supervisor | fail-safe latch 后允许 rearm 前的保持时间，合法范围 `[0, 86400000]ms`；`0` 表示不附加时间保持，但其他 rearm 条件仍须满足。现场排障保守时增大；恢复流程过慢时减小。 |
+
+上述有限性检查中的 `base` 是可配置的基础轮速目标：`RUNNING_SPEED_TARGET` 的合法范围是 `[0, 5000]`；`ML.ENABLED=1` 时可达的 `ML.MANEUVER.SPEED_TARGET` 合法范围是 `(0, 5000]`。当 `T=0` 时，任意 finite、非负的 accel/decel scale 都合法；当 `T>0` 时，scale 必须通过表中与生产同序的乘法、加法有限性检查。任何越界或产生 non-finite 中间结果的配置都会由 loader fail closed，拒绝启动，不会留给 mixer 或遥测层补救。
+
+调度间隔和状态机时间窗共享单项最大值 `86400000ms`（24h）；只有消费方定义了立即语义的窗口允许 `0`。确认周期不是独立的无界整数，其与 `control_period_ms` 的乘积同样不得超过 24h。
+<!-- contract:param-semantic-bounds ports=[1,65535] control-period-ms=[1,1000] runtime-window-max-ms=86400000 motion-turn-spinup=finite[0,1] motion-stop-encoder=[0,5000] low-voltage-threshold=[1,INT_MAX] raw-turn-output=[0,INT_MAX] -->
+<!-- contract:motion-confirmation-window cycles-min=1 product-ms=<=86400000 -->
 
 ## 7. Low Voltage 与调试传输
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `low_voltage_raw_threshold` | `200` | power adapter / safety gate | ADC raw 低电压阈值。实际使用值记录在 `LowVoltageSample.threshold`；`LS2K_LOW_VOLTAGE_RAW_THRESHOLD` 环境变量优先。误报低电压时先查 ADC raw，再谨慎下调；不设上限，超大正数会更保守。 |
-| `low_voltage_sample_interval_ms` | `1000` | low-voltage sampler | 运行期低电压采样周期。默认 1Hz；降低会增加 IO，升高会降低低电压发现速度。 |
+| `low_voltage_raw_threshold` | `200` | power adapter / safety gate | ADC raw 低电压阈值，合法范围 `[1, INT_MAX]`；正 `INT_MAX` 仍合法。实际使用值记录在 `LowVoltageSample.threshold`；`LS2K_LOW_VOLTAGE_RAW_THRESHOLD` 环境变量优先。误报低电压时先查 ADC raw，再谨慎下调；超大正数会更保守。 |
+| `low_voltage_sample_interval_ms` | `1000` | low-voltage sampler | 运行期低电压采样周期，合法范围 `[1, 86400000]ms`（最大 24h）。默认 1Hz；降低会增加 IO，升高会降低低电压发现速度。 |
 | `assistant_enabled` | `1` | assistant TCP | 是否启用 command/ACK/telemetry 链路。连接调试时保持开启；纯离线运行可关闭。 |
 | `assistant_tcp.host` | `192.168.137.1` | assistant TCP | 板端主动连接的 host 地址。Windows 热点链路通常是 `192.168.137.1`；错误时板端会 `assistant.backoff Connection refused/timeout`。 |
-| `assistant_tcp.port` | `48011` | assistant TCP | host assistant listener 端口。必须和 `debug.sh assistant on/local` / `debug.sh steering host-capture` / `tune_speed.py` 一致。Windows 热点链路优先使用高端口，避免低端口被系统策略拒绝绑定。 |
+| `assistant_tcp.port` | `43011` | assistant TCP | host assistant listener 端口，合法范围 `[1, 65535]`。必须和 `debug.sh assistant on/local` / `debug.sh steering host-capture` / `tune_speed.py` 一致。Windows 热点链路优先使用高端口，避免低端口被系统策略拒绝绑定。 |
 | `steering_media_enabled` | `1` | steering media TCP | 是否启用图像和 steering snapshot side channel。调视觉/boundary facts 时保持开启；带宽或 CPU 排查时可临时关闭。 |
-| `steering_media_port` | `48012` | steering media TCP | host media listener 端口。必须和 `--media-listen-port` 一致。 |
-| `steering_media_publish_interval_ms` | `20` | steering media service | 图像发布间隔。`20ms` 理论上约 `50fps`；实际看 host `effective_fps` 和板端 `steering_media.summary.skip_interval/image_sent/image_queued`。弱热点链路优先降位深或降采样，确认队列不堆积后再压低该间隔。 |
+| `steering_media_port` | `43012` | steering media TCP | host media listener 端口，合法范围 `[1, 65535]`。必须和 `--media-listen-port` 一致。 |
+| `steering_media_publish_interval_ms` | `100` | steering media service | 图像发布间隔，合法范围 `[0, 86400000]ms`（最大 24h）；`0` 表示每个 eligible tick 都可发布。`100ms` 理论上约 `10fps`；实际看 host `effective_fps` 和板端 `steering_media.summary.skip_interval/image_sent/image_queued`。弱热点链路优先降位深或降采样，确认队列不堆积后再压低该间隔。 |
 | `steering_media_downsample` | `1` | steering media service | 图像 side channel 的发送降采样倍率。`1` 保留 320x240 显示尺寸；热点链路吞吐不足时可临时设为 `2`/`4`，header 仍保留 source 尺寸和 downsample。 |
-| `steering_media_gray_bits` | `2` | steering media service | 图像传输灰度位深。支持 `1/2/4/8`。`2` 使用 `gray2_packed`，320x240 固定四分之一带宽；距离更远或热点吞吐不足时用 `1`，需要更清晰实时画面时用 `4`，需要原始 gray8 证据时设为 `8` 或用 `--media-gray-bits 8`。 |
+| `steering_media_gray_bits` | `8` | steering media service | 图像传输灰度位深。支持 `1/2/4/8`。当前 `8` 发送原始 gray8；热点吞吐不足时可用 `2` 的 `gray2_packed` 降至四分之一带宽，或进一步改用 `1`。 |
 | `steering_media_publish_latest_frame` | `0` | steering media service | 诊断开关。默认 `0` 时图像帧与 `control.steering_snapshot` 精确强绑定；显式置 `1` 或脚本 `--media-latest-frame` 才会发布最新相机帧并在 header 标出非对齐状态。 |
 | `steering_media_publish_disarmed` | `1` | steering media service | 是否允许 DISARMED/no-motion 状态发布图像帧。静态采集、BEV 调参和赛道外取证时保持开启；关闭时 host 只能收到 config，板端 `steering_media.summary.skip_disarmed` 会增长。 |
 
@@ -208,37 +226,37 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 
 | 参数 | 当前 JSON 值 | 作用与调参方法 |
 | --- | --- | --- |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_0` | `0.130440284` | reference path 第 0 层。当前视觉 reference 只能从 boundary facts 形成的近端连续候选开始。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_1` | `0.215509525` | 第 1 层。用于 leading 连续段和插值。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_2` | `0.300580069` | 第 2 层。默认 `MIN_LEADING_REFERENCE_SAMPLES=3` 时，这是最小 usable 远端。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_3` | `0.385649310` | 第 3 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_4` | `0.470719854` | 第 4 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_5` | `0.555789094` | 第 5 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_6` | `0.640858335` | 第 6 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_7` | `0.725928879` | 第 7 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_8` | `0.810998120` | 第 8 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_9` | `0.896068664` | 第 9 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_10` | `0.981137905` | 第 10 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_11` | `1.066207145` | 第 11 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_12` | `1.151277689` | 第 12 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_13` | `1.236346930` | 第 13 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_14` | `1.321416170` | 第 14 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_15` | `1.406486715` | 第 15 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_16` | `1.491555955` | 第 16 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_17` | `1.576626500` | 第 17 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_18` | `1.661695740` | 第 18 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_19` | `1.746764980` | 第 19 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_20` | `1.831835525` | 第 20 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_21` | `1.916904765` | 第 21 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_22` | `2.001975310` | 第 22 层。 |
-| `BEV_GEOMETRY.FORWARD_SAMPLE_23` | `2.087044550` | 第 23 层；当前算法不会为了远端点跨 gap 补点。 |
-| `BEV_GEOMETRY.SPARSE_ROW_COUNT` | `24` | 启用原 24 个 `FORWARD_SAMPLE_*` 的前 N 行。设为 `12` 表示只扫描并输出 `FORWARD_SAMPLE_0..11`，不是把 12 行重新均匀分布到 0.061..1.5m。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_0` | `0.050000000000` | reference path 第 0 层。当前视觉 reference 只能从 boundary facts 形成的近端连续候选开始。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_1` | `0.076363636364` | 第 1 层。用于 leading 连续段和插值。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_2` | `0.102727272727` | 第 2 层。默认 `MIN_LEADING_REFERENCE_SAMPLES=3` 时，这是最小 usable 远端。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_3` | `0.129090909091` | 第 3 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_4` | `0.155454545455` | 第 4 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_5` | `0.181818181818` | 第 5 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_6` | `0.208181818182` | 第 6 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_7` | `0.234545454545` | 第 7 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_8` | `0.260909090909` | 第 8 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_9` | `0.287272727273` | 第 9 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_10` | `0.313636363636` | 第 10 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_11` | `0.340000000000` | 第 11 层；前 20% 区域的唯一分界点。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_12` | `0.436666666667` | 第 12 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_13` | `0.533333333333` | 第 13 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_14` | `0.630000000000` | 第 14 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_15` | `0.726666666667` | 第 15 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_16` | `0.823333333333` | 第 16 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_17` | `0.920000000000` | 第 17 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_18` | `1.016666666667` | 第 18 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_19` | `1.113333333333` | 第 19 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_20` | `1.210000000000` | 第 20 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_21` | `1.306666666667` | 第 21 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_22` | `1.403333333333` | 第 22 层。 |
+| `BEV_GEOMETRY.FORWARD_SAMPLE_23` | `1.500000000000` | 第 23 层；当前算法不会为了远端点跨 gap 补点。 |
+| `BEV_GEOMETRY.SPARSE_ROW_COUNT` | `24` | 启用 24 个 `FORWARD_SAMPLE_*` 的前 N 行。设为 `12` 表示只扫描并输出 `FORWARD_SAMPLE_0..11`，不会把 12 行重新分布到完整的 0.05..1.5m。 |
 | `BEV_GEOMETRY.SEARCH_LATERAL_LIMIT_M` | `1.764610363` | 旧虚构横向半宽 `1.6` 按横向尺度换算。它不是原图有效 span 裁剪。 |
 | `BEV_GEOMETRY.LATERAL_STEP_M` | `0.022057630` | 旧虚构横向步长 `0.02` 按横向尺度换算。 |
 | `BEV_GEOMETRY.BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M` | `0.195660427` | trace 沿前向行推进，旧阈值 `0.15` 按前向尺度换算；这是等效换算值，不是新实测真值。 |
 | `BEV_GEOMETRY.NOMINAL_ROAD_HALF_WIDTH_M` | `0.225` | 实测赛道全宽 `0.45m` 的半宽；覆盖旧虚构值的等效换算。CircleV2 ExitTrace 通过同一 `OrdinaryRoadModel.half_width` 消费。 |
 
-`FORWARD_SAMPLE_*` 必须单调递增。旧虚构坐标的 0.1..1.6 已整体乘前向尺度，当前 24 点按 0.130440284..2.087044550m 分布，步长约 0.085069m。这些参数已经是校正后的 BEV 车辆坐标系 `forward_m`，消费方不得再缩放。改采样分布会影响 LUT identity、leading range、lateral-error 权重含义和 steering media snapshot；不要只改某一个点来修局部画面。
+`FORWARD_SAMPLE_*` 必须单调递增。当前 24 点包含两个端点：前 20% 物理区域 `0.05..0.34m` 含端点放置 12 点，间距为 `(0.34 - 0.05) / 11 = 0.026363636364m`；后续 `(0.34..1.50m]` 放置剩余 12 点，间距为 `(1.50 - 0.34) / 12 = 0.096666666667m`。分界点 `0.34m` 只出现一次并属于前段。这些参数位于校正后的 BEV 车辆坐标系 `forward_m`，消费方不得再缩放。改采样分布会影响 LUT identity、leading range、lateral-error 权重含义和 steering media snapshot；不要只改某一个点来修局部画面。
 
 `SPARSE_ROW_COUNT` 是活跃前缀长度，合法范围为 `1..24`。它改变性能和最大前视距离，但不改变任何已定义采样行的物理位置；参数变化会让 sparse LUT 与 hold geometry identity 失效并重建。
 
@@ -248,31 +266,29 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 
 原图到 BEV 的关系只用于采样事实：原图提供 Y 值，BEV row facts 和 BEV metric 几何负责路径判断。不要新增“原图和 BEV 是否匹配”的业务防御判断。
 
-## 10. BEV Boundary
+## 10. Sparse Otsu Boundary
 
-| 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
-| --- | ---: | --- | --- |
-| `BEV_BOUNDARY.LOCAL_JUMP_MIN_Y` | `32` | sparse BEV row boundary facts | 同一条 sparse BEV 横线上相邻 Y sample 形成边界跳变所需的最小亮度差。调参只看板端发布的 `boundary_jump_count`、`boundary_span_count`、row facts 与 raw/BEV 画面对齐情况。 |
+active runtime 对原始 YUYV 帧划分 `80x60` 个等面积单元，只读取每个单元中心的 Y，用固定 4800 点直方图计算全帧 Otsu。唯一分类合同是 `Y > threshold` 为白、`Y <= threshold` 为黑。相邻横向 BEV 样本发生黑白转换时产生 jump，rising/falling 配对形成 span；采样索引缺口会中断邻接，不会跨不可观测区域造边界。
 
-`BEV_BOUNDARY` 是 V9 active 感知入口；line/cross/CircleV2 只消费 boundary jumps/spans/traces，不读取全局 threshold 或 white ratio。
+Otsu 无效时最多沿用最近有效阈值 3 帧，第 4 帧起不发布二值边界。`source=current|cached|none` 和 `stale_frames` 必须与 threshold 一起读取。边界生成和原图逐像素连通性检验共享同一状态；不存在 `BEV_BOUNDARY` 参数或局部亮度差回退。
 
 ## 11. BEV Classification 与 hold
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `BEV_CLASSIFICATION.WHITE_CONFIDENCE_MIN` | `0.55` | debug/legacy classification | V9 active line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
-| `BEV_CLASSIFICATION.UNKNOWN_CONFIDENCE_MIN` | `0.25` | debug/legacy classification | V9 active line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
-| `BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES` | `32` | reference continuity | 当前视觉 facts 不 usable 时最多 hold 上次路径的周期数。短暂丢点可增大；不想让旧路径影响控制就减小。hold 点必须显示 `reference.mode=hold_last`、`reference.source=hold`。 |
+| `BEV_CLASSIFICATION.WHITE_CONFIDENCE_MIN` | `0.55` | debug/legacy classification | active sparse Otsu line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
+| `BEV_CLASSIFICATION.UNKNOWN_CONFIDENCE_MIN` | `0.25` | debug/legacy classification | active sparse Otsu line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
+| `BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES` | `64` | reference continuity | 当前视觉 facts 不 usable 时最多 hold 上次路径的周期数。短暂丢点可增大；不想让旧路径影响控制就减小。hold 点必须显示 `reference.mode=hold_last`、`reference.source=hold`。 |
 
-`BEV_CLASSIFICATION` 不再是 active sparse row authority。当前 active 视觉入口是 `BEV_BOUNDARY`；line/cross/CircleV2 调参优先看 boundary jumps/spans/traces 和相关 element evidence。
+`BEV_CLASSIFICATION` 不再是 active sparse row 二值 authority；line/cross/CircleV2 优先看 Otsu 状态、boundary jumps/spans/traces 和相关 element evidence。
 
 ## 12. BEV Control Model
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN` | `136.007362` | turn-output target | 旧增益 `150` 除以横向尺度，保持同一旧路径上的 lateral term 等效；尚未实车重调。 |
-| `BEV_CONTROL_MODEL.HEADING_ERROR_TO_WHEEL_DELTA_GAIN` | `59.136130` | turn-output target | 旧增益 `50` 按小角度斜率变化 `forward_scale/lateral_scale` 换算；大航向误差下不是严格等价，需实车复核。 |
-| `BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN` | `23.141201` | turn-output target | 旧增益 `15` 按小斜率曲率变化 `forward_scale^2/lateral_scale` 换算；尚未实车重调。 |
+| `BEV_CONTROL_MODEL.LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN` | `300` | turn-output target | 当前默认增益 `300`；尚未实车重调。 |
+| `BEV_CONTROL_MODEL.HEADING_ERROR_TO_WHEEL_DELTA_GAIN` | `120` | turn-output target | 当前默认增益 `120`；大航向误差下需实车复核。 |
+| `BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN` | `20` | turn-output target | 当前默认增益 `20`；尚未实车重调。 |
 | `BEV_CONTROL_MODEL.MIN_LEADING_REFERENCE_SAMPLES` | `3` | reference usability | 第一个连续真实 reference 点段的最小数量。近端丢线本身不使路径不可用，但真实连续点少于该值仍不可用。低于 3 时按 3 处理。 |
 | `BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES` | `3` | reference tracking geometry | 二次拟合 `reference_tracking_geometry` 所需的最小 leading usable 样本数。合法范围 `[3, 24]`。 |
 
@@ -286,15 +302,24 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 | --- | ---: | --- | --- |
 | `BEV_ELEMENT.CROSS_EXIT_TAKEOVER_ENABLED` | `1` | visual element candidate inclusion | 默认开启。`element_evidence.cross_exit` 触发并构造 candidate 后可进入 visual-reference arbitration；最终仍必须通过 existing candidate validation、reference usability、tracking geometry、reference-control readiness 和 safety gate。 |
 | `BEV_ELEMENT.CIRCLE_V2_ENABLED` | `1` | scene registry | CircleV2Scene 启动期组合开关。关闭时不注册 V2 场景；运行时热切换若存在，必须由组合层 reset scene memory，不属于 reducer 正常转移。 |
-| `BEV_ELEMENT.CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG` | `400` | CircleV2 B->C gate | InnerTrace 进入后的方向归一化累计 yaw 阈值。左/右符号由 CircleV2EventObserver 按锁存方向归一化，不使用 `abs(yaw_delta)`。 |
+| `BEV_ELEMENT.CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG` | `360` | CircleV2 B->C gate | InnerTrace 进入后的方向归一化累计 yaw 阈值。左/右符号由 CircleV2EventObserver 按锁存方向归一化，不使用 `abs(yaw_delta)`。 |
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_HOLD_FRAMES` | `120` | CircleV2 C hold | ExitTrace 输出保持帧数，同时承担 cooldown 职责。当前 `control_period_ms=5` 时约 `600ms`；小于 2 按参数解析失败处理。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS` | `2000` | CircleV2 B stall fallback | InnerTrace 持续超过该时长且 directed yaw 仍没有明显累计时退回 Idle。合法值 `>=1`。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_STALL_YAW_MIN_DEG` | `60` | CircleV2 B stall fallback | InnerTrace 超时兜底的“明显 yaw 积分”阈值。超时后 directed yaw 小于该值才退回 Idle。合法值 `0..720`。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M` | `0.0` | CircleV2 B path | InnerTrace 路径从内圆边线向道路内部偏移的距离。`0.0` 表示贴内圆边线；正值左环岛向右偏、右环岛向左偏。合法值 `0..2`。 |
 | `BEV_ELEMENT.CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN` | `0.7` | CircleV2 observer | CircleV2 Phase1 cue 和 Approach entry gate 使用“对侧直线”时的最低拟合置信度。`0.0` 等价旧行为；合法值 `0..1`。 |
-| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT` | `3` | CircleV2 Approach gate | Approach entry gate 在下部 ROI 内要求的最少证据行数。它不限制 ROI 内最多扫描多少行，不改变 Phase1 cue 的全局 trace 语义。合法值 `1..24`。 |
-| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M` | `0.130440284` | CircleV2 Approach gate | 旧前向下限 `0.1` 按前向尺度换算。 |
-| `BEV_ELEMENT.CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M` | `0.456540995` | CircleV2 Approach gate | 旧前向上限 `0.35` 按前向尺度换算；完整 `[min,max]` 区间都会参与开口搜索。 |
+| `BEV_ELEMENT.CIRCLE_V2_MIN_SAMPLEABLE_WIDTH_M` | `0.35` | CircleV2 row eligibility | 行可参与 opening 观察所需的最小可采样横向宽度。 |
+| `BEV_ELEMENT.CIRCLE_V2_OPENING_FORWARD_MIN_M` | `0.05` | CircleV2 opening owner | 唯一 opening 搜索 ROI 的绝对前向下限。 |
+| `BEV_ELEMENT.CIRCLE_V2_OPENING_FORWARD_MAX_M` | `1.5` | CircleV2 opening owner | 唯一 opening 搜索 ROI 的绝对前向上限。 |
+| `BEV_ELEMENT.CIRCLE_V2_OPENING_DISTANCE_MIN_M` | `0.055` | CircleV2 opening owner | 当前同侧边界相对历史同侧直线的最小有向垂距。 |
+| `BEV_ELEMENT.CIRCLE_V2_OPENING_CONFIRM_FORWARD_SPAN_M` | `0.1` | CircleV2 opening owner | 开口从 frontier 起必须连续成立的前向米制长度。 |
+| `BEV_ELEMENT.CIRCLE_V2_ENTRY_FORWARD_MIN_M` | `0.1` | CircleV2 Approach gate | Approach 接受统一 opening frontier 的绝对前向下限。 |
+| `BEV_ELEMENT.CIRCLE_V2_ENTRY_FORWARD_MAX_M` | `0.5` | CircleV2 Approach gate | Approach 接受统一 opening frontier 的绝对前向上限。 |
+| `BEV_ELEMENT.CIRCLE_V2_INNER_GEOMETRY_FORWARD_MIN_M` | `0.05` | CircleV2 InnerTrace geometry | InnerTrace 真实边界几何 ROI 下限。 |
+| `BEV_ELEMENT.CIRCLE_V2_INNER_GEOMETRY_FORWARD_MAX_M` | `0.5` | CircleV2 InnerTrace geometry | InnerTrace 真实边界几何 ROI 上限。 |
+| `BEV_ELEMENT.CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M` | `0.05` | CircleV2 ExitTrace geometry | ExitTrace 真实边界几何 ROI 下限。 |
+| `BEV_ELEMENT.CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M` | `0.5` | CircleV2 ExitTrace geometry | ExitTrace 真实边界几何 ROI 上限。 |
+| `BEV_ELEMENT.CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M` | `0.13` | CircleV2 ExitTrace geometry | ExitTrace 对侧真实边界在 ROI 内允许的最大横向跨度。 |
 
 `cross_exit` 第一版只用于 evidence/debug。不要为了让车“看起来过十字”而用它直接改 actuator、yaw、safety 或 hold。现场先在 no-motion capture 中确认 `element_evidence.cross_exit.{present,confidence,reason,candidate.*}` 与 raw/BEV 画面对齐。generic element 扩展记录统一在 `element_evidence.records[]`，旧消费者只读 `cross_exit` 即可。
 
@@ -340,13 +365,15 @@ both reference time alignment and the ML maneuver odometry path.
 work is scheduled and zero-valued ROI calibration, odometry, and maneuver
 fields are intentionally valid.
 
+<!-- contract:ml-enabled-speed-target range=(0,5000] -->
+
 When `ML.ENABLED=1`, startup validation is fail-closed. The ROI search span,
 forward/lateral grid steps, expected rectangle edges and their tolerances must be finite and
 positive. YUV intervals must be ordered inside `[0,255]`; orientation must be
 in `(0, pi/2]`; component count must be at least one; rectangularity and red
 fill thresholds must be in `(0,1]`; score weights must be finite and
-nonnegative with a positive sum. `MOTION_ODOMETRY.ENCODER_TICKS_TO_METER`,
-`ML.MANEUVER.SPEED_TARGET`, and `ML.MANEUVER.EXIT_FORWARD_M` must be positive.
+nonnegative with a positive sum. `ML.MANEUVER.SPEED_TARGET` must be in `(0,5000]`, while
+`MOTION_ODOMETRY.ENCODER_TICKS_TO_METER` and `ML.MANEUVER.EXIT_FORWARD_M` must be positive.
 The duration and integration-gap limits must be at least 1 ms. Exit tolerances
 and cooldown may be zero.
 

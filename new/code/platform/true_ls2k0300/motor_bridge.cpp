@@ -5,10 +5,11 @@
 #include <cstdlib>
 #include <fcntl.h>
 
+#include "port/actuator_command_types.hpp"
+
 namespace ls2k::platform::true_ls2k0300 {
 namespace {
 
-constexpr int kDriveDutyLimit = 9000;
 constexpr int kEscDutyLimit = 1000;
 
 MotorResult Ok() noexcept {
@@ -214,26 +215,46 @@ MotorResult MotorDevice::ApplyDrive(WritableDevice& pwm,
                                     DriveState& state,
                                     int logical_duty) noexcept {
     const int clamped =
-        std::clamp(logical_duty, -kDriveDutyLimit, kDriveDutyLimit);
+        std::clamp(logical_duty,
+                   -port::kDrivePwmDutyCapability,
+                   port::kDrivePwmDutyCapability);
     const int hardware_duty = clamped;
-    const int direction = hardware_duty < 0 ? -1 : 1;
-    const std::uint8_t gpio_level =
-        static_cast<std::uint8_t>(direction < 0 ? '0' : '1');
     const std::uint16_t duty =
         static_cast<std::uint16_t>(std::abs(hardware_duty));
     const std::uint16_t zero = 0;
-    const bool direction_changed =
-        !state.direction_known || state.direction_sign != direction;
 
-    if (direction_changed && !state.pwm_zero) {
+    if (duty == 0) {
+        const MotorResult stopped = Write(pwm, &zero, sizeof(zero));
+        if (stopped.ok()) {
+            state.pwm_zero = true;
+            state.applied_duty = 0;
+        }
+        return stopped;
+    }
+
+    const int direction = hardware_duty < 0 ? -1 : 1;
+    const std::uint8_t gpio_level =
+        static_cast<std::uint8_t>(direction < 0 ? '0' : '1');
+    const bool first_direction = !state.direction_known;
+    const bool reversing = state.direction_known && state.direction_sign != direction;
+
+    if (reversing) {
         const MotorResult cleared = Write(pwm, &zero, sizeof(zero));
         if (!cleared.ok()) {
             return cleared;
         }
-    }
-    if (direction_changed) {
         const MotorResult directed =
             Write(gpio, &gpio_level, sizeof(gpio_level));
+        if (!directed.ok()) {
+            return directed;
+        }
+        state.direction_sign = direction;
+        state.pwm_zero = true;
+        state.applied_duty = 0;
+        return Ok();
+    }
+    if (first_direction) {
+        const MotorResult directed = Write(gpio, &gpio_level, sizeof(gpio_level));
         if (!directed.ok()) {
             return directed;
         }
@@ -245,7 +266,8 @@ MotorResult MotorDevice::ApplyDrive(WritableDevice& pwm,
 
     state.direction_known = true;
     state.direction_sign = direction;
-    state.pwm_zero = duty == 0;
+    state.pwm_zero = false;
+    state.applied_duty = hardware_duty;
     return Ok();
 }
 
@@ -271,7 +293,7 @@ MotorResult MotorDevice::Apply(const MotorCommand& command) noexcept {
     // Board wiring is crossed: the logical left wheel owns the physical right
     // PWM/GPIO pair, and the logical right wheel owns the physical left pair.
     MotorResult result = ApplyDrive(
-        right_pwm_, right_gpio_, left_, command.left_drive_pwm);
+        right_pwm_, right_gpio_, left_, -command.left_drive_pwm);
     if (result.ok()) {
         result = ApplyDrive(
             left_pwm_, left_gpio_, right_, command.right_drive_pwm);
@@ -287,7 +309,16 @@ MotorResult MotorDevice::Apply(const MotorCommand& command) noexcept {
     if (result.ok()) {
         result = Write(esc_right_pwm_, &esc_right, sizeof(esc_right));
     }
-    return result.ok() ? result : FailSafeAfter(result);
+    if (!result.ok()) {
+        return FailSafeAfter(result);
+    }
+    result.applied_command = {
+        -left_.applied_duty,
+        right_.applied_duty,
+        static_cast<int>(esc_left),
+        static_cast<int>(esc_right),
+    };
+    return result;
 }
 
 MotorResult MotorDevice::Stop() noexcept {

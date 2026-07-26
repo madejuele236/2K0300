@@ -5,6 +5,33 @@
 
 namespace ls2k::control {
 
+struct DrivePwmShapingChannel;
+
+enum class WheelPidAntiWindupReason {
+    kNone = 0,
+    kActuatorLimit,
+    kNotApplied,
+    kInvalidComputation,
+};
+
+struct WheelPidComputation final {
+    bool valid = false;
+    double error = 0.0;
+    double filtered_measured_speed = 0.0;
+    double previous_integral = 0.0;
+    double candidate_integral = 0.0;
+    double output_with_previous_integral = 0.0;
+    double unconstrained_output = 0.0;
+    int requested_pwm = 0;
+    bool hard_saturated = false;
+};
+
+struct WheelPidCommitResult final {
+    bool anti_windup_active = false;
+    WheelPidAntiWindupReason reason = WheelPidAntiWindupReason::kNone;
+    double integral = 0.0;
+};
+
 /// 旧版车轮PID控制器，用于控制电机转速跟踪目标速度
 class WheelPidController {
 public:
@@ -12,12 +39,18 @@ public:
     void Configure(const port::WheelPidParameters& params);
     /// 重置控制器内部状态（误差、积分、滤波）
     void Reset();
-    /// 计算PID输出
+    /// 计算 PID 候选输出；积分仅在 CommitAppliedOutput 后提交。
     /// @param target_speed 目标速度
     /// @param measured_speed 测量速度（先经过一阶低通滤波）
     /// @param pwm_limit PWM输出限幅
-    /// @return 计算得到的PWM值
-    int Compute(double target_speed, double measured_speed, int pwm_limit);
+    /// 输入或中间结果非有限时返回 valid=false、requested_pwm=0，且不推进控制器状态。
+    /// @return 候选积分、未限幅输出、PWM 请求及计算有效性
+    WheelPidComputation Evaluate(double target_speed, double measured_speed, int pwm_limit);
+    /// 根据真实执行器结果提交、冻结候选积分，或在步进限幅 anti-windup 时清零积分。
+    WheelPidCommitResult CommitAppliedOutput(const WheelPidComputation& computation,
+                                             const DrivePwmShapingChannel& shaping,
+                                             bool actuator_applied);
+    [[nodiscard]] double integral() const noexcept { return integral_; }
 
 private:
     double p_ = 84.0;                     ///< 比例系数
@@ -30,6 +63,8 @@ private:
     double filtered_measured_speed_ = 0.0;  ///< 滤波后的测量速度
     bool filtered_measured_ready_ = false;  ///< 滤波是否已初始化
 };
+
+[[nodiscard]] const char* ToString(WheelPidAntiWindupReason reason) noexcept;
 
 }  // namespace ls2k::control
 

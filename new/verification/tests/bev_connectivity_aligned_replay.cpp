@@ -1,20 +1,18 @@
-#include <arpa/inet.h>
-
 #include <cmath>
+#include <cctype>
 #include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <regex>
-#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "platform/bootstrap.hpp"
 #include "vision/bev/bev_image_segment_connectivity.hpp"
-#include "vision/bev/bev_reference_path_builder.hpp"
+#include "vision/image/otsu_threshold.hpp"
 
 namespace {
 
@@ -27,62 +25,136 @@ struct PathPoint {
     float lateral_m = 0.0F;
 };
 
-struct Envelope {
-    std::string header;
-    std::vector<std::uint8_t> payload;
-};
-
 void Require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
 
-Envelope ReadEnvelope(const std::string& path) {
-    std::ifstream input(path, std::ios::binary);
-    Require(input.is_open(), "cannot open aligned envelope: " + path);
-    std::uint32_t lengths[2]{};
-    input.read(reinterpret_cast<char*>(lengths), sizeof(lengths));
-    Require(input.gcount() == static_cast<std::streamsize>(sizeof(lengths)), "truncated envelope prefix");
-    const std::uint32_t header_size = ntohl(lengths[0]);
-    const std::uint32_t payload_size = ntohl(lengths[1]);
-    Envelope envelope{};
-    envelope.header.resize(header_size);
-    envelope.payload.resize(payload_size);
-    input.read(envelope.header.data(), static_cast<std::streamsize>(header_size));
-    Require(input.gcount() == static_cast<std::streamsize>(header_size), "truncated envelope header");
-    input.read(reinterpret_cast<char*>(envelope.payload.data()), static_cast<std::streamsize>(payload_size));
-    Require(input.gcount() == static_cast<std::streamsize>(payload_size), "truncated envelope payload");
-    Require(input.peek() == std::char_traits<char>::eof(), "envelope has unaccounted trailing bytes");
-    return envelope;
+std::string ReadFrameMetadata(const std::string& path, int frame_id) {
+    std::ifstream input(path);
+    Require(input.is_open(), "cannot open metadata: " + path);
+    std::string line;
+    const std::string needle = "\"frame_id\": " + std::to_string(frame_id) + ',';
+    while (std::getline(input, line)) {
+        if (line.find(needle) != std::string::npos) {
+            return line;
+        }
+    }
+    throw std::runtime_error("metadata lacks requested frame_id=" +
+                             std::to_string(frame_id));
 }
 
-std::vector<PathPoint> ParseAlignedCenters(const std::string& header) {
-    const std::size_t begin = header.find("\"samples\":[");
-    Require(begin != std::string::npos, "aligned header lacks visual-reference samples");
-    const std::size_t end = header.find(",\"reference\":", begin);
-    Require(end != std::string::npos, "cannot bound visual-reference samples");
-    const std::string samples = header.substr(begin, end - begin);
+std::string CompactJson(const std::string& text) {
+    std::string compact;
+    compact.reserve(text.size());
+    bool in_string = false;
+    bool escaped = false;
+    for (const char value : text) {
+        if (in_string) {
+            compact.push_back(value);
+            if (escaped) {
+                escaped = false;
+            } else if (value == '\\') {
+                escaped = true;
+            } else if (value == '"') {
+                in_string = false;
+            }
+        } else if (value == '"') {
+            in_string = true;
+            compact.push_back(value);
+        } else if (!std::isspace(static_cast<unsigned char>(value))) {
+            compact.push_back(value);
+        }
+    }
+    return compact;
+}
+
+std::vector<std::uint8_t> ReadRawGray8(const std::string& path,
+                                       int width,
+                                       int height) {
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    Require(input.is_open(), "cannot open raw gray8 frame: " + path);
+    const std::streamsize size = input.tellg();
+    const std::size_t expected =
+        static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    Require(size == static_cast<std::streamsize>(expected),
+            "raw gray8 payload size mismatch");
+    input.seekg(0);
+    std::vector<std::uint8_t> bytes(expected);
+    input.read(reinterpret_cast<char*>(bytes.data()), size);
+    Require(input.gcount() == size, "truncated raw gray8 frame");
+    return bytes;
+}
+
+std::string JsonArrayAfter(const std::string& text,
+                           std::size_t begin,
+                           const std::string& key) {
+    const std::size_t key_position = text.find(key, begin);
+    Require(key_position != std::string::npos, "metadata lacks " + key);
+    const std::size_t array_begin = text.find('[', key_position + key.size());
+    Require(array_begin != std::string::npos, "metadata has malformed " + key);
+    int depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (std::size_t index = array_begin; index < text.size(); ++index) {
+        const char value = text[index];
+        if (in_string) {
+            if (escaped) {
+                escaped = false;
+            } else if (value == '\\') {
+                escaped = true;
+            } else if (value == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (value == '"') {
+            in_string = true;
+        } else if (value == '[') {
+            ++depth;
+        } else if (value == ']') {
+            --depth;
+            if (depth == 0) {
+                return text.substr(array_begin, index - array_begin + 1U);
+            }
+        }
+    }
+    throw std::runtime_error("metadata has unterminated " + key);
+}
+
+std::vector<PathPoint> ParseAcceptedLinePath(const std::string& metadata) {
+    const std::size_t candidates = metadata.find("\"path_candidates\":");
+    Require(candidates != std::string::npos, "metadata lacks path_candidates");
+    const std::size_t line_candidate = metadata.find("\"kind\":\"line\"", candidates);
+    Require(line_candidate != std::string::npos, "metadata lacks accepted line candidate");
+    const std::string samples = JsonArrayAfter(metadata, line_candidate, "\"samples\":");
     const std::regex point_re(
         R"re("forward_m":(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?),"lateral_m":(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?))re");
     std::vector<PathPoint> points;
-    for (std::sregex_iterator it(samples.begin(), samples.end(), point_re), last; it != last; ++it) {
+    for (std::sregex_iterator it(samples.begin(), samples.end(), point_re), last;
+         it != last;
+         ++it) {
         points.push_back({std::stof((*it)[1].str()), std::stof((*it)[2].str())});
     }
-    Require(points.size() == ls2k::port::kBevReferenceSampleCount,
-            "aligned header path sample count differs from runtime contract");
+    Require(!points.empty(), "accepted line candidate has no present samples");
+    Require(points.size() <= ls2k::port::kBevReferenceSampleCount,
+            "accepted line candidate exceeds reference sample contract");
     return points;
 }
 
-std::vector<std::uint8_t> ExpandGray2ToYuyv(const std::vector<std::uint8_t>& packed,
-                                            int width,
-                                            int height) {
-    const std::size_t pixels = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
-    Require(packed.size() == (pixels * 2U + 7U) / 8U, "gray2 payload size mismatch");
-    std::vector<std::uint8_t> yuyv(pixels * 2U, 128U);
-    for (std::size_t index = 0; index < pixels; ++index) {
-        const std::size_t bit_index = index * 2U;
-        const unsigned shift = 6U - static_cast<unsigned>(bit_index % 8U);
-        const std::uint8_t level = (packed[bit_index / 8U] >> shift) & 3U;
-        yuyv[index * 2U] = static_cast<std::uint8_t>(level * 85U);
+int ParsePublishedCurrentOtsu(const std::string& metadata) {
+    const std::regex otsu_re(
+        R"re("otsu":\{"valid":true,"threshold":([0-9]+),"source":"current","stale_frames":0\})re");
+    std::smatch match;
+    Require(std::regex_search(metadata, match, otsu_re),
+            "aligned frame does not publish current valid Otsu state");
+    return std::stoi(match[1].str());
+}
+
+std::vector<std::uint8_t> ExpandGray8ToYuyv(
+    const std::vector<std::uint8_t>& gray) {
+    std::vector<std::uint8_t> yuyv(gray.size() * 2U, 128U);
+    for (std::size_t index = 0; index < gray.size(); ++index) {
+        yuyv[index * 2U] = gray[index];
     }
     return yuyv;
 }
@@ -94,167 +166,119 @@ std::string StatusName(ls2k::vision::BEVSegmentConnectivityStatus status) {
     return "unobservable";
 }
 
-ls2k::vision::BEVSimpleRowScan MakeRow(const PathPoint& point,
-                                       const ls2k::port::RuntimeParameters& params) {
-    ls2k::vision::BEVSimpleRowScan row{};
-    row.valid = true;
-    row.forward_m = point.forward_m;
-    row.sampleable_count = 161U;
-    row.sampleable_left_m = -0.8F;
-    row.sampleable_right_m = 0.8F;
-    row.sampleable_width_m = 1.6F;
-    const float half_width = params.bev_geometry.nominal_road_half_width_m;
-    ls2k::vision::BEVBoundarySpan span{};
-    span.forward_m = point.forward_m;
-    span.left_m = point.lateral_m - half_width;
-    span.right_m = point.lateral_m + half_width;
-    span.center_m = point.lateral_m;
-    span.width_m = 2.0F * half_width;
-    span.left_lateral_index = static_cast<int>(std::lround(span.left_m * 100.0F));
-    span.right_lateral_index = static_cast<int>(std::lround(span.right_m * 100.0F));
-    row.spans.push_back(span);
-    return row;
-}
-
-void WriteReport(const std::string& path,
-                 const std::string& source,
-                 const std::string& source_sha256,
-                 const std::string& params_sha256,
-                 const ls2k::port::RuntimeParameters& params,
-                 std::size_t omitted_row,
-                 const std::vector<PathPoint>& output,
-                 const std::vector<ls2k::vision::BEVSegmentConnectivityResult>& edges,
-                 bool blocked_found,
-                 const PathPoint& blocked_from,
-                 const PathPoint& blocked_to,
-                 const ls2k::vision::BEVSegmentConnectivityResult& blocked) {
+void WriteReport(
+    const std::string& path,
+    const std::string& metadata_path,
+    const std::string& raw_path,
+    const std::string& metadata_sha256,
+    const std::string& raw_sha256,
+    const std::string& params_sha256,
+    int otsu_threshold,
+    const std::vector<PathPoint>& points,
+    const std::vector<ls2k::vision::BEVSegmentConnectivityResult>& edges) {
     std::ofstream out(path);
     Require(out.is_open(), "cannot write replay report: " + path);
     out << "{\n  \"result\": \"PASS\",\n"
-        << "  \"source\": \"" << source << "\",\n"
-        << "  \"source_sha256\": \"" << source_sha256 << "\",\n"
-        << "  \"alignment\": {\"frame_source\": \"snapshot_aligned\", \"width\": 320, \"height\": 240, \"payload_encoding\": \"gray2_packed\"},\n"
-        << "  \"decode\": \"gray2 levels expanded to gray8 luma in YUYV storage; this preserves the captured quantized levels but not raw-sensor precision\",\n"
-        << "  \"parameters\": {\"source\": \"new/config/default_params.json via production ParamStore\", \"sha256\": \""
-        << params_sha256 << "\", \"local_jump_min_y\": " << params.bev_boundary.local_jump_min_y
-        << ", \"nominal_road_half_width_m\": " << params.bev_geometry.nominal_road_half_width_m
-        << ", \"boundary_trace_max_adjacent_distance_m\": " << params.bev_geometry.boundary_trace_max_adjacent_distance_m << "},\n"
-        << "  \"omitted_row\": " << omitted_row << ",\n  \"output_points\": [";
-    for (std::size_t i = 0; i < output.size(); ++i) {
-        if (i) out << ',';
-        out << "{\"forward_m\":" << std::setprecision(10) << output[i].forward_m
-            << ",\"lateral_m\":" << output[i].lateral_m << '}';
+        << "  \"metadata\": {\"path\": \"" << metadata_path
+        << "\", \"sha256\": \"" << metadata_sha256 << "\"},\n"
+        << "  \"raw_gray8\": {\"path\": \"" << raw_path
+        << "\", \"sha256\": \"" << raw_sha256 << "\"},\n"
+        << "  \"params\": {\"path\": \"new/config/default_params.json\", \"sha256\": \""
+        << params_sha256 << "\"},\n"
+        << "  \"alignment\": {\"frame_source\": \"snapshot_aligned\", \"width\": 320, \"height\": 240, \"pixel_format\": \"gray8\", \"payload_encoding\": \"raw\"},\n"
+        << "  \"otsu\": {\"valid\": true, \"threshold\": " << otsu_threshold
+        << ", \"source\": \"current\", \"stale_frames\": 0},\n"
+        << "  \"accepted_point_count\": " << points.size() << ",\n"
+        << "  \"verified_edges\": [";
+    for (std::size_t index = 0; index < edges.size(); ++index) {
+        if (index) out << ',';
+        out << "{\"from\":\"" << (index == 0U ? "origin" : "accepted_point")
+            << "\",\"to_index\":" << index
+            << ",\"status\":\"" << StatusName(edges[index].status)
+            << "\",\"sample_count\":" << edges[index].sampled_point_count
+            << ",\"visible_segment_clipped\":"
+            << (edges[index].visible_segment_clipped ? "true" : "false") << '}';
     }
-    out << "],\n  \"accepted_edges\": [";
-    for (std::size_t i = 0; i < edges.size(); ++i) {
-        if (i) out << ',';
-        out << "{\"from_output_index\":" << i << ",\"to_output_index\":" << (i + 1U)
-            << ",\"status\":\"" << StatusName(edges[i].status) << "\",\"sample_count\":"
-            << edges[i].sampled_point_count << '}';
-    }
-    out << "],\n  \"blocked_pair\": ";
-    if (blocked_found) {
-        out << "{\"from\":{\"forward_m\":" << blocked_from.forward_m << ",\"lateral_m\":" << blocked_from.lateral_m
-            << "},\"to\":{\"forward_m\":" << blocked_to.forward_m << ",\"lateral_m\":" << blocked_to.lateral_m
-            << "},\"status\":\"blocked\",\"sample_count\":" << blocked.sampled_point_count << '}';
-    } else {
-        out << "null";
-    }
-    out << ",\n  \"commands\": [\"new/verification/tests/run_bev_connectivity_aligned_replay.sh\", \"git diff --check\"]\n}\n";
+    out << "]\n}\n";
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
     try {
-        Require(argc == 6, "usage: replay ENVELOPE PARAMS REPORT SOURCE_SHA256 PARAMS_SHA256");
-        const Envelope envelope = ReadEnvelope(argv[1]);
-        Require(envelope.header.find("\"frame_source\":\"snapshot_aligned\"") != std::string::npos,
-                "frame_source is not snapshot_aligned");
-        Require(envelope.header.find("\"width\":320") != std::string::npos &&
-                    envelope.header.find("\"height\":240") != std::string::npos,
-                "aligned dimensions are not 320x240");
-        Require(envelope.header.find("\"payload_encoding\":\"gray2_packed\"") != std::string::npos,
-                "payload is not gray2_packed");
-        const std::vector<PathPoint> centers = ParseAlignedCenters(envelope.header);
+        Require(argc == 11,
+                "usage: replay METADATA RAW PARAMS REPORT METADATA_SHA RAW_SHA PARAMS_SHA WIDTH HEIGHT FRAME_ID");
+        const int width = std::stoi(argv[8]);
+        const int height = std::stoi(argv[9]);
+        const int frame_id = std::stoi(argv[10]);
+        Require(width == 320 && height == 240, "replay expects captured 320x240 geometry");
+        const std::string metadata = CompactJson(ReadFrameMetadata(argv[1], frame_id));
+        Require(metadata.find("\"frame_source\":\"snapshot_aligned\"") != std::string::npos,
+                "frame source is not snapshot_aligned");
+        Require(metadata.find("\"aligned\":true") != std::string::npos,
+                "steering snapshot is not frame-aligned");
+        Require(metadata.find("\"pixel_format\":\"gray8\"") != std::string::npos &&
+                    metadata.find("\"payload_encoding\":\"raw\"") != std::string::npos,
+                "payload is not exact gray8/raw");
+        const int published_threshold = ParsePublishedCurrentOtsu(metadata);
+        const std::vector<PathPoint> points = ParseAcceptedLinePath(metadata);
 
         Diagnostics diagnostics{};
-        const std::unique_ptr<ls2k::port::IParamStore> store = ls2k::platform::MakeParamStore();
+        const std::unique_ptr<ls2k::port::IParamStore> store =
+            ls2k::platform::MakeParamStore();
         ls2k::port::RuntimeParameters params{};
-        Require(store && store->LoadRuntimeParameters(argv[2], params, diagnostics),
+        Require(store && store->LoadRuntimeParameters(argv[3], params, diagnostics),
                 "production ParamStore failed to load current defaults");
         Require(!params.loaded_from_defaults && !params.parse_failure,
                 "current defaults unexpectedly fell back or failed validation");
         ls2k::vision::BEVProjector projector{};
-        Require(projector.Configure(params.bev_projector), "production projector rejected current calibration");
+        Require(projector.Configure(params.bev_projector),
+                "production projector rejected current calibration");
 
-        std::vector<std::uint8_t> yuyv = ExpandGray2ToYuyv(envelope.payload, 320, 240);
+        const std::vector<std::uint8_t> gray = ReadRawGray8(argv[2], width, height);
+        std::vector<std::uint8_t> yuyv = ExpandGray8ToYuyv(gray);
         ls2k::port::CameraPixelFrameView frame{};
         frame.valid = true;
         frame.format = ls2k::port::CameraFrameFormat::kYuyv;
         frame.data = yuyv.data();
-        frame.width = 320;
-        frame.height = 240;
-        frame.stride = 640;
-        const ls2k::vision::BEVImageSegmentConnectivity query(frame, projector, params.bev_boundary);
-
-        const std::size_t omitted_row = 10U;
-        std::vector<ls2k::vision::BEVSimpleRowScan> rows;
-        rows.reserve(centers.size());
-        for (std::size_t i = 0; i < centers.size(); ++i) {
-            auto row = MakeRow(centers[i], params);
-            if (i == omitted_row) row.valid = false;
-            rows.push_back(row);
-        }
-        const ls2k::port::BEVReferencePath reference =
-            ls2k::vision::BuildReferencePath(rows, params, query);
-        std::vector<PathPoint> output;
-        for (const auto& sample : reference.sampled_path) {
-            if (sample.present) output.push_back({sample.point.forward_m, sample.point.lateral_m});
-        }
-        Require(output.size() > omitted_row,
-                "connected path ended before it could reconnect across omitted row");
-        for (const PathPoint& point : output) {
-            Require(std::fabs(point.forward_m - centers[omitted_row].forward_m) > 1.0e-5F,
-                    "omitted row unexpectedly appeared in connected output");
-        }
-        Require(output[omitted_row].forward_m > centers[omitted_row].forward_m,
-                "later point did not reconnect across omitted interior row");
+        frame.width = width;
+        frame.height = height;
+        frame.stride = width * 2;
+        const ls2k::vision::OtsuThresholdResult computed =
+            ls2k::vision::ComputeSparseOtsuThreshold(frame);
+        Require(computed.valid, "aligned gray8 frame has no valid two-class Otsu threshold");
+        Require(computed.threshold == published_threshold,
+                "host replay Otsu differs from aligned board snapshot");
+        const ls2k::port::OtsuThresholdState otsu{
+            true, computed.threshold, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
+        const ls2k::vision::BEVImageSegmentConnectivity query(frame, projector, otsu);
 
         std::vector<ls2k::vision::BEVSegmentConnectivityResult> edges;
-        for (std::size_t i = 1; i < output.size(); ++i) {
-            const auto result = query.Evaluate({output[i - 1].forward_m, output[i - 1].lateral_m},
-                                               {output[i].forward_m, output[i].lateral_m},
-                                               ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
-            Require(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
-                    "accepted edge is blocked or unobservable on production re-evaluation");
-            edges.push_back(result);
+        edges.reserve(points.size());
+        for (std::size_t index = 0; index < points.size(); ++index) {
+            const ls2k::port::BEVPoint from =
+                index == 0U
+                    ? ls2k::port::BEVPoint{0.0F, 0.0F}
+                    : ls2k::port::BEVPoint{points[index - 1U].forward_m,
+                                           points[index - 1U].lateral_m};
+            const ls2k::port::BEVPoint to{points[index].forward_m,
+                                          points[index].lateral_m};
+            const auto policy =
+                index == 0U
+                    ? ls2k::vision::BEVSegmentVisibilityPolicy::kAllowFromEndpointClip
+                    : ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment;
+            const auto edge = query.Evaluate(from, to, policy);
+            Require(edge.status == ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+                    "accepted path contains blocked or unobservable edge at index " +
+                        std::to_string(index));
+            edges.push_back(edge);
         }
 
-        bool blocked_found = false;
-        PathPoint blocked_from{}, blocked_to{};
-        ls2k::vision::BEVSegmentConnectivityResult blocked{};
-        for (float forward : params.bev_geometry.forward_samples_m) {
-            for (float a = -0.8F; a <= 0.8F && !blocked_found; a += 0.1F) {
-                for (float b = a + 0.1F; b <= 0.8F; b += 0.1F) {
-                    const auto result = query.Evaluate({forward, a}, {forward, b},
-                        ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
-                    if (result.status == ls2k::vision::BEVSegmentConnectivityStatus::kBlocked) {
-                        blocked_found = true;
-                        blocked_from = {forward, a};
-                        blocked_to = {forward, b};
-                        blocked = result;
-                        break;
-                    }
-                }
-            }
-            if (blocked_found) break;
-        }
-        WriteReport(argv[3], argv[1], argv[4], argv[5], params, omitted_row,
-                    output, edges, blocked_found, blocked_from, blocked_to, blocked);
-        std::cout << "PASS: aligned connectivity replay reconnected row " << omitted_row
-                  << "; accepted_edges=" << edges.size()
-                  << "; blocked_pair=" << (blocked_found ? "found" : "not_found") << '\n';
+        WriteReport(argv[4], argv[1], argv[2], argv[5], argv[6], argv[7],
+                    computed.threshold, points, edges);
+        std::cout << "PASS: aligned gray8 Otsu=" << computed.threshold
+                  << " accepted_points=" << points.size()
+                  << " verified_edges=" << edges.size() << '\n';
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;

@@ -217,7 +217,7 @@ void TestTurnOutputTargetUsesReferenceTrackingGeometryTermsAndRawTargetLimit() {
     params.bev_control_model.curvature_to_wheel_delta_gain = 2.0;
 
     ls2k::control::SteeringYawController controller;
-    controller.Configure(params);
+    Expect(controller.Configure(params), "valid yaw controller configuration must be accepted");
     ls2k::port::BEVControllerMemory memory{};
     ls2k::port::ReferenceTrackingGeometry geometry{};
     geometry.computed = true;
@@ -261,7 +261,7 @@ void TestGyroTurnUsesGateApprovedGyroValueOnly() {
     params.yaw_rate_pid_d = 0.0;
 
     ls2k::control::SteeringYawController controller;
-    controller.Configure(params);
+    Expect(controller.Configure(params), "valid yaw PID configuration must be accepted");
     ls2k::port::BEVControllerMemory memory{};
     const auto output = controller.ComputeGyroTurn(10.0F, 2.0F, memory);
 

@@ -186,7 +186,7 @@ Windows 热点常用 host 地址是 `192.168.137.1`。板端连接这个地址�
 - BEV 显示宽度以 `DEBUG_GRID_WIDTH` 为基础并加宽到可见梯形范围，前向范围来自 `BEV_GEOMETRY.FORWARD_SAMPLE_*`；如果找不到有效可见范围，才退回 `SEARCH_LATERAL_LIMIT_M`。
 - 如果 `config_snapshot` 尚未到达或 projector 参数无效，网页自动退回 raw 显示并在 Display 字段标出 fallback。
 
-启动参数 `--display-mode bev|raw` 控制默认显示图像；等价环境变量是 `LS2K_LIVE_DISPLAY_MODE`。`steering_snapshot.visual_reference.path_candidates` 会随每帧 media header 发送板端已经构建的候选路径事实：`kind/source/reason/confidence/mode` 和各个 `sampled_path` 有效点的 `(forward_m,lateral_m,confidence,source)`。网页直接把这些只读事实点绘制到 canvas 上，不再在侧栏显示候选摘要；绘制不得在网页里复刻一份无人维护的感知算法。侧栏 Boundary 显示板端 `perception_tag`、`boundary_row_count`、`boundary_jump_count` 和 `boundary_span_count`；Display stats 只描述当前显示 payload 的灰度范围，不是 runtime authority。CircleV2 的独立几何中间点如果没有出现在发送端合同中，网页不推断、不绘制。
+启动参数 `--display-mode bev|raw` 控制默认显示图像；等价环境变量是 `LS2K_LIVE_DISPLAY_MODE`。每帧 media header 的 `steering_snapshot.reference.control_path` 是板端在控制时刻完成时间对齐/裁剪后真正进入控制的路径。网页只把这份只读事实绘制到 canvas，不绘制 `visual_reference.path_candidates` 原始候选，也不依据 `leading_usable_samples` 自行裁剪。侧栏 Boundary 显示板端 `perception_tag`、`boundary_row_count`、`boundary_jump_count` 和 `boundary_span_count`；Display stats 只描述当前显示 payload 的灰度范围，不是 runtime authority。CircleV2 的独立几何中间点如果没有出现在发送端合同中，网页不推断、不绘制。
 
 如果右侧 `messages_published` 为 0，说明主机 viewer 正常，但还没有收到板端 media 帧。
 

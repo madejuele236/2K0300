@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -21,10 +22,24 @@ bool Contains(const std::string& haystack, const std::string& needle) {
     return haystack.find(needle) != std::string::npos;
 }
 
+void WriteStrictJsonArtifact(const std::string& filename, const std::string& json) {
+    const char* artifact_dir = std::getenv("LS2K_STRICT_JSON_ARTIFACT_DIR");
+    if (artifact_dir == nullptr || artifact_dir[0] == '\0') {
+        return;
+    }
+    const std::string path = std::string(artifact_dir) + "/" + filename;
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    Expect(output.is_open(), "failed to open strict JSON artifact: " + path);
+    output << json;
+    Expect(output.good(), "failed to write strict JSON artifact: " + path);
+}
+
 ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     ls2k::observability::ControlDebugSnapshot snapshot{};
     snapshot.valid = true;
     snapshot.motion_phase = ls2k::control::MotionPhase::kRunning;
+    snapshot.steering.otsu = {
+        true, 87, ls2k::port::OtsuThresholdSource::kCached, 3U};
     snapshot.steering.element_evidence.cross_exit.present = true;
     snapshot.steering.element_evidence.cross_exit.forward_min_m = 0.20;
     snapshot.steering.element_evidence.cross_exit.forward_max_m = 0.42;
@@ -39,6 +54,19 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.element_evidence.cross_exit.candidate.takeover_enabled = false;
     snapshot.steering.element_evidence.cross_exit.candidate.included_in_arbitration = false;
     snapshot.steering.element_evidence.cross_exit.candidate.reason = "takeover_disabled";
+    snapshot.steering.circle_v2.enabled = true;
+    snapshot.steering.circle_v2.frame_phase = "approach";
+    snapshot.steering.circle_v2.next_phase = "inner_trace";
+    snapshot.steering.circle_v2.dir = "left";
+    snapshot.steering.circle_v2.openings.left.available = true;
+    snapshot.steering.circle_v2.openings.left.frontier_forward_m = 0.24F;
+    snapshot.steering.circle_v2.openings.left.effective_lateral_m = -0.36F;
+    snapshot.steering.circle_v2.openings.left.source =
+        ls2k::port::CircleOpeningSource::kFovEdgeLowerBound;
+    snapshot.steering.circle_v2.openings.left.outward_distance_m = 0.16F;
+    snapshot.steering.circle_v2.openings.left.confirmed_forward_span_m = 0.12F;
+    snapshot.steering.circle_v2.openings.left.origin_connected = true;
+    snapshot.steering.circle_v2.openings.left.opposite_straight = true;
     ls2k::port::VisualElementEvidenceRecord record{};
     record.id = "synthetic_marker";
     record.present = true;
@@ -85,6 +113,8 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.safety_gate.reason = "clear";
     snapshot.steering.degraded.active = false;
     snapshot.steering.degraded.reason = "none";
+    snapshot.steering.yaw_control.valid = true;
+    snapshot.steering.yaw_control.reason = "ok";
     snapshot.steering.yaw_control.turn_output_target = 0.12;
     snapshot.steering.yaw_control.lateral_term = 0.03;
     snapshot.steering.yaw_control.heading_term = -0.01;
@@ -133,6 +163,11 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.raw_turn_output = 12;
     snapshot.applied_turn_output = 10;
     snapshot.apply_outcome = ls2k::safety::ControlApplyOutcome::kDriveCommandApplied;
+    snapshot.actuators_armed = true;
+    snapshot.last_confirmed_left_drive_pwm = 120;
+    snapshot.last_confirmed_right_drive_pwm = 130;
+    snapshot.last_confirmed_left_brushless_pwm = 500;
+    snapshot.last_confirmed_right_brushless_pwm = 600;
     snapshot.tuning_mode_enabled = true;
     snapshot.turn_suppressed = false;
     snapshot.effective_speed_target = 1.2;
@@ -144,6 +179,23 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.right_drive_pwm_command = 130;
     snapshot.left_brushless_pwm_command = 500;
     snapshot.right_brushless_pwm_command = 600;
+    snapshot.left_drive_pwm_unconstrained = 145.5;
+    snapshot.right_drive_pwm_unconstrained = -50.25;
+    snapshot.left_drive_pwm_requested = 146;
+    snapshot.right_drive_pwm_requested = -50;
+    snapshot.left_drive_pwm_desired = 146;
+    snapshot.right_drive_pwm_desired = 0;
+    snapshot.left_drive_pwm_step_limited = true;
+    snapshot.right_drive_pwm_reverse_suppressed = true;
+    snapshot.left_pid_error = 2.5;
+    snapshot.right_pid_error = -1.5;
+    snapshot.left_pid_integral = 9.0;
+    snapshot.right_pid_integral = 4.0;
+    snapshot.left_pid_integral_candidate = 11.5;
+    snapshot.right_pid_integral_candidate = 2.5;
+    snapshot.left_pid_anti_windup_active = true;
+    snapshot.left_pid_anti_windup_reason =
+        ls2k::control::WheelPidAntiWindupReason::kActuatorLimit;
     return snapshot;
 }
 
@@ -163,6 +215,10 @@ void TestSnapshotFactsMapToAssistantView() {
            "generic element evidence records must be copied");
     Expect(telemetry.element_evidence.records[0].id == "synthetic_marker",
            "generic element evidence record id must be copied");
+    Expect(telemetry.circle_v2.openings.left.available &&
+               telemetry.circle_v2.openings.left.source ==
+                   ls2k::port::CircleOpeningSource::kFovEdgeLowerBound,
+           "CircleV2 opening facts must be copied to assistant telemetry");
     Expect(telemetry.visual_reference.present,
            "visual reference presence must be copied");
     Expect(telemetry.visual_reference.source == "roadblock_bypass",
@@ -174,6 +230,10 @@ void TestSnapshotFactsMapToAssistantView() {
     Expect(telemetry.visual_reference.rejected_candidate_reason ==
                "none_candidate_not_visual",
            "visual reference rejection reason must be copied");
+    Expect(telemetry.otsu.valid && telemetry.otsu.threshold == 87 &&
+               telemetry.otsu.source == ls2k::port::OtsuThresholdSource::kCached &&
+               telemetry.otsu.stale_frames == 3U,
+           "complete Otsu state must be copied");
     Expect(telemetry.reference.mode == "interval_center",
            "selected reference mode must be copied");
     Expect(telemetry.reference.source == "roadblock_bypass",
@@ -196,18 +256,34 @@ void TestSnapshotFactsMapToAssistantView() {
            "left brushless PWM command must be copied");
     Expect(telemetry.right_brushless_pwm_command == 600,
            "right brushless PWM command must be copied");
+    Expect(telemetry.left_drive_pwm_unconstrained == 145.5 &&
+               telemetry.left_drive_pwm_requested == 146 &&
+               telemetry.left_drive_pwm_desired == 146,
+           "left PWM shaping chain must be copied");
+    Expect(telemetry.right_drive_pwm_reverse_suppressed,
+           "right reverse suppression must be copied");
+    Expect(telemetry.left_pid_anti_windup_active &&
+               telemetry.left_pid_anti_windup_reason == "actuator_limit",
+           "left anti-windup state must be copied");
     Expect(telemetry.raw_turn_output == 12,
            "raw turn output must be copied");
     Expect(telemetry.applied_turn_output == 10,
            "applied turn output must be copied");
     Expect(telemetry.actuator_apply_outcome == "drive_command_applied",
            "actuator apply outcome must be copied");
+    Expect(telemetry.actuators_armed && telemetry.last_confirmed_left_drive_pwm == 120 &&
+               telemetry.last_confirmed_right_drive_pwm == 130,
+           "assistant view must expose the last confirmed actuator state");
 }
 
 void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
     const ls2k::transport::AssistantTelemetryView telemetry =
         ls2k::observability::BuildAssistantTelemetryView(MakeSnapshot());
     const std::string json = ls2k::transport::EncodeAssistantTelemetry(telemetry);
+    WriteStrictJsonArtifact("assistant_telemetry.json", json);
+    Expect(Contains(json,
+                    "\"otsu\":{\"valid\":true,\"threshold\":87,\"source\":\"cached\",\"stale_frames\":3}"),
+           "assistant telemetry must serialize the complete Otsu state");
     Expect(Contains(json, "\"element_evidence\":{\"cross_exit\":{\"present\":true"),
            "assistant telemetry must include element evidence object");
     Expect(!Contains(json, "\"cross_exit\":{\"present\":true,\"confidence\":"),
@@ -218,6 +294,14 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must expose disabled arbitration inclusion");
     Expect(Contains(json, "\"records\":[{\"id\":\"synthetic_marker\""),
            "assistant telemetry must serialize generic element records");
+    Expect(Contains(json,
+                    "\"circle_v2\":{\"enabled\":true,\"frame_phase\":\"approach\",\"next_phase\":\"inner_trace\""),
+           "assistant telemetry must serialize CircleV2 state");
+    Expect(Contains(json,
+                    "\"openings\":{\"left\":{\"available\":true,\"frontier_forward_m\":0.239999"),
+           "assistant telemetry must serialize CircleV2 opening metrics");
+    Expect(Contains(json, "\"source\":\"fov_edge_lower_bound\""),
+           "assistant telemetry must serialize CircleV2 opening source");
     Expect(Contains(json, "\"boundary_span_count\":9"),
            "assistant telemetry must serialize generic record boundary support fields");
     Expect(Contains(json, "\"visual_reference\":{\"present\":true"),
@@ -244,7 +328,7 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must include tracking curvature");
     Expect(Contains(json, "\"sample_count\":5"),
            "assistant telemetry must include tracking sample count");
-    Expect(Contains(json, "\"yaw_control\":{\"turn_output_target\":0.12"),
+    Expect(Contains(json, "\"yaw_control\":{\"valid\":true,\"reason\":\"ok\",\"turn_output_target\":0.12"),
             "assistant telemetry must include yaw-control object");
     Expect(Contains(json, "\"ml\":{\"enabled\":true,\"artifact\":"),
            "assistant telemetry must include ML metadata");
@@ -288,8 +372,21 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must include left brushless PWM command");
     Expect(Contains(json, "\"right_brushless_pwm_command\":600"),
            "assistant telemetry must include right brushless PWM command");
+    Expect(Contains(json, "\"left_drive_pwm_unconstrained\":145.5") &&
+               Contains(json, "\"left_drive_pwm_requested\":146") &&
+               Contains(json, "\"left_drive_pwm_desired\":146"),
+           "assistant telemetry must expose the left PWM shaping chain");
+    Expect(Contains(json, "\"right_drive_pwm_reverse_suppressed\":true"),
+           "assistant telemetry must expose reverse suppression");
+    Expect(Contains(json, "\"left_pid_anti_windup_active\":true") &&
+               Contains(json, "\"left_pid_anti_windup_reason\":\"actuator_limit\""),
+           "assistant telemetry must expose anti-windup state and reason");
     Expect(Contains(json, "\"actuator_apply_outcome\":\"drive_command_applied\""),
            "assistant telemetry must include actuator apply outcome");
+    Expect(Contains(json, "\"actuators_armed\":true") &&
+               Contains(json, "\"last_confirmed_left_drive_pwm\":120") &&
+               Contains(json, "\"last_confirmed_right_drive_pwm\":130"),
+           "assistant telemetry must include the last confirmed actuator state");
     Expect(!Contains(json, "\"actuator\":"),
            "assistant telemetry must not emit a second nested actuator standard");
     Expect(!Contains(json, "\"brushless_pwm_command\""),

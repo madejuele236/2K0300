@@ -15,6 +15,15 @@
 
 namespace ls2k::runtime {
 
+struct ControlLoopTerminalResult {
+    bool timer_failure = false;
+    bool actuator_disable_ok = true;
+
+    [[nodiscard]] bool ok() const noexcept {
+        return !timer_failure && actuator_disable_ok;
+    }
+};
+
 /// 主控制循环 —— 管理运行时运动控制的周期性执行。
 /// 负责传感器采样、门控评估、运动监督、转向计算和执行器输出。
 class ControlLoop {
@@ -34,7 +43,7 @@ public:
     /// @return        是否成功启动
     bool Start(const port::RuntimeParameters& params);
     /// 停止控制循环：停止定时器、禁用执行器、复位状态
-    void Stop();
+    [[nodiscard]] ControlLoopTerminalResult Stop();
 
 private:
     /// 处理定时器故障事件（进入 FAIL_SAFE_LATCHED 并请求退出）
@@ -52,6 +61,8 @@ private:
     port::DiagnosticSink& diagnostics_;                  ///< 诊断输出引用
     port::RuntimeParameters params_{};                   ///< 运行时参数副本
     std::atomic<bool> running_{false};                   ///< 循环是否正在运行
+    std::atomic<bool> timer_failure_{false};             ///< 当前 Start 周期是否发生 timer failure
+    std::atomic<bool> actuator_disable_ok_{true};        ///< 当前 Start 周期累计安全 Disable 结果
 
     control::SteeringYawController yaw_controller_{};     ///< 偏航控制器
     control::ActuatorCommandBuilder actuator_command_builder_{};  ///< 执行器命令构造器
@@ -61,6 +72,8 @@ private:
     observability::ControlDebugReporter debug_reporter_{};  ///< 调试报告器
     control::MotionSupervisor motion_supervisor_{};      ///< 运动监督器
     port::SteeringControlMemory steering_control_memory_{};  ///< 转向控制记忆
+    control::SteeringYawStatus latched_yaw_fault_status_ =
+        control::SteeringYawStatus::kNotComputed;            ///< 当前 FAIL_SAFE_LATCHED 的首次偏航故障首因
     bool have_gate_interval_ = false;                    ///< 是否已开始门控区间跟踪
     bool last_gate_veto_ = true;                         ///< 上一门控周期是否 veto
     safety::ControlVetoReason last_gate_reason_ = safety::ControlVetoReason::kPerceptionStale;  ///< 上一周期 veto 原因

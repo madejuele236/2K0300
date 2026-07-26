@@ -21,7 +21,7 @@ using ls2k::platform::true_ls2k0300::EncoderPair;
 using ls2k::platform::true_ls2k0300::EncoderPairResult;
 using ls2k::platform::true_ls2k0300::AdcDevice;
 
-constexpr int kLowDrivePwm = 3000;
+constexpr int kLowDrivePwm = 2000;
 constexpr int kMotionSampleCount = 250;
 constexpr auto kMotionSamplePeriod = std::chrono::milliseconds(20);
 constexpr auto kZeroDwell = std::chrono::milliseconds(150);
@@ -373,8 +373,8 @@ int main(int argc, char** argv) {
                              encoder,
                              battery_adc,
                              run_persistent_forward
-                                 ? "persistent_dual_forward_3000_5s"
-                                 : "dual_forward_3000_5s",
+                                 ? "persistent_dual_forward_2000_5s"
+                                 : "dual_forward_2000_5s",
                              {kLowDrivePwm, kLowDrivePwm, 0, 0},
                              1)) {
             return 1;

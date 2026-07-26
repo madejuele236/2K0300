@@ -8,38 +8,37 @@
 
 namespace {
 
-struct TestFailure {
-    std::string message;
-};
+struct Failure { std::string message; };
 
 void Expect(bool condition, const std::string& message) {
     if (!condition) {
-        throw TestFailure{message};
+        throw Failure{message};
     }
 }
 
-struct TestFrame {
-    std::vector<std::uint8_t> storage;
+struct Frame {
+    std::vector<std::uint8_t> bytes{};
     ls2k::port::CameraPixelFrameView view{};
 
-    explicit TestFrame(std::uint8_t fill = 100U) : storage(8U * 8U * 2U, 128U) {
-        for (std::size_t i = 0; i < storage.size(); i += 2U) {
-            storage[i] = fill;
+    explicit Frame(std::uint8_t fill = 200U)
+        : bytes(8U * 8U * 2U, 128U) {
+        for (std::size_t index = 0U; index < bytes.size(); index += 2U) {
+            bytes[index] = fill;
         }
         view.valid = true;
         view.format = ls2k::port::CameraFrameFormat::kYuyv;
-        view.data = storage.data();
+        view.data = bytes.data();
         view.width = 8;
         view.height = 8;
         view.stride = 16;
     }
 
-    void Set(int row, int col, std::uint8_t luma) {
-        storage[static_cast<std::size_t>(row * view.stride + col * 2)] = luma;
+    void Set(int row, int col, std::uint8_t y) {
+        bytes[static_cast<std::size_t>(row * view.stride + col * 2)] = y;
     }
 };
 
-ls2k::vision::BEVProjector MakeIdentityProjector() {
+ls2k::vision::BEVProjector IdentityProjector() {
     ls2k::port::BEVProjectorCalibration calibration{};
     calibration.valid = true;
     calibration.source_points = {{{0.0F, 0.0F},
@@ -55,111 +54,161 @@ ls2k::vision::BEVProjector MakeIdentityProjector() {
     return projector;
 }
 
+ls2k::port::OtsuThresholdState Threshold(bool valid = true, int value = 100) {
+    return {valid,
+            value,
+            valid ? ls2k::port::OtsuThresholdSource::kCurrent
+                  : ls2k::port::OtsuThresholdSource::kNone,
+            0U};
+}
+
 ls2k::vision::BEVSegmentConnectivityResult Evaluate(
-    const TestFrame& frame,
+    const Frame& frame,
     const ls2k::vision::BEVProjector& projector,
     ls2k::port::BEVPoint from,
     ls2k::port::BEVPoint to,
     ls2k::vision::BEVSegmentVisibilityPolicy policy,
-    int threshold = 30) {
-    ls2k::port::BEVBoundaryParameters params{};
-    params.local_jump_min_y = threshold;
-    const ls2k::vision::BEVImageSegmentConnectivity query(frame.view, projector, params);
+    const ls2k::port::OtsuThresholdState& threshold = Threshold()) {
+    const ls2k::vision::BEVImageSegmentConnectivity query(
+        frame.view, projector, threshold);
     return query.Evaluate(from, to, policy);
 }
 
-void ExpectConnectedDirectionCases(const ls2k::vision::BEVProjector& projector) {
-    const TestFrame frame{};
-    const auto policy = ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment;
-    for (const auto& endpoints :
-         std::vector<std::pair<ls2k::port::BEVPoint, ls2k::port::BEVPoint>>{
-             {{2.0F, 1.0F}, {2.0F, 6.0F}},
+void TestWhiteDirections(const ls2k::vision::BEVProjector& projector) {
+    const Frame frame{};
+    const auto full = ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment;
+    for (const auto& segment : std::vector<std::pair<ls2k::port::BEVPoint,
+                                                     ls2k::port::BEVPoint>>{
+             {{3.0F, 1.0F}, {3.0F, 6.0F}},
              {{1.0F, 3.0F}, {6.0F, 3.0F}},
              {{1.0F, 1.0F}, {6.0F, 6.0F}}}) {
-        const auto result = Evaluate(frame, projector, endpoints.first, endpoints.second, policy);
+        const auto result = Evaluate(frame, projector, segment.first, segment.second, full);
         Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
-               "horizontal, vertical, and diagonal uniform segments must connect");
-        Expect(result.sampled_point_count == 6U, "five-pixel span must sample six points");
-        Expect(!result.visible_segment_clipped, "fully visible segment must not report clipping");
+               "all-white horizontal, vertical, and diagonal segments must connect");
+        Expect(result.sampled_point_count > 0U,
+               "a connected segment must report sampled source pixels");
+        Expect(!result.visible_segment_clipped,
+               "fully visible segments must not report clipping");
     }
 }
 
-void ExpectBlockedAtExactThreshold(const ls2k::vision::BEVProjector& projector) {
-    TestFrame frame{};
-    frame.Set(3, 4, 130U);
-    const auto result = Evaluate(frame,
-                                 projector,
-                                 {3.0F, 1.0F},
-                                 {3.0F, 6.0F},
-                                 ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment,
-                                 30);
-    Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
-           "delta equal to local_jump_min_y must block");
-    Expect(result.sampled_point_count == 4U,
-           "blocked result must count through the first threshold-crossing sample");
-}
-
-void ExpectStrictOutOfFrameUnobservable(const ls2k::vision::BEVProjector& projector) {
-    const TestFrame frame{};
-    const auto result = Evaluate(frame,
-                                 projector,
-                                 {-2.0F, 3.0F},
-                                 {4.0F, 3.0F},
-                                 ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
-    Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,
-           "strict policy must reject an out-of-frame endpoint");
-    Expect(result.sampled_point_count == 0U, "rejected segment must not sample pixels");
-    Expect(!result.visible_segment_clipped, "strict rejection is not a clipped observation");
-}
-
-void ExpectProjectionFailureUnobservable(const ls2k::vision::BEVProjector& projector) {
-    const TestFrame frame{};
-    const float invalid = std::numeric_limits<float>::quiet_NaN();
+void TestSingleBlackPixelBlocks(const ls2k::vision::BEVProjector& projector) {
+    Frame frame{};
+    frame.Set(3, 4, 20U);
     const auto result = Evaluate(
         frame,
         projector,
-        {invalid, 3.0F},
-        {4.0F, 3.0F},
+        {3.0F, 1.0F},
+        {3.0F, 6.0F},
         ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
-    Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,
-           "projection failure must return unobservable");
-    Expect(result.sampled_point_count == 0U,
-           "projection failure must occur before pixel sampling");
-    Expect(!result.visible_segment_clipped,
-           "projection failure must not be reported as a clipped observation");
+    Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+           "one black pixel on the projected segment must block");
+    Expect(result.sampled_point_count == 4U,
+           "horizontal traversal must stop at the first black pixel");
 }
 
-void ExpectFromEndpointClipCases(const ls2k::vision::BEVProjector& projector) {
-    const auto policy = ls2k::vision::BEVSegmentVisibilityPolicy::kAllowFromEndpointClip;
-    const TestFrame clear{};
-    const auto clear_result = Evaluate(clear, projector, {-2.0F, 3.0F}, {4.0F, 3.0F}, policy);
-    Expect(clear_result.status == ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
-           "visible suffix from an origin-like outside endpoint must connect");
-    Expect(clear_result.visible_segment_clipped, "allowed from-end clipping must be reported");
-    Expect(clear_result.sampled_point_count == 5U, "clipped rows zero through four need five samples");
+void TestThresholdEqualityAndEndpoint(const ls2k::vision::BEVProjector& projector) {
+    Frame frame{};
+    frame.Set(3, 6, 100U);
+    const auto result = Evaluate(
+        frame,
+        projector,
+        {3.0F, 1.0F},
+        {3.0F, 6.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
+    Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+           "Y equal to Otsu threshold, including an endpoint, must be black");
+}
 
-    TestFrame blocked{};
-    blocked.Set(2, 3, 140U);
-    const auto blocked_result = Evaluate(blocked, projector, {-2.0F, 3.0F}, {4.0F, 3.0F}, policy);
+void TestCornerSupercover(const ls2k::vision::BEVProjector& projector) {
+    Frame frame{};
+    frame.Set(1, 2, 20U);
+    const auto result = Evaluate(
+        frame,
+        projector,
+        {1.0F, 1.0F},
+        {4.0F, 4.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
+    Expect(result.status == ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
+           "supercover must inspect both cells touched at a pixel-corner tie");
+}
+
+void TestVisibilityPolicies(const ls2k::vision::BEVProjector& projector) {
+    const Frame white{};
+    const auto strict = Evaluate(
+        white,
+        projector,
+        {-2.0F, 3.0F},
+        {4.0F, 3.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
+    Expect(strict.status == ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,
+           "full-segment policy must reject an out-of-frame endpoint");
+    Expect(strict.sampled_point_count == 0U,
+           "strict visibility rejection must occur before sampling");
+
+    const auto clipped = Evaluate(
+        white,
+        projector,
+        {-2.0F, 3.0F},
+        {4.0F, 3.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
+    Expect(clipped.status == ls2k::vision::BEVSegmentConnectivityStatus::kConnected,
+           "the visible white suffix from an origin-like endpoint must connect");
+    Expect(clipped.visible_segment_clipped,
+           "allowed origin-side clipping must remain observable");
+
+    Frame blocked{};
+    blocked.Set(2, 3, 20U);
+    const auto blocked_result = Evaluate(
+        blocked,
+        projector,
+        {-2.0F, 3.0F},
+        {4.0F, 3.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kAllowFromEndpointClip);
     Expect(blocked_result.status == ls2k::vision::BEVSegmentConnectivityStatus::kBlocked,
-           "jump within clipped visible suffix must block");
-    Expect(blocked_result.visible_segment_clipped, "blocked clipped suffix must retain clip fact");
+           "a black pixel in the clipped visible suffix must block");
+}
+
+void TestInvalidThresholdAndProjection(const ls2k::vision::BEVProjector& projector) {
+    const Frame frame{};
+    const auto invalid_threshold = Evaluate(
+        frame,
+        projector,
+        {1.0F, 1.0F},
+        {4.0F, 4.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment,
+        Threshold(false));
+    Expect(invalid_threshold.status ==
+               ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,
+           "connectivity without a valid shared threshold must be unobservable");
+
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const auto invalid_projection = Evaluate(
+        frame,
+        projector,
+        {nan, 1.0F},
+        {4.0F, 4.0F},
+        ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
+    Expect(invalid_projection.status ==
+               ls2k::vision::BEVSegmentConnectivityStatus::kUnobservable,
+           "projection failure must be unobservable");
 }
 
 }  // namespace
 
 int main() {
     try {
-        const ls2k::vision::BEVProjector projector = MakeIdentityProjector();
-        ExpectConnectedDirectionCases(projector);
-        ExpectBlockedAtExactThreshold(projector);
-        ExpectStrictOutOfFrameUnobservable(projector);
-        ExpectProjectionFailureUnobservable(projector);
-        ExpectFromEndpointClipCases(projector);
-    } catch (const TestFailure& failure) {
+        const auto projector = IdentityProjector();
+        TestWhiteDirections(projector);
+        TestSingleBlackPixelBlocks(projector);
+        TestThresholdEqualityAndEndpoint(projector);
+        TestCornerSupercover(projector);
+        TestVisibilityPolicies(projector);
+        TestInvalidThresholdAndProjection(projector);
+    } catch (const Failure& failure) {
         std::cerr << "FAIL: " << failure.message << '\n';
         return 1;
     }
-    std::cout << "PASS: BEV segment connectivity tests\n";
+    std::cout << "PASS: Otsu binary BEV segment connectivity tests\n";
     return 0;
 }

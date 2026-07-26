@@ -72,7 +72,8 @@ port::PerceptionResult BuildPerceptionResult(
     perception.frame_id = capture.frame_id;
     perception.capture_time_ms = capture.capture_time_ms;
     perception.publish_time_ms = publish_time_ms;
-    perception.perception_tag = "bev_local_y_boundary_v9";
+    perception.otsu = boundary_facts.otsu;
+    perception.perception_tag = "bev_sparse_otsu_binary";
     perception.boundary_row_count = boundary_facts.rows.size();
     perception.boundary_jump_count = boundary_facts.boundary_jump_count;
     perception.boundary_span_count = boundary_facts.boundary_span_count;
@@ -202,12 +203,26 @@ CircleV2Params BuildCircleV2Params(const port::RuntimeParameters& params) {
         params.bev_element.circle_v2_inner_trace_path_offset_m;
     circle_params.opposite_straight_confidence_min =
         params.bev_element.circle_v2_opposite_straight_confidence_min;
-    circle_params.entry_bottom_min_row_count =
-        params.bev_element.circle_v2_entry_bottom_min_row_count;
-    circle_params.entry_bottom_forward_min_m =
-        params.bev_element.circle_v2_entry_bottom_forward_min_m;
-    circle_params.entry_bottom_forward_max_m =
-        params.bev_element.circle_v2_entry_bottom_forward_max_m;
+    circle_params.max_adjacent_distance_m =
+        params.bev_geometry.boundary_trace_max_adjacent_distance_m;
+    circle_params.min_sampleable_width_m = params.bev_element.circle_v2_min_sampleable_width_m;
+    circle_params.opening_forward_min_m = params.bev_element.circle_v2_opening_forward_min_m;
+    circle_params.opening_forward_max_m = params.bev_element.circle_v2_opening_forward_max_m;
+    circle_params.opening_distance_min_m = params.bev_element.circle_v2_opening_distance_min_m;
+    circle_params.opening_confirm_forward_span_m =
+        params.bev_element.circle_v2_opening_confirm_forward_span_m;
+    circle_params.entry_forward_min_m = params.bev_element.circle_v2_entry_forward_min_m;
+    circle_params.entry_forward_max_m = params.bev_element.circle_v2_entry_forward_max_m;
+    circle_params.inner_geometry_forward_min_m =
+        params.bev_element.circle_v2_inner_geometry_forward_min_m;
+    circle_params.inner_geometry_forward_max_m =
+        params.bev_element.circle_v2_inner_geometry_forward_max_m;
+    circle_params.exit_geometry_forward_min_m =
+        params.bev_element.circle_v2_exit_geometry_forward_min_m;
+    circle_params.exit_geometry_forward_max_m =
+        params.bev_element.circle_v2_exit_geometry_forward_max_m;
+    circle_params.exit_straight_max_lateral_span_m =
+        params.bev_element.circle_v2_exit_straight_max_lateral_span_m;
     return circle_params;
 }
 
@@ -224,7 +239,7 @@ port::CircleV2TelemetrySnapshot BuildCircleV2TelemetrySnapshot(bool enabled,
     snapshot.geometry_available = telemetry.geometry_available;
     snapshot.inner_trace_elapsed_ms = telemetry.inner_trace_elapsed_ms;
     snapshot.directed_turn_angle_rad = telemetry.directed_turn_angle_rad;
-    snapshot.entry_points = telemetry.entry_points;
+    snapshot.openings = telemetry.openings;
     return snapshot;
 }
 
@@ -245,6 +260,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
     projector_configured_ = projector_.Configure(params.bev_projector);
     sample_lut_ = {};
     ml_rectangle_lut_ = {};
+    otsu_tracker_.Reset();
     ml_classifier_ready_ = !params.ml.enabled || ml_classifier_.Initialize();
     const std::string ml_classifier_identity =
         !params.ml.enabled
@@ -276,6 +292,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
 void SteeringFramePipeline::ResetReferenceMemory() {
     ResetSteeringReferenceHoldMemory(perception_memory_);
     vision::ml::ResetMlSceneMemory(perception_memory_.ml_scene);
+    otsu_tracker_.Reset();
 }
 
 /// 处理一帧图像：V9 BEV 边界事实 → 元素检测 → 视觉参考选择 → 横向误差计算 → 参考控制就绪评估
@@ -299,6 +316,12 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     port::VisualReferenceCandidatePathSet candidate_paths{};
     port::VisualReferenceSelection visual_selection{};
     vision::BEVSimplePerceptionResult current_facts{};
+    port::OtsuThresholdState otsu_state{};
+    {
+        LS2K_PERF_SCOPE(port::PerfStage::kPerceptionOtsu);
+        otsu_state = otsu_tracker_.Update(
+            vision::ComputeSparseOtsuThreshold(capture.pixel_view));
+    }
     {
         LS2K_PERF_SCOPE(port::PerfStage::kPerceptionBev);
         health.projector_ok = projector_.Valid();
@@ -308,6 +331,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             LS2K_PERF_SCOPE(port::PerfStage::kBevSimple);
             current_facts =
                 vision::RunBEVSimplePerception(capture.pixel_view,
+                                               otsu_state,
                                                params,
                                                projector_,
                                                &sample_lut_);

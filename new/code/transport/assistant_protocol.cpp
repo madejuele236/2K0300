@@ -192,6 +192,71 @@ void AppendJsonBool(std::ostringstream& stream, bool value) {
     stream << (value ? "true" : "false");
 }
 
+void AppendCircleOpeningJson(std::ostringstream& stream,
+                             const port::CircleOpeningObservation& opening) {
+    stream << "{\"available\":";
+    AppendJsonBool(stream, opening.available);
+    stream << ",\"frontier_forward_m\":";
+    if (opening.available) {
+        AppendJsonNumber(stream, opening.frontier_forward_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"effective_lateral_m\":";
+    if (opening.available) {
+        AppendJsonNumber(stream, opening.effective_lateral_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"source\":";
+    AppendJsonString(stream, port::CircleOpeningSourceToken(opening.source));
+    stream << ",\"outward_distance_m\":";
+    if (opening.available) {
+        AppendJsonNumber(stream, opening.outward_distance_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"confirmed_forward_span_m\":";
+    if (opening.available) {
+        AppendJsonNumber(stream, opening.confirmed_forward_span_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"origin_connected\":";
+    AppendJsonBool(stream, opening.origin_connected);
+    stream << ",\"opposite_straight\":";
+    AppendJsonBool(stream, opening.opposite_straight);
+    stream << "}";
+}
+
+void AppendCircleV2TelemetryJson(std::ostringstream& stream,
+                                 const port::CircleV2TelemetrySnapshot& circle) {
+    stream << "{\"enabled\":";
+    AppendJsonBool(stream, circle.enabled);
+    stream << ",\"frame_phase\":";
+    AppendJsonString(stream, circle.frame_phase);
+    stream << ",\"next_phase\":";
+    AppendJsonString(stream, circle.next_phase);
+    stream << ",\"dir\":";
+    AppendJsonString(stream, circle.dir);
+    stream << ",\"reference_role\":";
+    AppendJsonString(stream, circle.reference_role);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, circle.reason);
+    stream << ",\"motion_arc_available\":";
+    AppendJsonBool(stream, circle.motion_arc_available);
+    stream << ",\"geometry_available\":";
+    AppendJsonBool(stream, circle.geometry_available);
+    stream << ",\"inner_trace_elapsed_ms\":" << circle.inner_trace_elapsed_ms;
+    stream << ",\"directed_turn_angle_rad\":";
+    AppendJsonNumber(stream, circle.directed_turn_angle_rad);
+    stream << ",\"openings\":{\"left\":";
+    AppendCircleOpeningJson(stream, circle.openings.left);
+    stream << ",\"right\":";
+    AppendCircleOpeningJson(stream, circle.openings.right);
+    stream << "}}";
+}
+
 void AppendMlTelemetryJson(std::ostringstream& stream,
                            const port::MlTelemetrySnapshot& ml,
                            const std::string& speed_selection_source,
@@ -535,6 +600,13 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     AppendJsonString(stream, telemetry.motion_phase);
     stream << ",\"perception_tag\":";
     AppendJsonString(stream, telemetry.perception_tag);
+    stream << ",\"otsu\":{\"valid\":";
+    AppendJsonBool(stream, telemetry.otsu.valid);
+    stream << ",\"threshold\":" << telemetry.otsu.threshold;
+    stream << ",\"source\":";
+    AppendJsonString(stream, port::ToString(telemetry.otsu.source));
+    stream << ",\"stale_frames\":"
+           << static_cast<unsigned int>(telemetry.otsu.stale_frames) << "}";
     stream << ",\"boundary_row_count\":" << telemetry.boundary_row_count;
     stream << ",\"boundary_jump_count\":" << telemetry.boundary_jump_count;
     stream << ",\"boundary_span_count\":" << telemetry.boundary_span_count;
@@ -550,6 +622,8 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     stream << "}";
     stream << ",\"element_evidence\":";
     AppendVisualElementEvidenceJson(stream, telemetry.element_evidence);
+    stream << ",\"circle_v2\":";
+    AppendCircleV2TelemetryJson(stream, telemetry.circle_v2);
     stream << ",\"visual_reference\":{\"present\":";
     AppendJsonBool(stream, telemetry.visual_reference.present);
     stream << ",\"source\":";
@@ -613,7 +687,11 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     stream << ",\"reason\":";
     AppendJsonString(stream, telemetry.degraded.reason);
     stream << "}";
-    stream << ",\"yaw_control\":{\"turn_output_target\":";
+    stream << ",\"yaw_control\":{\"valid\":";
+    AppendJsonBool(stream, telemetry.yaw_control.valid);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, telemetry.yaw_control.reason);
+    stream << ",\"turn_output_target\":";
     AppendJsonNumber(stream, telemetry.yaw_control.turn_output_target);
     stream << ",\"lateral_term\":";
     AppendJsonNumber(stream, telemetry.yaw_control.lateral_term);
@@ -650,8 +728,54 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     stream << ",\"right_drive_pwm_command\":" << telemetry.right_drive_pwm_command;
     stream << ",\"left_brushless_pwm_command\":" << telemetry.left_brushless_pwm_command;
     stream << ",\"right_brushless_pwm_command\":" << telemetry.right_brushless_pwm_command;
+    stream << ",\"left_drive_pwm_unconstrained\":";
+    AppendJsonNumber(stream, telemetry.left_drive_pwm_unconstrained);
+    stream << ",\"right_drive_pwm_unconstrained\":";
+    AppendJsonNumber(stream, telemetry.right_drive_pwm_unconstrained);
+    stream << ",\"left_drive_pwm_requested\":" << telemetry.left_drive_pwm_requested;
+    stream << ",\"right_drive_pwm_requested\":" << telemetry.right_drive_pwm_requested;
+    stream << ",\"left_drive_pwm_desired\":" << telemetry.left_drive_pwm_desired;
+    stream << ",\"right_drive_pwm_desired\":" << telemetry.right_drive_pwm_desired;
+    stream << ",\"left_drive_pwm_step_limited\":";
+    AppendJsonBool(stream, telemetry.left_drive_pwm_step_limited);
+    stream << ",\"right_drive_pwm_step_limited\":";
+    AppendJsonBool(stream, telemetry.right_drive_pwm_step_limited);
+    stream << ",\"left_drive_pwm_reverse_suppressed\":";
+    AppendJsonBool(stream, telemetry.left_drive_pwm_reverse_suppressed);
+    stream << ",\"right_drive_pwm_reverse_suppressed\":";
+    AppendJsonBool(stream, telemetry.right_drive_pwm_reverse_suppressed);
+    stream << ",\"left_drive_pwm_floor_adjusted\":";
+    AppendJsonBool(stream, telemetry.left_drive_pwm_floor_adjusted);
+    stream << ",\"right_drive_pwm_floor_adjusted\":";
+    AppendJsonBool(stream, telemetry.right_drive_pwm_floor_adjusted);
+    stream << ",\"left_pid_error\":";
+    AppendJsonNumber(stream, telemetry.left_pid_error);
+    stream << ",\"right_pid_error\":";
+    AppendJsonNumber(stream, telemetry.right_pid_error);
+    stream << ",\"left_pid_integral\":";
+    AppendJsonNumber(stream, telemetry.left_pid_integral);
+    stream << ",\"right_pid_integral\":";
+    AppendJsonNumber(stream, telemetry.right_pid_integral);
+    stream << ",\"left_pid_integral_candidate\":";
+    AppendJsonNumber(stream, telemetry.left_pid_integral_candidate);
+    stream << ",\"right_pid_integral_candidate\":";
+    AppendJsonNumber(stream, telemetry.right_pid_integral_candidate);
+    stream << ",\"left_pid_anti_windup_active\":";
+    AppendJsonBool(stream, telemetry.left_pid_anti_windup_active);
+    stream << ",\"right_pid_anti_windup_active\":";
+    AppendJsonBool(stream, telemetry.right_pid_anti_windup_active);
+    stream << ",\"left_pid_anti_windup_reason\":";
+    AppendJsonString(stream, telemetry.left_pid_anti_windup_reason);
+    stream << ",\"right_pid_anti_windup_reason\":";
+    AppendJsonString(stream, telemetry.right_pid_anti_windup_reason);
     stream << ",\"actuator_apply_outcome\":";
     AppendJsonString(stream, telemetry.actuator_apply_outcome);
+    stream << ",\"actuators_armed\":";
+    AppendJsonBool(stream, telemetry.actuators_armed);
+    stream << ",\"last_confirmed_left_drive_pwm\":" << telemetry.last_confirmed_left_drive_pwm;
+    stream << ",\"last_confirmed_right_drive_pwm\":" << telemetry.last_confirmed_right_drive_pwm;
+    stream << ",\"last_confirmed_left_brushless_pwm\":" << telemetry.last_confirmed_left_brushless_pwm;
+    stream << ",\"last_confirmed_right_brushless_pwm\":" << telemetry.last_confirmed_right_brushless_pwm;
     stream << '}';
     return stream.str();
 }

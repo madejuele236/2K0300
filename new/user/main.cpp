@@ -199,12 +199,32 @@ void EmitHarnessContext(ls2k::port::StdoutDiagnostics& diagnostics, const Automa
                       ls2k::port::NowMs()});
 }
 
-bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
-                      ls2k::runtime::RuntimeState& runtime_state,
-                      ls2k::port::StdoutDiagnostics& diagnostics) {
+struct BenchPwmPulseResult {
+    bool requested = false;
+    bool apply_ok = false;
+    bool disable_ok = false;
+
+    [[nodiscard]] bool ok() const noexcept {
+        return requested && apply_ok && disable_ok;
+    }
+};
+
+bool BenchExitConfirmed(const BenchPwmPulseResult& bench,
+                        const ls2k::runtime::ShutdownResult& shutdown) {
+    return bench.ok() && shutdown.ok();
+}
+
+bool RuntimeExitConfirmed(const ls2k::runtime::ControlLoopTerminalResult& control,
+                          const ls2k::runtime::ShutdownResult& shutdown) {
+    return control.ok() && shutdown.ok();
+}
+
+BenchPwmPulseResult RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
+                                     ls2k::runtime::RuntimeState& runtime_state,
+                                     ls2k::port::StdoutDiagnostics& diagnostics) {
     const int pulse_ms = ReadIntEnv("LS2K_BENCH_PWM_MS", 0);
     if (pulse_ms <= 0) {
-        return false;
+        return {};
     }
 
     const int left_drive_pwm = ReadIntEnv("LS2K_BENCH_DRIVE_LEFT_PWM", 0);
@@ -240,7 +260,7 @@ bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
                           "bench.pwm.blocked.low_voltage",
                           blocked.str(),
                           ls2k::port::NowMs()});
-        return true;
+        return {true, false, false};
     }
 
     (void)platform.encoder->ReadDelta(diagnostics);
@@ -254,13 +274,30 @@ bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
         right_brushless_pwm,
         false,
     };
-    const bool apply_ok = platform.actuator->Apply(pulse, diagnostics);
+    const ls2k::port::ActuatorApplyResult apply_result =
+        platform.actuator->Apply(pulse, diagnostics);
+    const bool apply_ok = apply_result.ok;
+    if (apply_ok) {
+        std::lock_guard<std::mutex> lock(runtime_state.shared_mutex);
+        runtime_state.last_command = apply_result.applied_command;
+        runtime_state.actuators_armed = true;
+        runtime_state.control_observation.actuators_armed = true;
+    }
     const int first_slice_ms = std::max(1, pulse_ms / 2);
     const int second_slice_ms = std::max(0, pulse_ms - first_slice_ms);
     std::this_thread::sleep_for(std::chrono::milliseconds(first_slice_ms));
     const ls2k::port::EncoderDelta during = platform.encoder->ReadDelta(diagnostics);
     std::this_thread::sleep_for(std::chrono::milliseconds(second_slice_ms));
-    platform.actuator->Disable(diagnostics);
+    const bool disable_ok = platform.actuator->Disable(diagnostics);
+    if (disable_ok) {
+        std::lock_guard<std::mutex> lock(runtime_state.shared_mutex);
+        runtime_state.last_command = {};
+        runtime_state.actuators_armed = false;
+        runtime_state.control_observation.actuators_armed = false;
+    } else {
+        ls2k::runtime::PreserveTerminalActuatorFailure(
+            runtime_state, ls2k::control::MotionPhase::kDisarmed, ls2k::port::NowMs());
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(0, settle_ms)));
     const ls2k::port::EncoderDelta after_first = platform.encoder->ReadDelta(diagnostics);
@@ -269,6 +306,7 @@ bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
 
     std::ostringstream summary;
     summary << "bench PWM pulse apply_ok=" << (apply_ok ? "true" : "false")
+            << " disable_ok=" << (disable_ok ? "true" : "false")
             << " command_left_drive=" << left_drive_pwm
             << " command_right_drive=" << right_drive_pwm
             << " command_left_brushless=" << left_brushless_pwm
@@ -285,12 +323,13 @@ bool RunBenchPwmPulse(ls2k::port::PlatformBundle& platform,
             << " after2_valid=" << (after_second.valid ? "true" : "false")
             << " after2_left=" << after_second.left
             << " after2_right=" << after_second.right;
-    diagnostics.Emit({apply_ok ? ls2k::port::DiagnosticLevel::kInfo
+    const bool pulse_ok = apply_ok && disable_ok;
+    diagnostics.Emit({pulse_ok ? ls2k::port::DiagnosticLevel::kInfo
                                : ls2k::port::DiagnosticLevel::kFailSafe,
                       "bench.pwm.summary",
                       summary.str(),
                       ls2k::port::NowMs()});
-    return true;
+    return {true, apply_ok, disable_ok};
 }
 
 void InstallSignalHandlers() {
@@ -554,20 +593,28 @@ int main() {
 
     if (!ls2k::runtime::RunStartup(profile, params, platform, runtime_state, diagnostics)) {
         diagnostics.FailSafe("main.startup", "startup failed, refusing to arm actuators");
-        ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
+        (void)ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
         return 1;
     }
 
-    if (RunBenchPwmPulse(platform, runtime_state, diagnostics)) {
-        ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
-        diagnostics.Info("main.exit", "bench PWM pulse test complete");
-        return 0;
+    const BenchPwmPulseResult bench_result =
+        RunBenchPwmPulse(platform, runtime_state, diagnostics);
+    if (bench_result.requested) {
+        const ls2k::runtime::ShutdownResult shutdown_result =
+            ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
+        if (BenchExitConfirmed(bench_result, shutdown_result)) {
+            diagnostics.Info("main.exit", "bench PWM pulse test complete");
+            return 0;
+        }
+        diagnostics.FailSafe("main.exit.unconfirmed",
+                             "bench PWM pulse exit failed because actuator safety was not confirmed");
+        return 1;
     }
 
     ls2k::runtime::ControlLoop control_loop(platform, profile, runtime_state, diagnostics);
     if (!control_loop.Start(params)) {
         diagnostics.FailSafe("main.control", "control loop start failed");
-        ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
+        (void)ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
         return 1;
     }
 
@@ -576,8 +623,8 @@ int main() {
     if (!camera_capture_worker.Start(params)) {
         diagnostics.FailSafe("main.camera_capture_worker",
                              "camera capture worker start failed");
-        control_loop.Stop();
-        ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
+        (void)control_loop.Stop();
+        (void)ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
         return 1;
     }
 
@@ -597,9 +644,15 @@ int main() {
 
     StopBackgroundWorkers(workers);
     camera_capture_worker.Stop();
-    control_loop.Stop();
+    const ls2k::runtime::ControlLoopTerminalResult control_result = control_loop.Stop();
     ls2k::port::EmitPerfWindowDiagnostics(diagnostics, ls2k::port::NowMs());
-    ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
-    diagnostics.Info("main.exit", "runtime exit complete");
-    return 0;
+    const ls2k::runtime::ShutdownResult shutdown_result =
+        ls2k::runtime::RunShutdown(platform, runtime_state, diagnostics);
+    if (RuntimeExitConfirmed(control_result, shutdown_result)) {
+        diagnostics.Info("main.exit", "runtime exit complete");
+        return 0;
+    }
+    diagnostics.FailSafe("main.exit.unconfirmed",
+                         "runtime exit failed because timer or actuator safety was not confirmed");
+    return 1;
 }

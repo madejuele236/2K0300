@@ -11,15 +11,17 @@
 #include "safety/control_apply_observation.hpp"
 #include "safety/control_gate.hpp"
 #include "control/motion_types.hpp"
+#include "control/wheel_pid.hpp"
 #include "port/perception_result.hpp"
 #include "port/visual_element_evidence_types.hpp"
 
 namespace ls2k::observability {
 
-/// 参考路径调试视图 —— 记录参考路径的来源和模式
+/// 参考路径调试视图 —— 记录真正进入控制的参考路径及其来源和模式
 struct ReferenceDebugView {
     std::string mode = "none";   ///< 参考路径模式（如 line/curve/none）
     std::string source = "none"; ///< 参考路径来源描述
+    port::BEVReferencePath control_path{};  ///< 控制时刻对齐/裁剪后真正进入控制的路径
 };
 
 /// 视觉参考调试视图 —— 描述当前帧是否选择了视觉参考及选择原因
@@ -112,6 +114,8 @@ struct DegradedDebugView {
 
 /// 偏航控制调试视图 —— 描述偏航控制器的输出目标
 struct YawControlDebugView {
+    bool valid = false;                    ///< controller result passed its production arithmetic contract
+    std::string reason = "not_computed";  ///< invalid/not-computed reason; "ok" when valid
     double turn_output_target = 0.0;  ///< 偏航控制输出的转向目标值
     double lateral_term = 0.0;        ///< 横向位置修正项
     double heading_term = 0.0;        ///< 航向误差修正项
@@ -126,7 +130,36 @@ struct SteeringActuatorDebugView {
     int right_drive_pwm_command = 0;      ///< 右驱动 PWM 命令
     int left_brushless_pwm_command = 0;   ///< 左无刷电调 PWM 命令
     int right_brushless_pwm_command = 0;  ///< 右无刷电调 PWM 命令
+    double left_drive_pwm_unconstrained = 0.0;   ///< 左轮 PID 未限幅输出
+    double right_drive_pwm_unconstrained = 0.0;  ///< 右轮 PID 未限幅输出
+    int left_drive_pwm_requested = 0;            ///< 左轮硬限幅后的请求
+    int right_drive_pwm_requested = 0;           ///< 右轮硬限幅后的请求
+    int left_drive_pwm_desired = 0;              ///< 左轮方向/floor 策略后的期望值
+    int right_drive_pwm_desired = 0;             ///< 右轮方向/floor 策略后的期望值
+    bool left_drive_pwm_step_limited = false;
+    bool right_drive_pwm_step_limited = false;
+    bool left_drive_pwm_reverse_suppressed = false;
+    bool right_drive_pwm_reverse_suppressed = false;
+    bool left_drive_pwm_floor_adjusted = false;
+    bool right_drive_pwm_floor_adjusted = false;
+    double left_pid_error = 0.0;
+    double right_pid_error = 0.0;
+    double left_pid_integral = 0.0;
+    double right_pid_integral = 0.0;
+    double left_pid_integral_candidate = 0.0;
+    double right_pid_integral_candidate = 0.0;
+    bool left_pid_anti_windup_active = false;
+    bool right_pid_anti_windup_active = false;
+    control::WheelPidAntiWindupReason left_pid_anti_windup_reason =
+        control::WheelPidAntiWindupReason::kNone;
+    control::WheelPidAntiWindupReason right_pid_anti_windup_reason =
+        control::WheelPidAntiWindupReason::kNone;
     safety::ControlApplyOutcome apply_outcome = safety::ControlApplyOutcome::kNotRequested;  ///< 统一执行器施加结果
+    bool actuators_armed = false;
+    int last_confirmed_left_drive_pwm = 0;
+    int last_confirmed_right_drive_pwm = 0;
+    int last_confirmed_left_brushless_pwm = 0;
+    int last_confirmed_right_brushless_pwm = 0;
 };
 
 /// 转向公开快照 —— 只包含 reference/control 最小分层合同，用于媒体服务和遥测
@@ -134,11 +167,11 @@ struct SteeringDebugSnapshot {
     bool valid = false;                       ///< 转向快照是否有效
     std::uint64_t frame_id = 0;              ///< 关联的相机帧 ID
     std::uint64_t capture_time_ms = 0;       ///< 帧捕获时间戳（ms）
-    int threshold = 0;                        ///< Otsu 二值化阈值
+    port::OtsuThresholdState otsu{};           ///< 当前帧统一 Otsu 状态
     std::string perception_tag = "none";      ///< 感知事实标签
-    std::size_t boundary_row_count = 0;        ///< V9 sparse boundary row 数量
-    std::size_t boundary_jump_count = 0;       ///< V9 局部 Y 边界跳变数量
-    std::size_t boundary_span_count = 0;       ///< V9 同行边界 span 数量
+    std::size_t boundary_row_count = 0;        ///< sparse boundary row 数量
+    std::size_t boundary_jump_count = 0;       ///< 二值转换边界数量
+    std::size_t boundary_span_count = 0;       ///< 同行边界 span 数量
     port::MlTelemetrySnapshot ml{};            ///< ML 检测、replay 与场景跟踪事实
     std::string speed_selection_source = "running_default";  ///< 速度目标选择来源
     double effective_speed_target = 0.0;       ///< 运动监督器最终有效速度目标
@@ -197,7 +230,36 @@ struct ControlDebugSnapshot {
     int right_drive_pwm_command = 0;             ///< 右驱动 PWM 命令
     int left_brushless_pwm_command = 0;          ///< 左无刷电调 PWM 命令
     int right_brushless_pwm_command = 0;         ///< 右无刷电调 PWM 命令
+    double left_drive_pwm_unconstrained = 0.0;
+    double right_drive_pwm_unconstrained = 0.0;
+    int left_drive_pwm_requested = 0;
+    int right_drive_pwm_requested = 0;
+    int left_drive_pwm_desired = 0;
+    int right_drive_pwm_desired = 0;
+    bool left_drive_pwm_step_limited = false;
+    bool right_drive_pwm_step_limited = false;
+    bool left_drive_pwm_reverse_suppressed = false;
+    bool right_drive_pwm_reverse_suppressed = false;
+    bool left_drive_pwm_floor_adjusted = false;
+    bool right_drive_pwm_floor_adjusted = false;
+    double left_pid_error = 0.0;
+    double right_pid_error = 0.0;
+    double left_pid_integral = 0.0;
+    double right_pid_integral = 0.0;
+    double left_pid_integral_candidate = 0.0;
+    double right_pid_integral_candidate = 0.0;
+    bool left_pid_anti_windup_active = false;
+    bool right_pid_anti_windup_active = false;
+    control::WheelPidAntiWindupReason left_pid_anti_windup_reason =
+        control::WheelPidAntiWindupReason::kNone;
+    control::WheelPidAntiWindupReason right_pid_anti_windup_reason =
+        control::WheelPidAntiWindupReason::kNone;
     safety::ControlApplyOutcome apply_outcome = safety::ControlApplyOutcome::kNotRequested;  ///< 统一执行器施加结果
+    bool actuators_armed = false;                 ///< 最后一次确认的硬件 armed 状态
+    int last_confirmed_left_drive_pwm = 0;        ///< 最后一次确认的左驱动 PWM
+    int last_confirmed_right_drive_pwm = 0;       ///< 最后一次确认的右驱动 PWM
+    int last_confirmed_left_brushless_pwm = 0;    ///< 最后一次确认的左无刷 PWM
+    int last_confirmed_right_brushless_pwm = 0;   ///< 最后一次确认的右无刷 PWM
     bool emergency_stop = true;                  ///< 紧急停止是否激活
     SteeringDebugSnapshot steering{};            ///< 转向公开快照
     SteeringInternalDebugSnapshot steering_internal{};  ///< 转向内部诊断

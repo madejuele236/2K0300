@@ -126,9 +126,9 @@ CONFIRM_POWERED_START=1 ./debug.sh steering drive --drive-s 10
 - 每帧 gray payload
 - 每帧 `steering_snapshot`
 
-网页可以直接绘制 `steering_snapshot.visual_reference.path_candidates.items[*]`
-里的候选路径事实，包括 `kind/source/reason/confidence/mode` 和 BEV 采样点
-`forward_m/lateral_m`。网页不复刻板端候选生成算法，不把显示结果反写回板端。
+网页只绘制 `steering_snapshot.reference.control_path.samples` 里的
+`forward_m/lateral_m` 路径事实；这是板端完成控制时刻对齐/裁剪后真正进入控制的路径，
+不显示原始候选路径。网页不复刻板端候选生成或裁剪算法，不把显示结果反写回板端。
 
 右侧重点字段：
 

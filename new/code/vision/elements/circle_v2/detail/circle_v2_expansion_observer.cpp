@@ -2,176 +2,73 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstddef>
 #include <limits>
-#include <numeric>
-#include <optional>
 #include <vector>
 
 namespace ls2k::vision::detail {
 namespace {
 
-constexpr float kRatioDenominatorFloor = 1.0e-4F;
-constexpr std::size_t kOpeningSustainRows = 2U;
-
-struct ExpansionParams {
-    int min_support_rows = 1;
-    int min_sampleable_per_row = 16;
-    float center_sample_forward_gap_max_m = 0.130440284F;
-    float open_expansion_min_m = 0.055144074F;
-    float opening_expansion_ratio_min = 0.10F;
-    float opposite_straight_drift_max_m = 0.066172889F;
-    float opposite_shrink_ratio_min = 0.10F;
-    float present_confidence_min = 0.65F;
-};
-
-constexpr ExpansionParams kParams{};
+constexpr float kEpsilon = 1.0e-4F;
+constexpr float kFitVarianceEpsilon = 1.0e-8F;
+constexpr float kStraightDriftMaxM = 0.066172889F;
 
 struct RowObservation {
     float forward_m = 0.0F;
-    float left_m = 0.0F;
-    float right_m = 0.0F;
+    float sampleable_width_m = 0.0F;
+    const BEVWhiteRun* run = nullptr;
 };
 
-struct BoundaryTracePoint {
+struct TracePoint {
     float forward_m = 0.0F;
-    float boundary_m = 0.0F;
+    float lateral_m = 0.0F;
 };
 
-using BoundaryTrace = std::vector<BoundaryTracePoint>;
-
-struct GrowthEvidence {
-    bool found = false;
-    std::size_t anchor_begin = 0;
-    std::size_t split = 0;
-    float anchor_reach = 0.0F;
-    float ratio = 0.0F;
-    float delta_m = 0.0F;
-};
-
-struct BoundaryLineFit {
+struct LineFit {
+    bool valid = false;
     bool straight = false;
     bool shrink = false;
+    float slope = 0.0F;
+    float intercept = 0.0F;
     float confidence = 0.0F;
 };
 
-float Clamp01(float value) {
-    return std::clamp(value, 0.0F, 1.0F);
+bool EndpointObserved(BEVWhiteRunEndpointState state) {
+    return state == BEVWhiteRunEndpointState::kBoundary;
 }
 
-std::optional<float> CenterLateralForRow(const SceneFrameView& frame,
-                                         std::size_t row_index,
-                                         float forward_m) {
-    if (!frame.ordinary_road.has_value()) {
-        return std::nullopt;
-    }
-    const port::BEVReferencePath& center_path = frame.ordinary_road->center_path;
-    if (row_index < center_path.sampled_path.size()) {
-        const port::BEVPathSample& sample = center_path.sampled_path[row_index];
-        if (sample.present && std::isfinite(sample.point.forward_m) &&
-            std::isfinite(sample.point.lateral_m) &&
-            std::fabs(sample.point.forward_m - forward_m) <=
-                kParams.center_sample_forward_gap_max_m) {
-            return sample.point.lateral_m;
-        }
-    }
+bool EndpointAtFov(BEVWhiteRunEndpointState state) {
+    return state == BEVWhiteRunEndpointState::kFovEdge;
+}
 
-    const port::BEVPathSample* best_sample = nullptr;
-    float best_forward_error = std::numeric_limits<float>::max();
-    for (const port::BEVPathSample& sample : center_path.sampled_path) {
-        if (!sample.present || !std::isfinite(sample.point.forward_m) ||
-            !std::isfinite(sample.point.lateral_m)) {
+const BEVWhiteRun* UniqueOriginConnectedRun(const BEVSimpleRowScan& row) {
+    const BEVWhiteRun* selected = nullptr;
+    for (const BEVWhiteRun& run : row.white_runs) {
+        if (run.origin_connectivity != BEVWhiteRunOriginConnectivity::kConnected) {
             continue;
         }
-        const float forward_error = std::fabs(sample.point.forward_m - forward_m);
-        if (forward_error < best_forward_error) {
-            best_forward_error = forward_error;
-            best_sample = &sample;
-        }
-    }
-    if (best_sample != nullptr &&
-        best_forward_error <= kParams.center_sample_forward_gap_max_m) {
-        return best_sample->point.lateral_m;
-    }
-    return std::nullopt;
-}
-
-float SpanDistanceToLateral(const vision::BEVBoundarySpan& span,
-                            float lateral_m) {
-    if (lateral_m < span.left_m) {
-        return span.left_m - lateral_m;
-    }
-    if (lateral_m > span.right_m) {
-        return lateral_m - span.right_m;
-    }
-    return 0.0F;
-}
-
-const vision::BEVBoundarySpan* SelectRoadConnectedSpan(
-    const vision::BEVSimpleRowScan& scan,
-    const std::optional<float>& center_lateral) {
-    const vision::BEVBoundarySpan* selected = nullptr;
-    float best_distance = std::numeric_limits<float>::max();
-    for (const vision::BEVBoundarySpan& span : scan.spans) {
-        if (!std::isfinite(span.left_m) ||
-            !std::isfinite(span.right_m) ||
-            span.right_m < span.left_m) {
-            continue;
-        }
-        if (!center_lateral.has_value()) {
+        if (selected != nullptr) {
             return nullptr;
         }
-        const float distance = SpanDistanceToLateral(span, *center_lateral);
-        if (selected == nullptr || distance < best_distance) {
-            selected = &span;
-            best_distance = distance;
-        }
+        selected = &run;
     }
     return selected;
 }
 
-std::vector<RowObservation> CollectRows(const SceneFrameView& frame) {
+std::vector<RowObservation> CollectRows(const SceneFrameView& frame,
+                                        const CircleV2Params& params) {
     std::vector<RowObservation> rows;
     rows.reserve(frame.rows.rows.size());
-    for (std::size_t index = 0; index < frame.rows.rows.size(); ++index) {
-        const vision::BEVSimpleRowScan& scan = frame.rows.rows[index];
-        if (!scan.valid ||
-            scan.sampleable_count <
-                static_cast<std::size_t>(std::max(1, kParams.min_sampleable_per_row))) {
+    for (std::size_t row_index = 0; row_index < frame.rows.rows.size(); ++row_index) {
+        const BEVSimpleRowScan& row = frame.rows.rows[row_index];
+        if (row.forward_m < params.opening_forward_min_m ||
+            row.forward_m > params.opening_forward_max_m) {
             continue;
         }
-
-        RowObservation observation{};
-        observation.forward_m = scan.forward_m;
-        const std::optional<float> center_lateral =
-            CenterLateralForRow(frame, index, scan.forward_m);
-        const vision::BEVBoundarySpan* connected_span =
-            SelectRoadConnectedSpan(scan, center_lateral);
-        if (connected_span != nullptr) {
-            observation.left_m = connected_span->left_m;
-            observation.right_m = connected_span->right_m;
-            rows.push_back(observation);
-            continue;
-        }
-
-        bool found_span = false;
-        for (const vision::BEVBoundarySpan& span : scan.spans) {
-            if (!std::isfinite(span.left_m) || !std::isfinite(span.right_m) ||
-                span.right_m < span.left_m) {
-                continue;
-            }
-            observation.left_m =
-                found_span ? std::min(observation.left_m, span.left_m)
-                           : span.left_m;
-            observation.right_m =
-                found_span ? std::max(observation.right_m, span.right_m)
-                           : span.right_m;
-            found_span = true;
-        }
-        if (!found_span) {
-            continue;
-        }
-        rows.push_back(observation);
+        const BEVWhiteRun* run = row.valid &&
+                                         row.sampleable_width_m >= params.min_sampleable_width_m
+                                     ? UniqueOriginConnectedRun(row)
+                                     : nullptr;
+        rows.push_back({row.forward_m, row.sampleable_width_m, run});
     }
     std::sort(rows.begin(), rows.end(), [](const RowObservation& lhs,
                                            const RowObservation& rhs) {
@@ -180,260 +77,220 @@ std::vector<RowObservation> CollectRows(const SceneFrameView& frame) {
     return rows;
 }
 
-float BoundaryValue(const RowObservation& row, bool use_left) {
-    return use_left ? row.left_m : row.right_m;
-}
-
-BoundaryTrace BuildBoundaryTrace(const std::vector<RowObservation>& rows, bool use_left) {
-    BoundaryTrace trace;
-    trace.reserve(rows.size());
-    for (const RowObservation& row : rows) {
-        trace.push_back(BoundaryTracePoint{row.forward_m, BoundaryValue(row, use_left)});
+bool SideObserved(const RowObservation& row, bool left) {
+    if (row.run == nullptr) {
+        return false;
     }
-    return trace;
+    return EndpointObserved(left ? row.run->left_endpoint : row.run->right_endpoint);
 }
 
-float Reach(const BoundaryTracePoint& point, bool use_left) {
-    return use_left ? std::max(0.0F, -point.boundary_m)
-                    : std::max(0.0F, point.boundary_m);
+float SideLateral(const RowObservation& row, bool left) {
+    return left ? row.run->left_m : row.run->right_m;
 }
 
-float ReachFromBoundaryValue(float boundary_m, bool use_left) {
-    return use_left ? std::max(0.0F, -boundary_m) : std::max(0.0F, boundary_m);
-}
-
-float GrowthRatio(float near_reach, float far_reach) {
-    return (far_reach - near_reach) / std::max(kRatioDenominatorFloor, near_reach);
-}
-
-float ShrinkRatio(float near_reach, float far_reach) {
-    return (near_reach - far_reach) / std::max(kRatioDenominatorFloor, near_reach);
-}
-
-GrowthEvidence SustainedGrowthEvidence(const BoundaryTrace& trace,
-                                       bool use_left) {
-    GrowthEvidence best{};
-    if (trace.size() <= kOpeningSustainRows) {
-        return best;
+bool EffectiveOpeningLateral(const RowObservation& row,
+                             bool left,
+                             float& lateral_m,
+                             CircleOpeningSource& source) {
+    if (row.run == nullptr) {
+        return false;
     }
-    for (std::size_t split = 1U; split + kOpeningSustainRows <= trace.size(); ++split) {
-        const std::size_t anchor_begin =
-            split > kOpeningSustainRows ? split - kOpeningSustainRows : 0U;
-        float anchor_reach = Reach(trace[anchor_begin], use_left);
-        for (std::size_t index = anchor_begin + 1U; index < split; ++index) {
-            anchor_reach = std::max(anchor_reach, Reach(trace[index], use_left));
-        }
-        float sustained_reach = Reach(trace[split], use_left);
-        for (std::size_t offset = 1U; offset < kOpeningSustainRows; ++offset) {
-            sustained_reach =
-                std::min(sustained_reach, Reach(trace[split + offset], use_left));
-        }
-        const float ratio = GrowthRatio(anchor_reach, sustained_reach);
-        const float delta_m = sustained_reach - anchor_reach;
-        if (!best.found || ratio > best.ratio) {
-            best.found = true;
-            best.anchor_begin = anchor_begin;
-            best.split = split;
-            best.anchor_reach = anchor_reach;
-            best.ratio = ratio;
-            best.delta_m = delta_m;
-        }
+    const BEVWhiteRunEndpointState side =
+        left ? row.run->left_endpoint : row.run->right_endpoint;
+    const BEVWhiteRunEndpointState opposite =
+        left ? row.run->right_endpoint : row.run->left_endpoint;
+    if (EndpointObserved(side)) {
+        lateral_m = SideLateral(row, left);
+        source = CircleOpeningSource::kObservedBoundary;
+        return true;
     }
-    return best;
+    if (EndpointAtFov(side) && EndpointObserved(opposite)) {
+        lateral_m = SideLateral(row, left);
+        source = CircleOpeningSource::kFovEdgeLowerBound;
+        return true;
+    }
+    return false;
 }
 
-BoundaryLineFit FitBoundaryLine(const BoundaryTrace& trace, bool use_left) {
-    BoundaryLineFit fit{};
-    if (trace.size() < static_cast<std::size_t>(std::max(2, kParams.min_support_rows))) {
+float Reach(float lateral_m, bool left) {
+    return left ? std::max(0.0F, -lateral_m) : std::max(0.0F, lateral_m);
+}
+
+LineFit FitLine(const std::vector<TracePoint>& trace,
+                bool left,
+                const CircleV2Params& params) {
+    LineFit fit{};
+    if (trace.size() < 2U) {
         return fit;
     }
 
-    float sum_x = 0.0F;
-    float sum_y = 0.0F;
-    for (const BoundaryTracePoint& point : trace) {
-        sum_x += point.forward_m;
-        sum_y += point.boundary_m;
+    float weight_sum = 0.0F;
+    float mean_x = 0.0F;
+    float mean_y = 0.0F;
+    std::vector<float> weights(trace.size(), 1.0F);
+    if (trace.size() > 2U) {
+        for (std::size_t i = 0; i < trace.size(); ++i) {
+            const float left_gap = i == 0U ? trace[1].forward_m - trace[0].forward_m
+                                           : trace[i].forward_m - trace[i - 1U].forward_m;
+            const float right_gap = i + 1U == trace.size()
+                                        ? trace[i].forward_m - trace[i - 1U].forward_m
+                                        : trace[i + 1U].forward_m - trace[i].forward_m;
+            weights[i] = std::max(kEpsilon, 0.5F * (left_gap + right_gap));
+        }
     }
-    const float count = static_cast<float>(trace.size());
-    const float mean_x = sum_x / count;
-    const float mean_y = sum_y / count;
+    for (std::size_t i = 0; i < trace.size(); ++i) {
+        weight_sum += weights[i];
+        mean_x += weights[i] * trace[i].forward_m;
+        mean_y += weights[i] * trace[i].lateral_m;
+    }
+    if (weight_sum <= kEpsilon) {
+        return fit;
+    }
+    mean_x /= weight_sum;
+    mean_y /= weight_sum;
 
     float var_x = 0.0F;
     float cov_xy = 0.0F;
-    for (const BoundaryTracePoint& point : trace) {
-        const float dx = point.forward_m - mean_x;
-        var_x += dx * dx;
-        cov_xy += dx * (point.boundary_m - mean_y);
+    for (std::size_t i = 0; i < trace.size(); ++i) {
+        const float dx = trace[i].forward_m - mean_x;
+        var_x += weights[i] * dx * dx;
+        cov_xy += weights[i] * dx * (trace[i].lateral_m - mean_y);
     }
-    if (var_x <= kRatioDenominatorFloor) {
+    if (var_x <= kFitVarianceEpsilon) {
         return fit;
     }
+    fit.slope = cov_xy / var_x;
+    fit.intercept = mean_y - fit.slope * mean_x;
 
-    const float slope = cov_xy / var_x;
-    const float intercept = mean_y - slope * mean_x;
-    float min_forward = trace.front().forward_m;
-    float max_forward = trace.front().forward_m;
-    std::vector<float> squared_errors;
-    squared_errors.reserve(trace.size());
-    for (const BoundaryTracePoint& point : trace) {
-        min_forward = std::min(min_forward, point.forward_m);
-        max_forward = std::max(max_forward, point.forward_m);
-        const float expected = slope * point.forward_m + intercept;
-        const float error = point.boundary_m - expected;
-        squared_errors.push_back(error * error);
+    float squared_error_sum = 0.0F;
+    for (std::size_t i = 0; i < trace.size(); ++i) {
+        const float error = trace[i].lateral_m -
+                            (fit.slope * trace[i].forward_m + fit.intercept);
+        squared_error_sum += weights[i] * error * error;
     }
-    std::sort(squared_errors.begin(), squared_errors.end());
-    const std::size_t retained_count =
-        std::max<std::size_t>(1U, (squared_errors.size() * 9U + 9U) / 10U);
-    const float retained_squared_error_sum =
-        std::accumulate(squared_errors.begin(),
-                        squared_errors.begin() + static_cast<std::ptrdiff_t>(retained_count),
-                        0.0F);
-    const float rmse =
-        std::sqrt(retained_squared_error_sum / static_cast<float>(retained_count));
-
-    const float drift_max = std::max(1.0e-4F, kParams.opposite_straight_drift_max_m);
-    const float near_reach = ReachFromBoundaryValue(slope * min_forward + intercept, use_left);
-    const float far_reach = ReachFromBoundaryValue(slope * max_forward + intercept, use_left);
-    const float fitted_reach_drift_m = std::fabs(far_reach - near_reach);
-    const bool fitted_shrink =
-        near_reach > far_reach &&
-        ShrinkRatio(near_reach, far_reach) >=
-            std::max(kRatioDenominatorFloor, kParams.opposite_shrink_ratio_min);
-    const bool fitted_shrink_exceeded =
-        fitted_shrink &&
-        fitted_reach_drift_m > std::max(kRatioDenominatorFloor, kParams.open_expansion_min_m);
-    fit.shrink = fitted_shrink_exceeded;
-    fit.straight = rmse <= drift_max && !fit.shrink;
-    fit.confidence = Clamp01(1.0F - rmse / drift_max);
+    const float rmse = std::sqrt(squared_error_sum / weight_sum);
+    const float near_reach = Reach(fit.slope * trace.front().forward_m + fit.intercept, left);
+    const float far_reach = Reach(fit.slope * trace.back().forward_m + fit.intercept, left);
+    const float reach_delta = near_reach - far_reach;
+    fit.shrink = reach_delta > params.opening_distance_min_m &&
+                 reach_delta / std::max(kEpsilon, near_reach) >= 0.10F;
+    fit.valid = true;
+    fit.straight = rmse <= kStraightDriftMaxM && !fit.shrink;
+    fit.confidence = std::clamp(1.0F - rmse / kStraightDriftMaxM, 0.0F, 1.0F);
     return fit;
 }
 
-bool IsOpen(const GrowthEvidence& growth) {
-    return growth.found &&
-           growth.ratio >= std::max(kRatioDenominatorFloor, kParams.opening_expansion_ratio_min) &&
-           growth.delta_m >= std::max(kRatioDenominatorFloor, kParams.open_expansion_min_m);
+bool ReliableStraight(const LineFit& fit, const CircleV2Params& params) {
+    return fit.valid && fit.straight &&
+           fit.confidence >= params.opposite_straight_confidence_min;
 }
 
-bool ReliableStraight(const BoundaryLineFit& fit, const CircleV2Params& params) {
-    return fit.straight && fit.confidence >= params.opposite_straight_confidence_min;
+float DirectedDistance(const LineFit& baseline,
+                       float forward_m,
+                       float lateral_m,
+                       bool left) {
+    const float predicted = baseline.slope * forward_m + baseline.intercept;
+    const float normalizer = std::sqrt(1.0F + baseline.slope * baseline.slope);
+    return left ? (predicted - lateral_m) / normalizer
+                : (lateral_m - predicted) / normalizer;
 }
 
-std::size_t MinimumEntryBottomRowCount(const CircleV2Params& params) {
-    return static_cast<std::size_t>(
-        std::max(kParams.min_support_rows, params.entry_bottom_min_row_count));
-}
-
-bool RowInsideEntryBottomForwardRoi(const RowObservation& row,
-                                    const CircleV2Params& params) {
-    return std::isfinite(row.forward_m) &&
-           row.forward_m >= params.entry_bottom_forward_min_m &&
-           row.forward_m <= params.entry_bottom_forward_max_m;
-}
-
-std::vector<RowObservation> EntryBottomRoiRows(const std::vector<RowObservation>& rows,
-                                               const CircleV2Params& params) {
-    std::vector<RowObservation> roi_rows;
-    roi_rows.reserve(rows.size());
-    for (const RowObservation& row : rows) {
-        if (RowInsideEntryBottomForwardRoi(row, params)) {
-            roi_rows.push_back(row);
+CircleOpeningObservation DetectOpening(const std::vector<RowObservation>& rows,
+                                       bool left,
+                                       const CircleV2Params& params) {
+    CircleOpeningObservation opening{};
+    for (std::size_t candidate = 2U; candidate < rows.size(); ++candidate) {
+        std::size_t baseline_begin = candidate;
+        while (baseline_begin > 0U) {
+            const std::size_t previous = baseline_begin - 1U;
+            if (!SideObserved(rows[previous], left)) {
+                break;
+            }
+            if (baseline_begin < candidate &&
+                rows[baseline_begin].forward_m - rows[previous].forward_m >
+                    params.max_adjacent_distance_m) {
+                break;
+            }
+            baseline_begin = previous;
         }
-    }
-    return roi_rows;
-}
-
-bool BottomSideOpeningReached(const std::vector<RowObservation>& bottom_rows, bool use_left) {
-    const BoundaryTrace side_trace = BuildBoundaryTrace(bottom_rows, use_left);
-    return IsOpen(SustainedGrowthEvidence(side_trace, use_left));
-}
-
-bool BottomEntryGateReached(const std::vector<RowObservation>& rows,
-                            bool use_left,
-                            const CircleV2Params& params) {
-    const std::vector<RowObservation> roi_rows = EntryBottomRoiRows(rows, params);
-    if (roi_rows.size() < MinimumEntryBottomRowCount(params)) {
-        return false;
-    }
-
-    const bool opposite_use_left = !use_left;
-    const BoundaryTrace opposite_trace = BuildBoundaryTrace(roi_rows, opposite_use_left);
-    const BoundaryLineFit opposite_fit = FitBoundaryLine(opposite_trace, opposite_use_left);
-    return BottomSideOpeningReached(roi_rows, use_left) &&
-           ReliableStraight(opposite_fit, params);
-}
-
-float BaselineBoundary(const BoundaryTrace& trace,
-                       const GrowthEvidence& growth,
-                       bool /*use_left*/) {
-    float sum = 0.0F;
-    std::size_t count = 0;
-    for (std::size_t index = growth.anchor_begin; index < growth.split; ++index) {
-        sum += trace[index].boundary_m;
-        ++count;
-    }
-    if (count == 0U) {
-        return trace[growth.anchor_begin].boundary_m;
-    }
-    return sum / static_cast<float>(count);
-}
-
-bool EstimateP(const BoundaryTrace& trace,
-               const GrowthEvidence& growth,
-               bool use_left,
-               port::BEVPoint& p) {
-    if (!IsOpen(growth) || growth.split >= trace.size()) {
-        return false;
-    }
-    std::size_t far_index = growth.split;
-    for (std::size_t index = growth.split + 1U; index < trace.size(); ++index) {
-        const float reach = Reach(trace[index], use_left);
-        if (reach - growth.anchor_reach < kParams.open_expansion_min_m ||
-            GrowthRatio(growth.anchor_reach, reach) < kParams.opening_expansion_ratio_min) {
-            break;
+        if (candidate - baseline_begin < 2U ||
+            rows[candidate].forward_m - rows[candidate - 1U].forward_m >
+                params.max_adjacent_distance_m) {
+            continue;
         }
-        far_index = index;
-    }
-    p.forward_m = trace[far_index].forward_m;
-    p.lateral_m = BaselineBoundary(trace, growth, use_left);
-    return std::isfinite(p.forward_m) && std::isfinite(p.lateral_m);
-}
 
-CircleDir DetectDir(bool left_open,
-                    bool right_open,
-                    const BoundaryLineFit& left_fit,
-                    const BoundaryLineFit& right_fit,
-                    const GrowthEvidence& left_growth,
-                    const GrowthEvidence& right_growth,
-                    std::size_t row_count,
-                    const CircleV2Params& params) {
-    if (left_open == right_open) {
-        return CircleDir::kNone;
-    }
-    const float support_score =
-        Clamp01(static_cast<float>(row_count) /
-                static_cast<float>(std::max(1, kParams.min_support_rows)));
-    if (left_open) {
-        const float open_score =
-            Clamp01(left_growth.ratio / std::max(kRatioDenominatorFloor,
-                                                 kParams.opening_expansion_ratio_min));
-        const float confidence =
-            Clamp01(0.80F * open_score + 0.10F * right_fit.confidence + 0.10F * support_score);
-        return !left_fit.straight && ReliableStraight(right_fit, params) &&
-                       confidence >= kParams.present_confidence_min
-                   ? CircleDir::kLeft
-                   : CircleDir::kNone;
-    }
+        std::vector<TracePoint> baseline_trace;
+        baseline_trace.reserve(candidate - baseline_begin);
+        for (std::size_t index = baseline_begin; index < candidate; ++index) {
+            baseline_trace.push_back({rows[index].forward_m, SideLateral(rows[index], left)});
+        }
+        const LineFit baseline = FitLine(baseline_trace, left, params);
+        if (!baseline.valid) {
+            continue;
+        }
 
-    const float open_score =
-        Clamp01(right_growth.ratio / std::max(kRatioDenominatorFloor,
-                                              kParams.opening_expansion_ratio_min));
-    const float confidence =
-        Clamp01(0.80F * open_score + 0.10F * left_fit.confidence + 0.10F * support_score);
-    return !right_fit.straight && ReliableStraight(left_fit, params) &&
-                   confidence >= kParams.present_confidence_min
-               ? CircleDir::kRight
-               : CircleDir::kNone;
+        float effective_lateral = 0.0F;
+        CircleOpeningSource source = CircleOpeningSource::kNone;
+        if (!EffectiveOpeningLateral(rows[candidate], left, effective_lateral, source) ||
+            DirectedDistance(baseline, rows[candidate].forward_m, effective_lateral, left) <
+                params.opening_distance_min_m) {
+            continue;
+        }
+
+        std::size_t confirmed_end = candidate;
+        for (std::size_t index = candidate + 1U; index < rows.size(); ++index) {
+            if (rows[index].forward_m - rows[index - 1U].forward_m >
+                params.max_adjacent_distance_m) {
+                break;
+            }
+            float confirm_lateral = 0.0F;
+            CircleOpeningSource confirm_source = CircleOpeningSource::kNone;
+            if (!EffectiveOpeningLateral(rows[index], left, confirm_lateral, confirm_source) ||
+                DirectedDistance(baseline, rows[index].forward_m, confirm_lateral, left) <
+                    params.opening_distance_min_m) {
+                break;
+            }
+            confirmed_end = index;
+            if (rows[confirmed_end].forward_m - rows[candidate].forward_m >=
+                params.opening_confirm_forward_span_m) {
+                break;
+            }
+        }
+        const float confirmed_span =
+            rows[confirmed_end].forward_m - rows[candidate].forward_m;
+        if (confirmed_span < params.opening_confirm_forward_span_m) {
+            continue;
+        }
+
+        std::vector<TracePoint> opposite_trace;
+        opposite_trace.reserve(confirmed_end - baseline_begin + 1U);
+        bool opposite_complete = true;
+        for (std::size_t index = baseline_begin; index <= confirmed_end; ++index) {
+            if (!SideObserved(rows[index], !left)) {
+                opposite_complete = false;
+                break;
+            }
+            opposite_trace.push_back({rows[index].forward_m, SideLateral(rows[index], !left)});
+        }
+        const bool opposite_straight =
+            opposite_complete &&
+            ReliableStraight(FitLine(opposite_trace, !left, params), params);
+        if (!opposite_straight) {
+            continue;
+        }
+
+        opening.available = true;
+        opening.frontier_forward_m = rows[candidate].forward_m;
+        opening.effective_lateral_m = effective_lateral;
+        opening.source = source;
+        opening.outward_distance_m =
+            DirectedDistance(baseline, rows[candidate].forward_m, effective_lateral, left);
+        opening.confirmed_forward_span_m = confirmed_span;
+        opening.origin_connected = true;
+        opening.opposite_straight = true;
+        return opening;
+    }
+    return opening;
 }
 
 }  // namespace
@@ -441,35 +298,14 @@ CircleDir DetectDir(bool left_open,
 CircleSideExpansionObservation ObserveCircleSideExpansion(const SceneFrameView& frame,
                                                           const CircleV2Params& params) {
     CircleSideExpansionObservation observation{};
-    const std::vector<RowObservation> rows = CollectRows(frame);
-    if (rows.size() < static_cast<std::size_t>(std::max(1, kParams.min_support_rows))) {
-        return observation;
+    const std::vector<RowObservation> rows = CollectRows(frame, params);
+    observation.openings.left = DetectOpening(rows, true, params);
+    observation.openings.right = DetectOpening(rows, false, params);
+    if (observation.openings.left.available != observation.openings.right.available) {
+        observation.detected_dir = observation.openings.left.available
+                                       ? CircleDir::kLeft
+                                       : CircleDir::kRight;
     }
-
-    const BoundaryTrace left_trace = BuildBoundaryTrace(rows, true);
-    const BoundaryTrace right_trace = BuildBoundaryTrace(rows, false);
-    const GrowthEvidence left_growth = SustainedGrowthEvidence(left_trace, true);
-    const GrowthEvidence right_growth = SustainedGrowthEvidence(right_trace, false);
-    observation.left_phase1_open = IsOpen(left_growth);
-    observation.right_phase1_open = IsOpen(right_growth);
-    observation.left_entry_gate_reached = BottomEntryGateReached(rows, true, params);
-    observation.right_entry_gate_reached = BottomEntryGateReached(rows, false, params);
-
-    const BoundaryLineFit left_fit = FitBoundaryLine(left_trace, true);
-    const BoundaryLineFit right_fit = FitBoundaryLine(right_trace, false);
-    observation.detected_dir =
-        DetectDir(observation.left_phase1_open,
-                  observation.right_phase1_open,
-                  left_fit,
-                  right_fit,
-                  left_growth,
-                  right_growth,
-                  rows.size(),
-                  params);
-
-    observation.left_p_available = EstimateP(left_trace, left_growth, true, observation.left_p);
-    observation.right_p_available =
-        EstimateP(right_trace, right_growth, false, observation.right_p);
     return observation;
 }
 

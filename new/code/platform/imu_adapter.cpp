@@ -21,8 +21,6 @@ namespace {
 constexpr float kGravityMps2 = 9.80665F;
 /// 加速度计每 LSB 对应的物理值（m/s^2）
 constexpr float kAccelMetersPerSecPerCount = 0.0001220F * kGravityMps2;
-/// 陀螺仪每 LSB 对应的物理值（rad/s）
-constexpr float kGyroRadPerSecPerCount = 0.0010641F;
 /// 加速度低通滤波器新数据权重
 constexpr float kAccelFilterNewWeight = 0.9F;
 /// 加速度低通滤波器旧数据权重
@@ -347,11 +345,11 @@ private:
         out.acc_y = filtered_acc_[1];
         out.acc_z = filtered_acc_[2];
         out.gyro_x =
-            (static_cast<float>(sample.gyro_x) - gyro_bias_raw_[0]) * kGyroRadPerSecPerCount;
+            (static_cast<float>(sample.gyro_x) - gyro_bias_raw_[0]) * port::kGyroRadPerSecPerCount;
         out.gyro_y =
-            (static_cast<float>(sample.gyro_y) - gyro_bias_raw_[1]) * kGyroRadPerSecPerCount;
+            (static_cast<float>(sample.gyro_y) - gyro_bias_raw_[1]) * port::kGyroRadPerSecPerCount;
         out.gyro_z =
-            (static_cast<float>(sample.gyro_z) - gyro_bias_raw_[2]) * kGyroRadPerSecPerCount;
+            (static_cast<float>(sample.gyro_z) - gyro_bias_raw_[2]) * port::kGyroRadPerSecPerCount;
         return out;
     }
 

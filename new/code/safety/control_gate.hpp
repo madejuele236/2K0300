@@ -10,9 +10,11 @@ enum class ControlVetoReason {
     kPerceptionStale,
     kPerceptionInvalid,
     kReferenceControlNotReady,
+    kInitialReferenceHoldNotAllowed,
     kLowVoltage,
     kImuInvalid,
-    kEncoderInvalid
+    kEncoderInvalid,
+    kYawControlInvalid
 };
 
 struct ControlGateInputs {
@@ -22,6 +24,8 @@ struct ControlGateInputs {
     uint64_t perception_publish_time_ms = 0;
     bool perception_projector_ok = false;
     bool reference_control_ready = false;
+    bool reference_control_degraded = false;
+    bool initial_start_boundary = false;
     bool low_voltage_emergency = false;
     bool imu_valid = false;
     bool encoder_valid = false;

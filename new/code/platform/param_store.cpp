@@ -1,18 +1,25 @@
 #include "port/platform_adapter.hpp"
 
 // 参数存储实现 —— 从 JSON 配置文件中加载当前运行时参数。
-// 支持 JSON 注释剥离、文件读取、OpenCV FileStorage 解析。
-// 缺文件或解析失败时回退到 RuntimeParameters 的内建镜像默认值。
+// 支持 JSON 注释扩展、严格语法校验、文件读取和 OpenCV FileStorage 字段提取。
+// 文件、语法或字段校验失败时拒绝加载；合法可选字段缺失仍保留字段默认值。
 
 #include <array>
 #include <cstddef>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include <opencv2/core/persistence.hpp>
 
+#include "control/wheel_target_mixer.hpp"
+#include "control/steering_yaw_controller.hpp"
+#include "port/actuator_command_types.hpp"
 #include "port/runtime_parameter_validation.hpp"
 
 namespace ls2k::platform {
@@ -35,11 +42,11 @@ bool ReadText(const std::string& path, std::string& out) {
     return true;
 }
 
-// 在交给 OpenCV FileStorage 前先剥离 JSON 注释。
-// 解析过程会跟踪字符串字面量和转义字符，避免把 URL、路径等字符串中的双斜杠误判为行注释。
-// 这里只做配置文本的预处理，不改变 JSON 字段含义或默认值回退策略。
-std::string StripJsonComments(const std::string& text) {
-    std::string output;
+// 在严格 JSON 校验和 OpenCV 字段提取前剥离配置支持的注释扩展。
+// 注释被替换为空白，避免把注释两侧的 token 拼接成另一个合法 token。
+// 未闭合块注释返回 false；字符串闭合由后续严格 JSON 校验器判定。
+bool StripJsonComments(const std::string& text, std::string& output) {
+    output.clear();
     output.reserve(text.size());
 
     bool in_string = false;
@@ -55,6 +62,8 @@ std::string StripJsonComments(const std::string& text) {
             if (c == '\n') {
                 in_line_comment = false;
                 output.push_back(c);
+            } else {
+                output.push_back(' ');
             }
             continue;
         }
@@ -66,7 +75,11 @@ std::string StripJsonComments(const std::string& text) {
             }
             if (c == '*' && next == '/') {
                 in_block_comment = false;
+                output.push_back(' ');
+                output.push_back(' ');
                 ++i;
+            } else {
+                output.push_back(' ');
             }
             continue;
         }
@@ -91,12 +104,16 @@ std::string StripJsonComments(const std::string& text) {
 
         if (c == '/' && next == '/') {
             in_line_comment = true;
+            output.push_back(' ');
+            output.push_back(' ');
             ++i;
             continue;
         }
 
         if (c == '/' && next == '*') {
             in_block_comment = true;
+            output.push_back(' ');
+            output.push_back(' ');
             ++i;
             continue;
         }
@@ -104,6 +121,402 @@ std::string StripJsonComments(const std::string& text) {
         output.push_back(c);
     }
 
+    return !in_block_comment;
+}
+
+class StrictJsonObjectSyntax final {
+public:
+    explicit StrictJsonObjectSyntax(const std::string& text) : text_(text) {}
+
+    bool ParseDocument(std::string& canonicalized) {
+        SkipWhitespace();
+        if (!ParseObject()) {
+            return false;
+        }
+        SkipWhitespace();
+        if (position_ != text_.size()) {
+            return false;
+        }
+        BuildCanonicalizedDocument(canonicalized);
+        return true;
+    }
+
+private:
+    struct MemberNameReplacement {
+        std::size_t begin = 0;
+        std::size_t end = 0;
+        std::string decoded{};
+    };
+
+    bool ParseValue() {
+        SkipWhitespace();
+        if (position_ >= text_.size()) {
+            return false;
+        }
+        switch (text_[position_]) {
+            case '{': return ParseObject();
+            case '[': return ParseArray();
+            case '"': return ParseString(nullptr);
+            case 't': return ConsumeLiteral("true");
+            case 'f': return ConsumeLiteral("false");
+            case 'n': return ConsumeLiteral("null");
+            default: return ParseNumber();
+        }
+    }
+
+    bool ParseObject() {
+        if (!Consume('{')) {
+            return false;
+        }
+        SkipWhitespace();
+        if (Consume('}')) {
+            return true;
+        }
+        std::unordered_set<std::string> member_names;
+        while (true) {
+            SkipWhitespace();
+            const std::size_t member_name_begin = position_;
+            std::string member_name;
+            if (!ParseString(&member_name) || !member_names.insert(member_name).second) {
+                return false;
+            }
+            member_name_replacements_.push_back(
+                {member_name_begin, position_, member_name});
+            SkipWhitespace();
+            if (!Consume(':') || !ParseValue()) {
+                return false;
+            }
+            SkipWhitespace();
+            if (Consume('}')) {
+                return true;
+            }
+            if (!Consume(',')) {
+                return false;
+            }
+        }
+    }
+
+    bool ParseArray() {
+        if (!Consume('[')) {
+            return false;
+        }
+        SkipWhitespace();
+        if (Consume(']')) {
+            return true;
+        }
+        while (true) {
+            if (!ParseValue()) {
+                return false;
+            }
+            SkipWhitespace();
+            if (Consume(']')) {
+                return true;
+            }
+            if (!Consume(',')) {
+                return false;
+            }
+        }
+    }
+
+    bool ParseString(std::string* decoded) {
+        if (!Consume('"')) {
+            return false;
+        }
+        while (position_ < text_.size()) {
+            const unsigned char c = static_cast<unsigned char>(text_[position_++]);
+            if (c == '"') {
+                return true;
+            }
+            if (c < 0x20) {
+                return false;
+            }
+            if (c != '\\') {
+                if (decoded != nullptr) {
+                    decoded->push_back(static_cast<char>(c));
+                }
+                continue;
+            }
+            if (position_ >= text_.size()) {
+                return false;
+            }
+            const char escape = text_[position_++];
+            if (escape == '"' || escape == '\\' || escape == '/') {
+                if (decoded != nullptr) {
+                    decoded->push_back(escape);
+                }
+                continue;
+            }
+            if (escape == 'b' || escape == 'f' || escape == 'n' || escape == 'r' || escape == 't') {
+                if (decoded != nullptr) {
+                    switch (escape) {
+                        case 'b': decoded->push_back('\b'); break;
+                        case 'f': decoded->push_back('\f'); break;
+                        case 'n': decoded->push_back('\n'); break;
+                        case 'r': decoded->push_back('\r'); break;
+                        case 't': decoded->push_back('\t'); break;
+                    }
+                }
+                continue;
+            }
+            if (escape != 'u') {
+                return false;
+            }
+            unsigned int code_point = 0;
+            if (!ParseHexCodeUnit(code_point)) {
+                return false;
+            }
+            if (code_point >= 0xD800 && code_point <= 0xDBFF) {
+                if (position_ + 2 > text_.size() || text_[position_] != '\\' ||
+                    text_[position_ + 1] != 'u') {
+                    return false;
+                }
+                position_ += 2;
+                unsigned int low_surrogate = 0;
+                if (!ParseHexCodeUnit(low_surrogate) ||
+                    low_surrogate < 0xDC00 || low_surrogate > 0xDFFF) {
+                    return false;
+                }
+                code_point = 0x10000 + ((code_point - 0xD800) << 10) +
+                             (low_surrogate - 0xDC00);
+            } else if (code_point >= 0xDC00 && code_point <= 0xDFFF) {
+                return false;
+            }
+            if (decoded != nullptr) {
+                AppendUtf8(code_point, *decoded);
+            }
+        }
+        return false;
+    }
+
+    bool ParseHexCodeUnit(unsigned int& value) {
+        if (position_ + 4 > text_.size()) {
+            return false;
+        }
+        value = 0;
+        for (int i = 0; i < 4; ++i) {
+            const char hex = text_[position_++];
+            value <<= 4;
+            if (hex >= '0' && hex <= '9') {
+                value += static_cast<unsigned int>(hex - '0');
+            } else if (hex >= 'a' && hex <= 'f') {
+                value += static_cast<unsigned int>(hex - 'a' + 10);
+            } else if (hex >= 'A' && hex <= 'F') {
+                value += static_cast<unsigned int>(hex - 'A' + 10);
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static void AppendUtf8(unsigned int code_point, std::string& output) {
+        if (code_point <= 0x7F) {
+            output.push_back(static_cast<char>(code_point));
+        } else if (code_point <= 0x7FF) {
+            output.push_back(static_cast<char>(0xC0 | (code_point >> 6)));
+            output.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+        } else if (code_point <= 0xFFFF) {
+            output.push_back(static_cast<char>(0xE0 | (code_point >> 12)));
+            output.push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+            output.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+        } else {
+            output.push_back(static_cast<char>(0xF0 | (code_point >> 18)));
+            output.push_back(static_cast<char>(0x80 | ((code_point >> 12) & 0x3F)));
+            output.push_back(static_cast<char>(0x80 | ((code_point >> 6) & 0x3F)));
+            output.push_back(static_cast<char>(0x80 | (code_point & 0x3F)));
+        }
+    }
+
+    static std::string EncodeJsonString(const std::string& decoded) {
+        static constexpr char kHex[] = "0123456789ABCDEF";
+        std::string encoded;
+        encoded.reserve(decoded.size() + 2);
+        encoded.push_back('"');
+        for (const unsigned char c : decoded) {
+            switch (c) {
+                case '"': encoded += "\\\""; break;
+                case '\\': encoded += "\\\\"; break;
+                case '\b': encoded += "\\b"; break;
+                case '\f': encoded += "\\f"; break;
+                case '\n': encoded += "\\n"; break;
+                case '\r': encoded += "\\r"; break;
+                case '\t': encoded += "\\t"; break;
+                default:
+                    if (c < 0x20) {
+                        encoded += "\\u00";
+                        encoded.push_back(kHex[(c >> 4) & 0x0F]);
+                        encoded.push_back(kHex[c & 0x0F]);
+                    } else {
+                        encoded.push_back(static_cast<char>(c));
+                    }
+                    break;
+            }
+        }
+        encoded.push_back('"');
+        return encoded;
+    }
+
+    void BuildCanonicalizedDocument(std::string& canonicalized) const {
+        canonicalized.clear();
+        canonicalized.reserve(text_.size());
+        std::size_t cursor = 0;
+        for (const MemberNameReplacement& replacement : member_name_replacements_) {
+            canonicalized.append(text_, cursor, replacement.begin - cursor);
+            canonicalized += EncodeJsonString(replacement.decoded);
+            cursor = replacement.end;
+        }
+        canonicalized.append(text_, cursor, std::string::npos);
+    }
+
+    bool ParseNumber() {
+        const std::size_t start = position_;
+        Consume('-');
+        if (position_ >= text_.size()) {
+            return false;
+        }
+        if (text_[position_] == '0') {
+            ++position_;
+            if (position_ < text_.size() && text_[position_] >= '0' && text_[position_] <= '9') {
+                return false;
+            }
+        } else {
+            if (text_[position_] < '1' || text_[position_] > '9') {
+                return false;
+            }
+            while (position_ < text_.size() && text_[position_] >= '0' && text_[position_] <= '9') {
+                ++position_;
+            }
+        }
+        if (Consume('.')) {
+            const std::size_t fraction_start = position_;
+            while (position_ < text_.size() && text_[position_] >= '0' && text_[position_] <= '9') {
+                ++position_;
+            }
+            if (position_ == fraction_start) {
+                return false;
+            }
+        }
+        if (position_ < text_.size() && (text_[position_] == 'e' || text_[position_] == 'E')) {
+            ++position_;
+            if (position_ < text_.size() && (text_[position_] == '+' || text_[position_] == '-')) {
+                ++position_;
+            }
+            const std::size_t exponent_start = position_;
+            while (position_ < text_.size() && text_[position_] >= '0' && text_[position_] <= '9') {
+                ++position_;
+            }
+            if (position_ == exponent_start) {
+                return false;
+            }
+        }
+        return position_ > start;
+    }
+
+    bool ConsumeLiteral(const char* literal) {
+        const std::size_t start = position_;
+        for (std::size_t i = 0; literal[i] != '\0'; ++i) {
+            if (position_ >= text_.size() || text_[position_] != literal[i]) {
+                position_ = start;
+                return false;
+            }
+            ++position_;
+        }
+        return true;
+    }
+
+    bool Consume(char expected) {
+        if (position_ >= text_.size() || text_[position_] != expected) {
+            return false;
+        }
+        ++position_;
+        return true;
+    }
+
+    void SkipWhitespace() {
+        while (position_ < text_.size()) {
+            const char c = text_[position_];
+            if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+                break;
+            }
+            ++position_;
+        }
+    }
+
+    const std::string& text_;
+    std::size_t position_ = 0;
+    std::vector<MemberNameReplacement> member_name_replacements_{};
+};
+
+// OpenCV FileStorage 会在节点创建阶段把超出 int 范围的裸整数饱和为 int，
+// 导致后续 ReadIntegerValue 无法观察原值。严格语法通过后，仅把这些裸整数
+// 改写为等值的 JSON 实数写法，使 OpenCV 保留 double 值；其他 token 和字符串不变。
+std::string PreserveOutOfRangeIntegerValues(const std::string& text) {
+    std::string output;
+    output.reserve(text.size());
+    bool in_string = false;
+    bool escaped = false;
+    for (std::size_t i = 0; i < text.size();) {
+        const char c = text[i];
+        if (in_string) {
+            output.push_back(c);
+            ++i;
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (c == '"') {
+            in_string = true;
+            output.push_back(c);
+            ++i;
+            continue;
+        }
+        if (c != '-' && (c < '0' || c > '9')) {
+            output.push_back(c);
+            ++i;
+            continue;
+        }
+
+        const std::size_t start = i;
+        if (text[i] == '-') {
+            ++i;
+        }
+        while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+            ++i;
+        }
+        bool is_bare_integer = true;
+        if (i < text.size() && text[i] == '.') {
+            is_bare_integer = false;
+            ++i;
+            while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+                ++i;
+            }
+        }
+        if (i < text.size() && (text[i] == 'e' || text[i] == 'E')) {
+            is_bare_integer = false;
+            ++i;
+            if (i < text.size() && (text[i] == '+' || text[i] == '-')) {
+                ++i;
+            }
+            while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+                ++i;
+            }
+        }
+        const std::string token = text.substr(start, i - start);
+        output += token;
+        if (is_bare_integer) {
+            const double numeric = std::strtod(token.c_str(), nullptr);
+            if (!std::isfinite(numeric) ||
+                numeric < static_cast<double>(std::numeric_limits<int>::min()) ||
+                numeric > static_cast<double>(std::numeric_limits<int>::max())) {
+                output += ".0";
+            }
+        }
+    }
     return output;
 }
 
@@ -115,9 +528,20 @@ std::string StripJsonComments(const std::string& text) {
  * @return true 表示解析成功且根节点为非空 Map
  */
 bool ParseJsonObject(const std::string& text, cv::FileStorage& storage) {
+    std::string sanitized;
+    if (!StripJsonComments(text, sanitized)) {
+        return false;
+    }
+    std::string canonicalized;
+    if (!StrictJsonObjectSyntax(sanitized).ParseDocument(canonicalized)) {
+        return false;
+    }
+    const std::size_t first = canonicalized.find_first_not_of(" \t\n\r");
+    const std::size_t last = canonicalized.find_last_not_of(" \t\n\r");
+    const std::string opencv_input = PreserveOutOfRangeIntegerValues(
+        canonicalized.substr(first, last - first + 1));
     try {
-        const std::string sanitized = StripJsonComments(text);
-        if (!storage.open(sanitized,
+        if (!storage.open(opencv_input,
                           cv::FileStorage::READ | cv::FileStorage::MEMORY |
                               cv::FileStorage::FORMAT_JSON)) {
             return false;
@@ -155,21 +579,22 @@ bool ReadRequiredNumber(const cv::FileNode& root, const char* key, double& value
 }
 
 /**
- * 读取整数值 —— 允许浮点数但要求其四舍五入后与原值的误差不超过 1e-6。
+ * 读取整数值 —— 数值必须有限、数学上为整数且位于 int 的可表示范围内。
  * @param node OpenCV JSON 节点
  * @param value 输出参数，读取到的整数值
- * @return true 表示读取成功且数值精度满足整数要求
+ * @return true 表示读取成功且可以无损转换为 int
  */
 bool ReadIntegerValue(const cv::FileNode& node, int& value) {
     double numeric = 0.0;
     if (!ReadNumberNode(node, numeric)) {
         return false;
     }
-    const double rounded = std::round(numeric);
-    if (std::fabs(numeric - rounded) > 1e-6) {
+    if (!std::isfinite(numeric) || std::trunc(numeric) != numeric ||
+        numeric < static_cast<double>(std::numeric_limits<int>::min()) ||
+        numeric > static_cast<double>(std::numeric_limits<int>::max())) {
         return false;
     }
-    value = static_cast<int>(rounded);
+    value = static_cast<int>(numeric);
     return true;
 }
 
@@ -606,13 +1031,24 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
            IsFiniteInRange(params.circle_v2_inner_trace_stall_yaw_min_deg, 0.0, 720.0) &&
            IsFiniteInRange(params.circle_v2_inner_trace_path_offset_m, 0.0, 2.0) &&
            IsFiniteInRange(params.circle_v2_opposite_straight_confidence_min, 0.0, 1.0) &&
-           params.circle_v2_entry_bottom_min_row_count >= 1 &&
-           params.circle_v2_entry_bottom_min_row_count <=
-               static_cast<int>(port::kBevReferenceSampleCount) &&
-           IsFiniteInRange(params.circle_v2_entry_bottom_forward_min_m, 0.0, 2.0) &&
-           IsFiniteInRange(params.circle_v2_entry_bottom_forward_max_m, 0.0, 2.0) &&
-           params.circle_v2_entry_bottom_forward_max_m >=
-               params.circle_v2_entry_bottom_forward_min_m;
+           IsFiniteInRange(params.circle_v2_min_sampleable_width_m, 1.0e-6, 10.0) &&
+           IsFiniteInRange(params.circle_v2_opening_forward_min_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.circle_v2_opening_forward_max_m, 0.0, 2.0) &&
+           params.circle_v2_opening_forward_max_m >= params.circle_v2_opening_forward_min_m &&
+           IsFiniteInRange(params.circle_v2_opening_distance_min_m, 1.0e-6, 2.0) &&
+           IsFiniteInRange(params.circle_v2_opening_confirm_forward_span_m, 1.0e-6, 2.0) &&
+           IsFiniteInRange(params.circle_v2_entry_forward_min_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.circle_v2_entry_forward_max_m, 0.0, 2.0) &&
+           params.circle_v2_entry_forward_max_m >= params.circle_v2_entry_forward_min_m &&
+           IsFiniteInRange(params.circle_v2_inner_geometry_forward_min_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.circle_v2_inner_geometry_forward_max_m, 0.0, 2.0) &&
+           params.circle_v2_inner_geometry_forward_max_m >=
+               params.circle_v2_inner_geometry_forward_min_m &&
+           IsFiniteInRange(params.circle_v2_exit_geometry_forward_min_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.circle_v2_exit_geometry_forward_max_m, 0.0, 2.0) &&
+           params.circle_v2_exit_geometry_forward_max_m >=
+               params.circle_v2_exit_geometry_forward_min_m &&
+           IsFiniteInRange(params.circle_v2_exit_straight_max_lateral_span_m, 1.0e-6, 2.0);
 }
 
 bool ValidateReferenceTimeAlignment(const port::ReferenceTimeAlignmentParameters& params,
@@ -713,6 +1149,9 @@ std::string ProfileBlockError(const char* key) {
 bool ReadRequiredRuntimeParams(const cv::FileNode& root, port::RuntimeParameters& parsed) {
     bool all_ok = true;
     all_ok &= ReadRequiredNumber(root, "RUNNING_SPEED_TARGET", parsed.running_speed_target);
+    all_ok &= std::isfinite(parsed.running_speed_target) &&
+              parsed.running_speed_target >= 0.0 &&
+              parsed.running_speed_target <= control::kWheelSpeedTargetMax;
     all_ok &= ReadRequiredNestedNumber(root, "YAW_RATE_PID", "D", parsed.yaw_rate_pid_d);
     all_ok &= ReadRequiredNestedNumber(root, "LEFT_WHEEL_PID", "P", parsed.left_wheel_pid.p);
     all_ok &= ReadRequiredNestedNumber(root, "LEFT_WHEEL_PID", "I", parsed.left_wheel_pid.i);
@@ -724,8 +1163,17 @@ bool ReadRequiredRuntimeParams(const cv::FileNode& root, port::RuntimeParameters
     all_ok &= ReadRequiredNestedNumber(root, "RIGHT_WHEEL_PID", "D", parsed.right_wheel_pid.d);
     all_ok &= ReadRequiredNestedNumber(
         root, "RIGHT_WHEEL_PID", "INTEGRAL_LIMIT", parsed.right_wheel_pid.integral_limit);
+    const auto wheel_pid_values_valid = [](const port::WheelPidParameters& params) {
+        return std::isfinite(params.p) && std::isfinite(params.i) &&
+               std::isfinite(params.d) && std::isfinite(params.integral_limit) &&
+               params.integral_limit >= 0.0;
+    };
+    all_ok &= wheel_pid_values_valid(parsed.left_wheel_pid);
+    all_ok &= wheel_pid_values_valid(parsed.right_wheel_pid);
     all_ok &= ReadRequiredNestedString(root, "assistant_tcp", "host", parsed.assistant_tcp.host);
     all_ok &= ReadRequiredNestedInt(root, "assistant_tcp", "port", parsed.assistant_tcp.port);
+    all_ok &= parsed.assistant_tcp.port >= port::kMinimumTcpPort &&
+              parsed.assistant_tcp.port <= port::kMaximumTcpPort;
     return all_ok;
 }
 
@@ -741,8 +1189,21 @@ void ReadControlParams(const cv::FileNode& root, port::RuntimeParameters& parsed
         root, "wheel_turn_decel_delta_scale", parsed.wheel_turn_decel_delta_scale, optional_malformed);
     ReadOptionalInt(root, "pwm_floor", parsed.pwm_floor, optional_malformed);
     ReadOptionalBool(root, "prohibit_reverse_pwm", parsed.prohibit_reverse_pwm, optional_malformed);
-    ReadOptionalInt(
-        root, "prohibit_reverse_pwm_step_limit", parsed.prohibit_reverse_pwm_step_limit, optional_malformed);
+    ReadOptionalInt(root, "drive_pwm_step_limit", parsed.drive_pwm_step_limit, optional_malformed);
+    if (parsed.low_voltage_raw_threshold <= 0 ||
+        parsed.control_period_ms <= 0 ||
+        parsed.control_period_ms > port::kMaximumControlPeriodMs ||
+        parsed.perception_stale_ms <= 0 ||
+        parsed.perception_stale_ms > port::kMaximumRuntimeIntervalMs ||
+        parsed.raw_turn_output_limit < 0 ||
+        parsed.pwm_limit <= 0 ||
+        parsed.pwm_limit > port::kDrivePwmDutyCapability ||
+        parsed.pwm_floor < 0 ||
+        parsed.pwm_floor > parsed.pwm_limit ||
+        parsed.drive_pwm_step_limit <= 0 ||
+        parsed.drive_pwm_step_limit > parsed.pwm_limit) {
+        optional_malformed = true;
+    }
     ReadOptionalBool(
         root, "brushless_debug_fixed_pwm_enabled", parsed.brushless_debug_fixed_pwm_enabled, optional_malformed);
     ReadOptionalInt(root, "brushless_debug_fixed_pwm", parsed.brushless_debug_fixed_pwm, optional_malformed);
@@ -752,21 +1213,54 @@ void ReadControlParams(const cv::FileNode& root, port::RuntimeParameters& parsed
     ReadOptionalInt(root, "motion_unveto_confirm_cycles", parsed.motion_unveto_confirm_cycles, optional_malformed);
     ReadOptionalInt(root, "motion_spinup_ms", parsed.motion_spinup_ms, optional_malformed);
     ReadOptionalNumber(root, "motion_turn_limit_spinup", parsed.motion_turn_limit_spinup, optional_malformed);
-    ReadOptionalInt(root, "motion_pwm_step_limit", parsed.motion_pwm_step_limit, optional_malformed);
     ReadOptionalInt(root, "motion_stop_ms", parsed.motion_stop_ms, optional_malformed);
     ReadOptionalInt(
         root, "motion_stop_encoder_threshold", parsed.motion_stop_encoder_threshold, optional_malformed);
     ReadOptionalInt(root, "motion_fault_rearm_hold_ms", parsed.motion_fault_rearm_hold_ms, optional_malformed);
     ReadOptionalInt(
         root, "control_snapshot_emit_interval_ms", parsed.control_snapshot_emit_interval_ms, optional_malformed);
+    const int maximum_confirm_cycles =
+        parsed.control_period_ms > 0
+            ? port::kMaximumRuntimeIntervalMs / parsed.control_period_ms
+            : 0;
+    if (parsed.motion_unveto_confirm_cycles <= 0 ||
+        parsed.motion_unveto_confirm_cycles > maximum_confirm_cycles ||
+        parsed.motion_spinup_ms < 0 ||
+        parsed.motion_spinup_ms > port::kMaximumRuntimeIntervalMs ||
+        !std::isfinite(parsed.motion_turn_limit_spinup) ||
+        parsed.motion_turn_limit_spinup < 0.0 ||
+        parsed.motion_turn_limit_spinup > 1.0 ||
+        parsed.motion_stop_ms < 0 ||
+        parsed.motion_stop_ms > port::kMaximumRuntimeIntervalMs ||
+        parsed.motion_stop_encoder_threshold < 0 ||
+        parsed.motion_stop_encoder_threshold > control::kWheelSpeedTargetMax ||
+        parsed.motion_fault_rearm_hold_ms < 0 ||
+        parsed.motion_fault_rearm_hold_ms > port::kMaximumRuntimeIntervalMs ||
+        parsed.control_snapshot_emit_interval_ms <= 0 ||
+        parsed.control_snapshot_emit_interval_ms > port::kMaximumRuntimeIntervalMs) {
+        optional_malformed = true;
+    }
     ReadOptionalNestedNumber(root, "YAW_RATE_PID", "P", parsed.yaw_rate_pid_p, optional_malformed);
     ReadOptionalNestedNumber(root, "YAW_RATE_PID", "I", parsed.yaw_rate_pid_i, optional_malformed);
+    if (!control::YawRatePidArithmeticIsFinite(parsed.yaw_rate_pid_p,
+                                               parsed.yaw_rate_pid_i,
+                                               parsed.yaw_rate_pid_d)) {
+        optional_malformed = true;
+    }
     ReadOptionalNestedNumber(
         root, "LEFT_WHEEL_PID", "MEASUREMENT_FILTER_ALPHA", parsed.left_wheel_pid.measurement_filter_alpha,
         optional_malformed);
     ReadOptionalNestedNumber(
         root, "RIGHT_WHEEL_PID", "MEASUREMENT_FILTER_ALPHA", parsed.right_wheel_pid.measurement_filter_alpha,
         optional_malformed);
+    if (!std::isfinite(parsed.left_wheel_pid.measurement_filter_alpha) ||
+        parsed.left_wheel_pid.measurement_filter_alpha < 0.0 ||
+        parsed.left_wheel_pid.measurement_filter_alpha > 1.0 ||
+        !std::isfinite(parsed.right_wheel_pid.measurement_filter_alpha) ||
+        parsed.right_wheel_pid.measurement_filter_alpha < 0.0 ||
+        parsed.right_wheel_pid.measurement_filter_alpha > 1.0) {
+        optional_malformed = true;
+    }
 }
 
 void ReadMediaParams(const cv::FileNode& root, port::RuntimeParameters& parsed, bool& optional_malformed) {
@@ -791,6 +1285,14 @@ void ReadMediaParams(const cv::FileNode& root, port::RuntimeParameters& parsed, 
                      optional_malformed);
     ReadOptionalInt(root, "low_voltage_sample_interval_ms", parsed.low_voltage_sample_interval_ms,
                     optional_malformed);
+    if (parsed.steering_media_port < port::kMinimumTcpPort ||
+        parsed.steering_media_port > port::kMaximumTcpPort ||
+        parsed.steering_media_publish_interval_ms < 0 ||
+        parsed.steering_media_publish_interval_ms > port::kMaximumRuntimeIntervalMs ||
+        parsed.low_voltage_sample_interval_ms <= 0 ||
+        parsed.low_voltage_sample_interval_ms > port::kMaximumRuntimeIntervalMs) {
+        optional_malformed = true;
+    }
 }
 
 void ReadMlParams(const cv::FileNode& root,
@@ -958,9 +1460,9 @@ void ReadBevGeometryParams(const cv::FileNode& root,
     }
 }
 
-void ReadBevClassificationAndBoundaryParams(const cv::FileNode& root,
-                                            port::RuntimeParameters& parsed,
-                                            bool& optional_malformed) {
+void ReadBevClassificationParams(const cv::FileNode& root,
+                                 port::RuntimeParameters& parsed,
+                                 bool& optional_malformed) {
     ReadOptionalNestedNumber(root,
                              "BEV_CLASSIFICATION",
                              "WHITE_CONFIDENCE_MIN",
@@ -977,11 +1479,6 @@ void ReadBevClassificationAndBoundaryParams(const cv::FileNode& root,
                           parsed.bev_classification.hold_last_max_cycles,
                           optional_malformed);
     if (!port::IsValidBEVClassificationParameters(parsed.bev_classification)) {
-        optional_malformed = true;
-    }
-    ReadOptionalNestedInt(
-        root, "BEV_BOUNDARY", "LOCAL_JUMP_MIN_Y", parsed.bev_boundary.local_jump_min_y, optional_malformed);
-    if (!port::IsValidBEVBoundaryParameters(parsed.bev_boundary)) {
         optional_malformed = true;
     }
 }
@@ -1060,21 +1557,30 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
                              "CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN",
                              parsed.bev_element.circle_v2_opposite_straight_confidence_min,
                              optional_malformed);
-    ReadOptionalNestedInt(root,
-                          "BEV_ELEMENT",
-                          "CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT",
-                          parsed.bev_element.circle_v2_entry_bottom_min_row_count,
-                          optional_malformed);
-    ReadOptionalNestedNumber(root,
-                             "BEV_ELEMENT",
-                             "CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M",
-                             parsed.bev_element.circle_v2_entry_bottom_forward_min_m,
-                             optional_malformed);
-    ReadOptionalNestedNumber(root,
-                             "BEV_ELEMENT",
-                             "CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M",
-                             parsed.bev_element.circle_v2_entry_bottom_forward_max_m,
-                             optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_MIN_SAMPLEABLE_WIDTH_M",
+                             parsed.bev_element.circle_v2_min_sampleable_width_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_OPENING_FORWARD_MIN_M",
+                             parsed.bev_element.circle_v2_opening_forward_min_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_OPENING_FORWARD_MAX_M",
+                             parsed.bev_element.circle_v2_opening_forward_max_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_OPENING_DISTANCE_MIN_M",
+                             parsed.bev_element.circle_v2_opening_distance_min_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_OPENING_CONFIRM_FORWARD_SPAN_M",
+                             parsed.bev_element.circle_v2_opening_confirm_forward_span_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_ENTRY_FORWARD_MIN_M",
+                             parsed.bev_element.circle_v2_entry_forward_min_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_ENTRY_FORWARD_MAX_M",
+                             parsed.bev_element.circle_v2_entry_forward_max_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_INNER_GEOMETRY_FORWARD_MIN_M",
+                             parsed.bev_element.circle_v2_inner_geometry_forward_min_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_INNER_GEOMETRY_FORWARD_MAX_M",
+                             parsed.bev_element.circle_v2_inner_geometry_forward_max_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M",
+                             parsed.bev_element.circle_v2_exit_geometry_forward_min_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M",
+                             parsed.bev_element.circle_v2_exit_geometry_forward_max_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M",
+                             parsed.bev_element.circle_v2_exit_straight_max_lateral_span_m, optional_malformed);
     if (!ValidateBEVElement(parsed.bev_element)) {
         optional_malformed = true;
     }
@@ -1192,80 +1698,95 @@ void ReadCameraSourceParams(const cv::FileNode& root, port::RuntimeParameters& p
  * 参数存储实现类 —— 实现 port::IParamStore 接口。
  * 从 JSON 配置文件中加载运行时参数和硬件配置。
  * 支持 JSON 注释剥离、文件读取、OpenCV FileStorage 解析。
- * 缺失文件或解析失败时回退到 RuntimeParameters 的内建默认值。
+ * 运行时参数文件缺失、解析失败或字段校验失败时拒绝启动。
  */
 class ParamStore final : public port::IParamStore {
 public:
     /**
      * 从 JSON 文件加载全部运行时参数。
      * 流程：读取文件 -> 剥离注释 -> 解析 JSON -> 提取必填字段和可选字段 -> 校验完整性。
-     * 文件缺失或解析失败时会回退到默认值并通过诊断输出告警。
+     * 文件缺失、解析失败或字段校验失败时通过诊断输出原因并返回失败。
      * @param path JSON 配置文件路径
      * @param out 输出参数，加载后的运行时参数
      * @param diagnostics 诊断输出接收器
-     * @return true 表示加载过程完成（即使回退默认值也返回 true，仅校验不通过但
-     *         仍返回 true 以保证系统可启动，具体成败由 out 中的字段指示）
+     * @return true 表示参数完整且有效并已写入 out；false 表示拒绝加载，out 不变
      */
     bool LoadRuntimeParameters(const std::string& path,
                                port::RuntimeParameters& out,
                                port::DiagnosticSink& diagnostics) override {
         std::string text;
         if (!ReadText(path, text)) {
-            out.loaded_from_defaults = true;
-            out.parse_failure = true;
-            diagnostics.Emit({port::DiagnosticLevel::kWarning,
+            diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
                               "params.missing",
-                              "parameter file missing, using built-in defaults: " + path,
+                              "runtime parameter file missing; refusing startup: " + path,
                               port::NowMs()});
-            return true;
+            return false;
         }
 
         cv::FileStorage json;
         if (!ParseJsonObject(text, json)) {
-            out = port::RuntimeParameters{};
-            out.loaded_from_defaults = true;
-            out.parse_failure = true;
             diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
                               "params.parse",
-                              "parameter file parse failure (invalid JSON object), using defaults",
+                              "runtime parameter parse failure (invalid JSON syntax or non-object root); "
+                              "refusing startup: " + path,
                               port::NowMs()});
-            return true;
+            return false;
         }
 
         const cv::FileNode root = json.root();
         port::RuntimeParameters parsed{};
-        bool all_ok = ReadRequiredRuntimeParams(root, parsed);
+        const bool required_ok = ReadRequiredRuntimeParams(root, parsed);
         bool optional_malformed = false;
         ReadControlParams(root, parsed, optional_malformed);
         ReadMediaParams(root, parsed, optional_malformed);
         ReadBevProjectorParams(root, parsed, optional_malformed);
         ReadBevGeometryParams(root, parsed, optional_malformed);
-        ReadBevClassificationAndBoundaryParams(root, parsed, optional_malformed);
+        ReadBevClassificationParams(root, parsed, optional_malformed);
         ReadBevControlModelParams(root, parsed, optional_malformed);
         ReadBevElementParams(root, parsed, optional_malformed);
         ReadCameraSourceParams(root, parsed, optional_malformed);
         ReadMlParams(root, parsed, optional_malformed);
         ReadReferenceTimeAlignmentParams(root, parsed, optional_malformed);
-        // 综合校验：必填字段成功 + 无格式错误
-        all_ok = all_ok && !optional_malformed;
-
-        if (!all_ok) {
-            out = port::RuntimeParameters{};
-            out.loaded_from_defaults = true;
-            out.parse_failure = true;
-            diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
-                              "params.parse",
-                              "parameter parse failure (missing or malformed required fields), using defaults",
-                              port::NowMs()});
-        } else {
-            parsed.loaded_from_defaults = false;
-            parsed.parse_failure = false;
-            out = parsed;
-            diagnostics.Emit({port::DiagnosticLevel::kInfo,
-                              "params.loaded",
-                              "runtime parameters loaded from " + path,
-                              port::NowMs()});
+        // WheelTargetMixer consumes either the ordinary running target or the ML
+        // maneuver target. Assistant overrides are independently capped at
+        // RUNNING_SPEED_TARGET by AssistantProtocolDecoder. Validate the exact
+        // production worst case before publishing any part of parsed to out.
+        double maximum_wheel_base_target = parsed.running_speed_target;
+        if (parsed.ml.enabled) {
+            const bool ml_speed_target_valid =
+                std::isfinite(parsed.ml.maneuver.speed_target) &&
+                parsed.ml.maneuver.speed_target > 0.0 &&
+                parsed.ml.maneuver.speed_target <= control::kWheelSpeedTargetMax;
+            optional_malformed |= !ml_speed_target_valid;
+            if (ml_speed_target_valid) {
+                maximum_wheel_base_target =
+                    std::max(maximum_wheel_base_target, parsed.ml.maneuver.speed_target);
+            }
         }
+        optional_malformed |= !control::WheelTargetArithmeticIsFinite(
+            maximum_wheel_base_target,
+            parsed.raw_turn_output_limit,
+            {parsed.wheel_turn_accel_delta_scale,
+             parsed.wheel_turn_decel_delta_scale});
+        if (!required_ok || optional_malformed) {
+            diagnostics.Emit({port::DiagnosticLevel::kFailSafe,
+                              "params.validation",
+                              !required_ok
+                                  ? "runtime parameter validation failed (missing, malformed, or "
+                                    "out-of-range required field); refusing startup: " + path
+                                  : "runtime parameter validation failed (malformed or out-of-range "
+                                    "optional field); refusing startup: " + path,
+                              port::NowMs()});
+            return false;
+        }
+
+        parsed.loaded_from_defaults = false;
+        parsed.parse_failure = false;
+        out = parsed;
+        diagnostics.Emit({port::DiagnosticLevel::kInfo,
+                          "params.loaded",
+                          "runtime parameters loaded from " + path,
+                          port::NowMs()});
         return true;
     }
 

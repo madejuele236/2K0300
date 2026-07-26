@@ -7,7 +7,7 @@
 namespace ls2k::vision::detail {
 namespace {
 
-constexpr std::size_t kMinCircleV2ReferenceSamples = 3U;
+constexpr std::size_t kMinimumLinePointCount = 2U;
 
 float InnerTraceOffset(CircleDir dir, float offset_m) {
     if (dir == CircleDir::kLeft) {
@@ -39,7 +39,7 @@ std::optional<port::BEVReferencePath> ComposeOffsetPath(
         vision::BuildSingleBoundaryOffsetReference(boundary_trace,
                                                    target_forward_samples,
                                                    signed_offset_m);
-    if (offset_points.size() < kMinCircleV2ReferenceSamples) {
+    if (offset_points.size() < kMinimumLinePointCount) {
         return std::nullopt;
     }
 

@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "port/actuator_command_types.hpp"
+
 namespace {
 
 struct WriteEvent {
@@ -67,31 +69,70 @@ int main() {
     assert(g.writes[3].path == "resc" && U16(g.writes[3]) == 0);
 
     g.writes.clear();
-    assert(motor.Apply({100, -200, -20, 1200}).ok());
+    const auto initial = motor.Apply({100, -200, -20, 1200});
+    assert(initial.ok());
+    assert(initial.applied_command.left_drive_pwm == 100);
+    assert(initial.applied_command.right_drive_pwm == -200);
     assert(g.writes.size() == 6);
-    assert(g.writes[0].path == "rgpio" && g.writes[0].bytes[0] == '1');
+    // Logical left is cross-wired to the physical right output and inverted at
+    // the hardware boundary: logical +100 selects GPIO low.
+    assert(g.writes[0].path == "rgpio" && g.writes[0].bytes[0] == '0');
     assert(g.writes[1].path == "rpwm" && U16(g.writes[1]) == 100);
+    // Logical right is cross-wired to the physical left output while preserving
+    // the old_3 direction convention: logical -200 selects GPIO low.
     assert(g.writes[2].path == "lgpio" && g.writes[2].bytes[0] == '0');
     assert(g.writes[3].path == "lpwm" && U16(g.writes[3]) == 200);
     assert(g.writes[4].path == "lesc" && U16(g.writes[4]) == 0);
     assert(g.writes[5].path == "resc" && U16(g.writes[5]) == 1000);
 
-    // Exact direction reversal: preclear PWM, switch GPIO, then new PWM.
+    // Exact direction reversal: this cycle may only clear PWM and switch GPIO.
     g.writes.clear();
-    assert(motor.Apply({-300, -200, 0, 0}).ok());
+    const auto reversal = motor.Apply({-300, -200, 0, 0});
+    assert(reversal.ok());
+    assert(g.writes.size() == 5);
     assert(g.writes[0].path == "rpwm" && U16(g.writes[0]) == 0);
-    assert(g.writes[1].path == "rgpio" && g.writes[1].bytes[0] == '0');
-    assert(g.writes[2].path == "rpwm" && U16(g.writes[2]) == 300);
+    assert(g.writes[1].path == "rgpio" && g.writes[1].bytes[0] == '1');
+    assert(g.writes[2].path == "lpwm" && U16(g.writes[2]) == 200);
+    assert(reversal.applied_command.left_drive_pwm == 0);
+    assert(reversal.applied_command.right_drive_pwm == -200);
+
+    // The requested reverse PWM is first eligible on the following Apply cycle.
+    g.writes.clear();
+    const auto reversal_next_cycle = motor.Apply({-300, -200, 0, 0});
+    assert(reversal_next_cycle.ok());
+    assert(g.writes.size() == 4);
+    assert(g.writes[0].path == "rpwm" && U16(g.writes[0]) == 300);
+    assert(g.writes[1].path == "lpwm" && U16(g.writes[1]) == 200);
+    assert(reversal_next_cycle.applied_command.left_drive_pwm == -300);
+    assert(reversal_next_cycle.applied_command.right_drive_pwm == -200);
 
     // Repeating a direction does not rewrite GPIO; drive and ESC clamps remain
     // the single authoritative conversion at the device boundary.
     g.writes.clear();
     assert(motor.Apply({-10000, -10000, 2000, -1}).ok());
     assert(g.writes.size() == 4);
-    assert(g.writes[0].path == "rpwm" && U16(g.writes[0]) == 9000);
-    assert(g.writes[1].path == "lpwm" && U16(g.writes[1]) == 9000);
+    static_assert(ls2k::port::kDrivePwmDutyCapability == 9000);
+    assert(g.writes[0].path == "rpwm" &&
+           U16(g.writes[0]) == ls2k::port::kDrivePwmDutyCapability);
+    assert(g.writes[1].path == "lpwm" &&
+           U16(g.writes[1]) == ls2k::port::kDrivePwmDutyCapability);
     assert(g.writes[2].path == "lesc" && U16(g.writes[2]) == 1000);
     assert(g.writes[3].path == "resc" && U16(g.writes[3]) == 0);
+
+    // The opposite sign transition is symmetric and also reports zero for the
+    // GPIO-switch cycle before applying positive PWM on the next cycle.
+    g.writes.clear();
+    const auto opposite_reversal = motor.Apply({100, -10000, 0, 0});
+    assert(opposite_reversal.ok());
+    assert(g.writes[0].path == "rpwm" && U16(g.writes[0]) == 0);
+    assert(g.writes[1].path == "rgpio" && g.writes[1].bytes[0] == '0');
+    assert(opposite_reversal.applied_command.left_drive_pwm == 0);
+
+    g.writes.clear();
+    const auto opposite_next_cycle = motor.Apply({100, -10000, 0, 0});
+    assert(opposite_next_cycle.ok());
+    assert(g.writes[0].path == "rpwm" && U16(g.writes[0]) == 100);
+    assert(opposite_next_cycle.applied_command.left_drive_pwm == 100);
 
     // A hot-path failure makes the object unavailable and attempts all four PWM=0 writes.
     g.writes.clear();

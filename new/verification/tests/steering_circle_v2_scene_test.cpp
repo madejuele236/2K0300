@@ -52,6 +52,21 @@ void AddBoundarySpan(ls2k::vision::BEVSimpleRowScan& row,
     row.jumps.push_back(right_jump);
 }
 
+void AddWhiteRun(ls2k::vision::BEVSimpleRowScan& row,
+                 float left_m,
+                 float right_m,
+                 ls2k::vision::BEVWhiteRunOriginConnectivity connectivity =
+                     ls2k::vision::BEVWhiteRunOriginConnectivity::kConnected) {
+    ls2k::vision::BEVWhiteRun run{};
+    run.forward_m = row.forward_m;
+    run.left_m = left_m;
+    run.right_m = right_m;
+    run.left_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kBoundary;
+    run.right_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kBoundary;
+    run.origin_connectivity = connectivity;
+    row.white_runs.push_back(run);
+}
+
 ls2k::vision::BEVSimpleRowScan Row(float forward,
                                    float left_a,
                                    float left_b,
@@ -61,8 +76,12 @@ ls2k::vision::BEVSimpleRowScan Row(float forward,
     row.valid = true;
     row.forward_m = forward;
     row.sampleable_count = 32;
+    row.sampleable_left_m = -0.8F;
+    row.sampleable_right_m = 0.8F;
+    row.sampleable_width_m = 1.6F;
     AddBoundarySpan(row, left_a, left_b, 0, 1);
     AddBoundarySpan(row, right_a, right_b, 2, 3);
+    AddWhiteRun(row, left_b, right_a);
     return row;
 }
 
@@ -71,8 +90,65 @@ ls2k::vision::BEVSimpleRowScan SingleIntervalRow(float forward, float left_m, fl
     row.valid = true;
     row.forward_m = forward;
     row.sampleable_count = 65;
+    row.sampleable_left_m = -0.8F;
+    row.sampleable_right_m = 0.8F;
+    row.sampleable_width_m = 1.6F;
     AddBoundarySpan(row, left_m, right_m, 0, 1);
+    AddWhiteRun(row, left_m, right_m);
     return row;
+}
+
+ls2k::vision::BEVSimpleRowScan WhiteRunOnlyRow(
+    float forward,
+    float left_m,
+    float right_m,
+    ls2k::vision::BEVWhiteRunEndpointState left_endpoint =
+        ls2k::vision::BEVWhiteRunEndpointState::kBoundary,
+    ls2k::vision::BEVWhiteRunEndpointState right_endpoint =
+        ls2k::vision::BEVWhiteRunEndpointState::kBoundary,
+    ls2k::vision::BEVWhiteRunOriginConnectivity connectivity =
+        ls2k::vision::BEVWhiteRunOriginConnectivity::kConnected) {
+    ls2k::vision::BEVSimpleRowScan row{};
+    row.valid = true;
+    row.forward_m = forward;
+    row.sampleable_count = 65;
+    row.sampleable_left_m = -0.8F;
+    row.sampleable_right_m = 0.8F;
+    row.sampleable_width_m = 1.6F;
+    AddWhiteRun(row, left_m, right_m, connectivity);
+    row.white_runs.front().left_endpoint = left_endpoint;
+    row.white_runs.front().right_endpoint = right_endpoint;
+    return row;
+}
+
+std::vector<ls2k::vision::BEVSimpleRowScan> OpeningRows(
+    const std::vector<float>& forward_m,
+    ls2k::vision::CircleDir dir,
+    bool fov_edge = false,
+    float opened_lateral_m = 0.36F) {
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    rows.reserve(forward_m.size());
+    for (std::size_t index = 0; index < forward_m.size(); ++index) {
+        float left_m = -0.20F;
+        float right_m = 0.22F;
+        auto left_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kBoundary;
+        auto right_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kBoundary;
+        if (index >= 3U && dir == ls2k::vision::CircleDir::kLeft) {
+            left_m = -opened_lateral_m;
+            if (fov_edge) {
+                left_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kFovEdge;
+            }
+        }
+        if (index >= 3U && dir == ls2k::vision::CircleDir::kRight) {
+            right_m = opened_lateral_m;
+            if (fov_edge) {
+                right_endpoint = ls2k::vision::BEVWhiteRunEndpointState::kFovEdge;
+            }
+        }
+        rows.push_back(WhiteRunOnlyRow(
+            forward_m[index], left_m, right_m, left_endpoint, right_endpoint));
+    }
+    return rows;
 }
 
 void SetSampleableSpan(ls2k::vision::BEVSimpleRowScan& row,
@@ -92,16 +168,10 @@ std::vector<ls2k::vision::BEVSimpleRowScan> RowsFromReach(
                                        right_reach_near_to_far.size());
     rows.reserve(count);
     for (std::size_t index = 0; index < count; ++index) {
-        ls2k::vision::BEVSimpleRowScan row{};
-        row.valid = true;
-        row.forward_m = 0.06F + static_cast<float>(index) * 0.06F;
-        row.sampleable_count = 65;
-        AddBoundarySpan(row,
-                        -left_reach_near_to_far[index],
-                        right_reach_near_to_far[index],
-                        0,
-                        1);
-        rows.push_back(row);
+        rows.push_back(SingleIntervalRow(
+            0.06F + static_cast<float>(index) * 0.06F,
+            -left_reach_near_to_far[index],
+            right_reach_near_to_far[index]));
     }
     return rows;
 }
@@ -127,50 +197,18 @@ std::vector<ls2k::vision::BEVSimpleRowScan> RightCircleRows() {
 }
 
 std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRows() {
-    return RowsFromReach({0.20F, 0.30F, 0.36F, 0.42F, 0.42F, 0.42F},
+    return RowsFromReach({0.20F, 0.20F, 0.20F, 0.35F, 0.35F, 0.35F},
                          {0.22F, 0.22F, 0.22F, 0.22F, 0.22F, 0.22F});
 }
 
 std::vector<ls2k::vision::BEVSimpleRowScan> RightEntryRows() {
     return RowsFromReach({0.22F, 0.22F, 0.22F, 0.22F, 0.22F, 0.22F},
-                         {0.20F, 0.30F, 0.36F, 0.42F, 0.42F, 0.42F});
+                         {0.20F, 0.20F, 0.20F, 0.35F, 0.35F, 0.35F});
 }
 
 std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithBentOpposite() {
-    return RowsFromReach({0.20F, 0.30F, 0.36F, 0.42F, 0.42F, 0.42F},
+    return RowsFromReach({0.20F, 0.20F, 0.20F, 0.35F, 0.35F, 0.35F},
                          {0.20F, 0.42F, 0.12F, 0.34F, 0.20F, 0.20F});
-}
-
-std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithBottomGap() {
-    return {
-        SingleIntervalRow(0.06F, -0.20F, 0.22F),
-        SingleIntervalRow(0.12F, -0.30F, 0.22F),
-        SingleIntervalRow(0.68F, -0.42F, 0.22F),
-        SingleIntervalRow(0.74F, -0.50F, 0.22F),
-    };
-}
-
-std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithoutNearSupport() {
-    return {
-        SingleIntervalRow(0.30F, -0.20F, 0.22F),
-        SingleIntervalRow(0.36F, -0.30F, 0.22F),
-        SingleIntervalRow(0.42F, -0.36F, 0.22F),
-        SingleIntervalRow(0.48F, -0.42F, 0.22F),
-    };
-}
-
-std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithExpansionAfterRoiStart() {
-    return RowsFromReach({0.20F, 0.20F, 0.20F, 0.20F,
-                          0.20F, 0.30F, 0.36F, 0.42F},
-                         {0.22F, 0.22F, 0.22F, 0.22F,
-                          0.22F, 0.22F, 0.22F, 0.22F});
-}
-
-std::vector<ls2k::vision::BEVSimpleRowScan> LeftEntryRowsWithLateRoiExpansion() {
-    return RowsFromReach({0.20F, 0.20F, 0.20F, 0.20F,
-                          0.30F, 0.36F, 0.42F},
-                         {0.22F, 0.22F, 0.22F, 0.22F,
-                          0.22F, 0.22F, 0.22F});
 }
 
 std::vector<ls2k::vision::BEVSimpleRowScan> LeftInnerTraceRows() {
@@ -231,11 +269,19 @@ std::vector<ls2k::vision::BEVSimpleRowScan> RightDetachedArtifactRows() {
     rows.reserve(main_right.size());
     for (std::size_t index = 0; index < main_right.size(); ++index) {
         const float forward = 0.06F + static_cast<float>(index) * 0.06F;
-        rows.push_back(Row(forward,
-                           -0.22F,
-                           main_right[index],
-                           artifact_left[index],
-                           artifact_left[index] + 0.08F));
+        ls2k::vision::BEVSimpleRowScan row = Row(
+            forward,
+            -0.22F,
+            main_right[index],
+            artifact_left[index],
+            artifact_left[index] + 0.08F);
+        row.white_runs.clear();
+        AddWhiteRun(row, -0.22F, main_right[index]);
+        AddWhiteRun(row,
+                    artifact_left[index],
+                    artifact_left[index] + 0.08F,
+                    ls2k::vision::BEVWhiteRunOriginConnectivity::kBlocked);
+        rows.push_back(row);
     }
     return rows;
 }
@@ -351,6 +397,164 @@ ls2k::vision::detail::CircleV2Events EventsFor(
     return ls2k::vision::detail::ObserveCircleV2Events(frame, expansion, prior, params);
 }
 
+void TestMetricOpeningOwnerFacts() {
+    const std::vector<float> forward{
+        0.0500000F, 0.0763636F, 0.1027273F, 0.1290909F, 0.1554545F,
+        0.1818182F, 0.2081818F, 0.2345455F, 0.2609091F,
+    };
+    ls2k::vision::CircleV2Params params{};
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> left_rows =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
+    const auto left = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(left_rows, 0.0F), params);
+    Expect(left.detected_dir == ls2k::vision::CircleDir::kLeft &&
+               left.openings.left.available,
+           "visible left outward deviation must publish a left opening");
+    Expect(left.openings.left.source ==
+               ls2k::vision::CircleOpeningSource::kObservedBoundary,
+           "visible opening must report observed-boundary source");
+    Expect(left.openings.left.outward_distance_m >= params.opening_distance_min_m &&
+               left.openings.left.confirmed_forward_span_m >=
+                   params.opening_confirm_forward_span_m,
+           "opening must satisfy metric distance and confirmation span");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> right_rows =
+        OpeningRows(forward, ls2k::vision::CircleDir::kRight);
+    const auto right = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(right_rows, 0.0F), params);
+    Expect(right.detected_dir == ls2k::vision::CircleDir::kRight &&
+               right.openings.right.available,
+           "visible right outward deviation must publish a right opening");
+}
+
+void TestFovOpeningAndAmbiguityContracts() {
+    const std::vector<float> forward{
+        0.05F, 0.08F, 0.11F, 0.14F, 0.17F, 0.20F, 0.23F, 0.26F,
+    };
+    ls2k::vision::CircleV2Params params{};
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> fov_rows =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft, true);
+    const auto fov = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(fov_rows, 0.0F), params);
+    Expect(fov.openings.left.available &&
+               fov.openings.left.source ==
+                   ls2k::vision::CircleOpeningSource::kFovEdgeLowerBound,
+           "one missing side may use the FOV edge as a Circle-only lower bound");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> insufficient =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft, true, 0.24F);
+    const auto small = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(insufficient, 0.0F), params);
+    Expect(!small.openings.left.available,
+           "FOV lower bound below the opening threshold must be rejected");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> both =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft, false, 0.26F);
+    for (std::size_t index = 3U; index < both.size(); ++index) {
+        both[index].white_runs.front().right_m = 0.28F;
+    }
+    const auto double_open = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(both, 0.0F), params);
+    Expect(double_open.openings.left.available && double_open.openings.right.available &&
+               double_open.detected_dir == ls2k::vision::CircleDir::kNone,
+           "simultaneous left and right openings must not choose a direction");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> ambiguous =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
+    for (std::size_t index = 3U; index < ambiguous.size(); ++index) {
+        AddWhiteRun(ambiguous[index], -0.7F, -0.5F);
+    }
+    const auto ambiguous_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(ambiguous, 0.0F), params);
+    Expect(!ambiguous_result.openings.left.available,
+           "multiple origin-connected white runs must make the row ambiguous");
+}
+
+void TestOpeningContinuityRejectsNoiseAndUnobservableRows() {
+    const std::vector<float> forward{
+        0.05F, 0.08F, 0.11F, 0.14F, 0.17F, 0.20F, 0.23F, 0.26F,
+    };
+    ls2k::vision::CircleV2Params params{};
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> noise =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
+    for (std::size_t index = 4U; index < noise.size(); ++index) {
+        noise[index].white_runs.front().left_m = -0.20F;
+    }
+    const auto noise_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(noise, 0.0F), params);
+    Expect(!noise_result.openings.left.available,
+           "one outward sample without 0.10m persistence must be rejected");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> gapped =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
+    gapped[5].valid = false;
+    gapped[5].white_runs.clear();
+    const auto gap_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(gapped, 0.0F), params);
+    Expect(!gap_result.openings.left.available,
+           "an unobservable row must interrupt metric opening confirmation");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> blocked =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
+    for (auto& row : blocked) {
+        row.white_runs.front().origin_connectivity =
+            ls2k::vision::BEVWhiteRunOriginConnectivity::kBlocked;
+    }
+    const auto blocked_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(blocked, 0.0F), params);
+    Expect(blocked_result.detected_dir == ls2k::vision::CircleDir::kNone,
+           "zero origin-connected white runs must not publish an opening direction");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> all_white;
+    for (float forward_m : forward) {
+        all_white.push_back(WhiteRunOnlyRow(
+            forward_m,
+            -0.8F,
+            0.8F,
+            ls2k::vision::BEVWhiteRunEndpointState::kFovEdge,
+            ls2k::vision::BEVWhiteRunEndpointState::kFovEdge));
+    }
+    const auto all_white_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(all_white, 0.0F), params);
+    Expect(all_white_result.detected_dir == ls2k::vision::CircleDir::kNone,
+           "an all-white row open at both FOV sides must not choose a direction");
+}
+
+void TestMetricSamplingInvarianceAndIdleSequence() {
+    const std::vector<float> uniform{0.05F, 0.08F, 0.11F, 0.14F,
+                                     0.17F, 0.20F, 0.23F, 0.26F};
+    const std::vector<float> nonuniform{
+        0.0500000F, 0.0763636F, 0.1027273F, 0.1290909F, 0.1554545F,
+        0.1818182F, 0.2081818F, 0.2345455F, 0.2609091F,
+    };
+    ls2k::vision::CircleV2Params params{};
+    std::vector<ls2k::vision::BEVSimpleRowScan> uniform_rows =
+        OpeningRows(uniform, ls2k::vision::CircleDir::kLeft);
+    std::vector<ls2k::vision::BEVSimpleRowScan> nonuniform_rows =
+        OpeningRows(nonuniform, ls2k::vision::CircleDir::kLeft);
+    const auto uniform_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(uniform_rows, 0.0F), params);
+    const auto nonuniform_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+        Frame(nonuniform_rows, 0.0F), params);
+    Expect(uniform_result.detected_dir == nonuniform_result.detected_dir &&
+               uniform_result.detected_dir == ls2k::vision::CircleDir::kLeft,
+           "uniform and current nonuniform samples must preserve opening direction");
+
+    ls2k::vision::CircleV2Memory idle{};
+    const ls2k::vision::SceneFrameView frame = Frame(nonuniform_rows, 0.0F);
+    const ls2k::vision::CircleV2StepResult approach =
+        ls2k::vision::CircleV2Scene{}.Step(frame, idle, params);
+    Expect(approach.next_memory.phase == ls2k::vision::CirclePhase::kApproach,
+           "an empty Circle memory must enter Approach from a valid opening");
+    const ls2k::vision::CircleV2StepResult inner =
+        ls2k::vision::CircleV2Scene{}.Step(frame, approach.next_memory, params);
+    Expect(inner.next_memory.phase == ls2k::vision::CirclePhase::kInnerTrace,
+           "Approach must consume the same opening frontier inside entry ROI");
+}
+
 void TestPhase1CueParity() {
     ls2k::vision::CircleV2Memory idle{};
     ls2k::vision::CircleV2Params params{};
@@ -381,8 +585,8 @@ void TestFalseRightBendDoesNotPassOppositeStraightGate() {
 
     const ls2k::vision::detail::CircleSideExpansionObservation expansion =
         ls2k::vision::detail::ObserveCircleSideExpansion(Frame(rows, 0.0F), params);
-    Expect(expansion.right_phase1_open,
-           "false right bend fixture must preserve the right-side Phase1 expansion cue");
+    Expect(!expansion.openings.right.available,
+           "bent opposite boundary must reject the right opening observation");
     Expect(expansion.detected_dir == ls2k::vision::CircleDir::kNone,
            "bent opposite boundary must block right circle Phase1 cue");
 
@@ -400,8 +604,8 @@ void TestStraightSameSideExpansionDoesNotCreateCircleCue() {
 
     const ls2k::vision::detail::CircleSideExpansionObservation expansion =
         ls2k::vision::detail::ObserveCircleSideExpansion(Frame(rows, 0.0F), params);
-    Expect(expansion.right_phase1_open,
-           "straight right expansion fixture must preserve the right-side Phase1 expansion cue");
+    Expect(!expansion.openings.right.available,
+           "a boundary continuing its prior straight line is not an opening");
     Expect(expansion.detected_dir == ls2k::vision::CircleDir::kNone,
            "same-side straight expansion must not become a right circle Phase1 cue");
 
@@ -423,7 +627,7 @@ void TestDisconnectedFarSideArtifactDoesNotCreateCircleCue() {
 
     const ls2k::vision::detail::CircleSideExpansionObservation expansion =
         ls2k::vision::detail::ObserveCircleSideExpansion(frame, params);
-    Expect(!expansion.right_phase1_open,
+    Expect(!expansion.openings.right.available,
            "disconnected far-side white artifacts must not create right-side Phase1 opening");
 
     const ls2k::vision::detail::CircleV2Events events =
@@ -437,19 +641,21 @@ void TestApproachWaitsForBottomEntryGate() {
     prior.phase = ls2k::vision::CirclePhase::kApproach;
     prior.dir = ls2k::vision::CircleDir::kLeft;
     ls2k::vision::CircleV2Params params{};
+    params.entry_forward_max_m = 0.25F;
 
     std::vector<ls2k::vision::BEVSimpleRowScan> phase1_rows = LeftCircleRows();
     const ls2k::vision::detail::CircleSideExpansionObservation phase1_expansion =
         ls2k::vision::detail::ObserveCircleSideExpansion(Frame(phase1_rows, 0.0F), params);
-    Expect(phase1_expansion.left_phase1_open,
-           "left Phase1 fixture must still expose full-trace expansion");
-    Expect(!phase1_expansion.left_entry_gate_reached,
-           "far-side Phase1 expansion must not be treated as bottom entry gate");
+    Expect(phase1_expansion.openings.left.available,
+           "left opening fixture must publish one unified opening fact");
+    Expect(phase1_expansion.openings.left.frontier_forward_m >
+               params.entry_forward_max_m,
+           "fixture opening frontier must remain outside the configured entry ROI");
 
     const ls2k::vision::detail::CircleV2Events phase1_events =
         EventsFor(Frame(phase1_rows, 0.0F), prior, params);
     Expect(!phase1_events.entry_gate_reached,
-           "Approach must wait when only the Phase1 cue remains visible");
+           "Approach must wait while the unified opening frontier is outside entry ROI");
 }
 
 void TestApproachConsumesOnlyLockedDirectionExpansion() {
@@ -476,47 +682,6 @@ void TestApproachConsumesOnlyLockedDirectionExpansion() {
         EventsFor(Frame(right_rows, 0.0F), prior, params);
     Expect(!wrong_side_events.entry_gate_reached,
            "left Approach must ignore right-side expansion");
-
-    std::vector<ls2k::vision::BEVSimpleRowScan> gapped_rows =
-        LeftEntryRowsWithBottomGap();
-    const ls2k::vision::detail::CircleV2Events gapped_events =
-        EventsFor(Frame(gapped_rows, 0.0F), prior, params);
-    Expect(!gapped_events.entry_gate_reached,
-           "Approach bottom gate must require enough rows inside the configured ROI");
-
-    std::vector<ls2k::vision::BEVSimpleRowScan> far_rows =
-        LeftEntryRowsWithoutNearSupport();
-    const ls2k::vision::detail::CircleV2Events far_events =
-        EventsFor(Frame(far_rows, 0.0F), prior, params);
-    Expect(!far_events.entry_gate_reached,
-           "Approach bottom gate must not consume rows outside the configured ROI");
-
-    std::vector<ls2k::vision::BEVSimpleRowScan> shifted_roi_rows =
-        LeftEntryRowsWithExpansionAfterRoiStart();
-    const ls2k::vision::detail::CircleV2Events default_roi_events =
-        EventsFor(Frame(shifted_roi_rows, 0.0F), prior, params);
-    Expect(!default_roi_events.entry_gate_reached,
-           "Approach bottom gate must ignore expansion outside the configured bottom ROI");
-    params.entry_bottom_forward_min_m = 0.29F;
-    params.entry_bottom_forward_max_m = 0.50F;
-    const ls2k::vision::detail::CircleV2Events shifted_roi_events =
-        EventsFor(Frame(shifted_roi_rows, 0.0F), prior, params);
-    Expect(shifted_roi_events.entry_gate_reached,
-           "Approach bottom gate must use the configured bottom forward ROI");
-    params.entry_bottom_forward_min_m = 0.0F;
-    params.entry_bottom_forward_max_m = 0.25F;
-
-    std::vector<ls2k::vision::BEVSimpleRowScan> late_roi_rows =
-        LeftEntryRowsWithLateRoiExpansion();
-    params.entry_bottom_min_row_count = 3;
-    params.entry_bottom_forward_min_m = 0.0F;
-    params.entry_bottom_forward_max_m = 0.45F;
-    const ls2k::vision::detail::CircleV2Events late_roi_events =
-        EventsFor(Frame(late_roi_rows, 0.0F), prior, params);
-    Expect(late_roi_events.entry_gate_reached,
-           "Approach bottom gate must search the full configured forward ROI");
-    params.entry_bottom_forward_min_m = 0.0F;
-    params.entry_bottom_forward_max_m = 0.25F;
 
     prior.dir = ls2k::vision::CircleDir::kRight;
     const ls2k::vision::detail::CircleV2Events right_events =
@@ -818,7 +983,7 @@ void TestExitTraceUsesOrdinaryRoadHalfWidthFact() {
            "ExitTrace telemetry must expose available geometry");
     const float lateral =
         result.reference_plan->reference_path.sampled_path[0].point.lateral_m;
-    Expect(std::fabs(lateral - 0.38F) < 1.0e-5F,
+    Expect(std::fabs(lateral - 0.28F) < 1.0e-5F,
            "ExitTrace must use OrdinaryRoadModel.half_width instead of row-derived width");
 }
 
@@ -918,8 +1083,8 @@ void TestExitTraceIgnoresEntryBottomForwardRoi() {
     prior.dir = ls2k::vision::CircleDir::kLeft;
     ls2k::vision::CircleV2Params params{};
     params.exit_hold_frames = 2;
-    params.entry_bottom_forward_min_m = 0.70F;
-    params.entry_bottom_forward_max_m = 0.80F;
+    params.entry_forward_min_m = 0.70F;
+    params.entry_forward_max_m = 0.80F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1013,6 +1178,31 @@ void TestInnerTraceRejectsInsufficientRowGeometry() {
            "adapter must not produce a candidate from insufficient row geometry");
 }
 
+void TestInnerTraceUsesTwoPointMathematicalMinimum() {
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows{
+        WhiteRunOnlyRow(0.10F, -0.30F, 0.22F),
+        WhiteRunOnlyRow(0.20F, -0.32F, 0.22F),
+    };
+    ls2k::vision::CircleV2Memory prior{};
+    prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
+    prior.dir = ls2k::vision::CircleDir::kLeft;
+    prior.clock.enter_capture_time_ms = 100;
+    ls2k::vision::CircleV2Params params{};
+    params.exit_yaw_threshold_rad = 10.0F;
+
+    const auto result = ls2k::vision::CircleV2Scene{}.Step(
+        FrameWithoutOrdinaryRoad(rows, 0.0F), prior, params);
+    Expect(result.reference_plan.has_value(),
+           "two real boundary points are sufficient for Circle geometry interpolation");
+
+    rows[0].white_runs.front().left_endpoint =
+        ls2k::vision::BEVWhiteRunEndpointState::kFovEdge;
+    const auto fov_result = ls2k::vision::CircleV2Scene{}.Step(
+        FrameWithoutOrdinaryRoad(rows, 0.0F), prior, params);
+    Expect(!fov_result.reference_plan.has_value(),
+           "FOV lower-bound substitute must never enter Circle geometry/reference");
+}
+
 void TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval() {
     std::vector<ls2k::vision::BEVSimpleRowScan> rows{
         SingleIntervalRow(0.06F, -0.50F, -0.20F),
@@ -1021,6 +1211,9 @@ void TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval() {
     };
     for (ls2k::vision::BEVSimpleRowScan& row : rows) {
         SetSampleableSpan(row, -0.50F, 0.50F);
+        row.white_runs.front().right_endpoint =
+            ls2k::vision::BEVWhiteRunEndpointState::kFovEdge;
+        row.white_runs.front().right_m = row.sampleable_right_m;
     }
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
@@ -1037,7 +1230,7 @@ void TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval() {
     Expect(result.reference_plan.has_value(),
            "InnerTrace must accept an interval whose non-selected edge is clipped");
     Expect(std::fabs(result.reference_plan->reference_path.sampled_path[0]
-                         .point.lateral_m - (-0.20F)) < 1.0e-5F,
+                         .point.lateral_m - (-0.50F)) < 1.0e-5F,
            "InnerTrace must use the selected visible inner edge");
 }
 
@@ -1066,7 +1259,7 @@ void TestInnerTraceAcceptsSelectedBoundarySpanEdgePath() {
         Expect(result.reference_plan.has_value(),
                "left InnerTrace must accept board boundary span edge facts");
         Expect(std::fabs(result.reference_plan->reference_path.sampled_path[0]
-                             .point.lateral_m - (-0.20F)) < 1.0e-5F,
+                             .point.lateral_m - (-0.50F)) < 1.0e-5F,
                "left InnerTrace must use the selected inner edge");
     }
     {
@@ -1093,7 +1286,7 @@ void TestInnerTraceAcceptsSelectedBoundarySpanEdgePath() {
         Expect(result.reference_plan.has_value(),
                "right InnerTrace must accept board boundary span edge facts");
         Expect(std::fabs(result.reference_plan->reference_path.sampled_path[0]
-                             .point.lateral_m - 0.20F) < 1.0e-5F,
+                             .point.lateral_m - 0.50F) < 1.0e-5F,
                "right InnerTrace must use the selected inner edge");
     }
 }
@@ -1131,8 +1324,8 @@ void TestInnerTraceIgnoresEntryBottomForwardRoi() {
     prior.clock.enter_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
     params.exit_yaw_threshold_rad = 10.0F;
-    params.entry_bottom_forward_min_m = 0.70F;
-    params.entry_bottom_forward_max_m = 0.80F;
+    params.entry_forward_min_m = 0.70F;
+    params.entry_forward_max_m = 0.80F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1216,8 +1409,8 @@ void TestSceneGeometryAndAdapter() {
         ls2k::vision::CircleV2Scene{}.Step(Frame(exit_rows, 0.0F), prior, params);
     Expect(exit.reference_plan.has_value(), "ExitTrace final frame must still produce plan");
     const float exit_lateral = exit.reference_plan->reference_path.sampled_path[0].point.lateral_m;
-    Expect(std::fabs(exit_lateral - 0.3F) < 1.0e-5F,
-           "left ExitTrace must offset the right outer edge left by half width");
+    Expect(std::fabs(exit_lateral - 0.2F) < 1.0e-5F,
+           "left ExitTrace must offset the observed right boundary by half width");
     Expect(exit.telemetry.frame_phase == ls2k::vision::CirclePhase::kExitTrace,
            "ExitTrace final frame telemetry frame phase mismatch");
     Expect(exit.telemetry.next_phase == ls2k::vision::CirclePhase::kIdle,
@@ -1261,6 +1454,10 @@ void TestRightInnerTraceInnerEdgePath() {
 }  // namespace
 
 int main() {
+    TestMetricOpeningOwnerFacts();
+    TestFovOpeningAndAmbiguityContracts();
+    TestOpeningContinuityRejectsNoiseAndUnobservableRows();
+    TestMetricSamplingInvarianceAndIdleSequence();
     TestPhase1CueParity();
     TestFalseRightBendDoesNotPassOppositeStraightGate();
     TestStraightSameSideExpansionDoesNotCreateCircleCue();
@@ -1282,6 +1479,7 @@ int main() {
     TestExitTraceIgnoresEntryBottomForwardRoi();
     TestInnerTraceUsesLockedSideInnerEdgePath();
     TestInnerTraceRejectsInsufficientRowGeometry();
+    TestInnerTraceUsesTwoPointMathematicalMinimum();
     TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval();
     TestInnerTraceAcceptsSelectedBoundarySpanEdgePath();
     TestInnerTraceRejectsGappedRowGeometry();

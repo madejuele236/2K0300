@@ -275,6 +275,95 @@ struct RuntimeState {
     std::atomic<uint64_t> perception_publish_count{0};    ///< 感知结果发布计数
 };
 
+/// Preserve an unconfirmed terminal actuator state until the next explicit
+/// ControlLoop::Start. The current terminal request is zero, while the last
+/// confirmed hardware command and armed bit remain unchanged. kApplyFailed is
+/// the authoritative signal that the terminal request was not confirmed.
+inline void PreserveTerminalActuatorFailure(RuntimeState& state,
+                                            control::MotionPhase terminal_phase,
+                                            std::uint64_t now_ms) {
+    std::lock_guard<std::mutex> lock(state.shared_mutex);
+    const port::ActuatorCommand last_confirmed_command = state.last_command;
+    const bool previously_armed = state.actuators_armed || state.control_observation.actuators_armed;
+
+    state.timer_started = false;
+    state.motion_state.phase = terminal_phase;
+    state.motion_state.phase_entry_ms = now_ms;
+    if (terminal_phase == control::MotionPhase::kFailSafeLatched &&
+        state.motion_state.fail_safe_latched_at_ms == 0) {
+        state.motion_state.fail_safe_latched_at_ms = now_ms;
+    } else if (terminal_phase != control::MotionPhase::kFailSafeLatched) {
+        state.motion_state.fail_safe_latched_at_ms = 0;
+    }
+    state.motion_state.clean_gate_cycles = 0;
+
+    state.control_observation.motion_phase = terminal_phase;
+    state.control_observation.hold_disarmed = true;
+    state.control_observation.requested_nonzero_output = false;
+    state.control_observation.apply_outcome = safety::ControlApplyOutcome::kApplyFailed;
+    state.control_observation.applied_left_drive_pwm = last_confirmed_command.left_drive_pwm;
+    state.control_observation.applied_right_drive_pwm = last_confirmed_command.right_drive_pwm;
+    state.control_observation.applied_left_brushless_pwm = last_confirmed_command.left_brushless_pwm;
+    state.control_observation.applied_right_brushless_pwm = last_confirmed_command.right_brushless_pwm;
+    state.control_observation.actuators_armed = previously_armed;
+    state.control_observation.arming_transition = false;
+
+    state.control_debug_snapshot.valid = true;
+    state.control_debug_snapshot.cycle_count = state.control_cycle_count.load() + 1;
+    state.control_debug_snapshot.timestamp_ms = now_ms;
+    state.control_debug_snapshot.motion_phase = terminal_phase;
+    state.control_debug_snapshot.apply_outcome = safety::ControlApplyOutcome::kApplyFailed;
+    state.control_debug_snapshot.left_drive_pwm_command = 0;
+    state.control_debug_snapshot.right_drive_pwm_command = 0;
+    state.control_debug_snapshot.left_brushless_pwm_command = 0;
+    state.control_debug_snapshot.right_brushless_pwm_command = 0;
+    state.control_debug_snapshot.actuators_armed = previously_armed;
+    state.control_debug_snapshot.last_confirmed_left_drive_pwm = last_confirmed_command.left_drive_pwm;
+    state.control_debug_snapshot.last_confirmed_right_drive_pwm = last_confirmed_command.right_drive_pwm;
+    state.control_debug_snapshot.last_confirmed_left_brushless_pwm = last_confirmed_command.left_brushless_pwm;
+    state.control_debug_snapshot.last_confirmed_right_brushless_pwm = last_confirmed_command.right_brushless_pwm;
+    state.control_debug_snapshot.raw_turn_output = 0;
+    state.control_debug_snapshot.applied_turn_output = 0;
+    state.control_debug_snapshot.emergency_stop = false;
+    state.control_debug_snapshot.steering.actuator.apply_outcome =
+        safety::ControlApplyOutcome::kApplyFailed;
+    state.control_debug_snapshot.steering.actuator.actuators_armed = previously_armed;
+    state.control_debug_snapshot.steering.actuator.last_confirmed_left_drive_pwm =
+        last_confirmed_command.left_drive_pwm;
+    state.control_debug_snapshot.steering.actuator.last_confirmed_right_drive_pwm =
+        last_confirmed_command.right_drive_pwm;
+    state.control_debug_snapshot.steering.actuator.last_confirmed_left_brushless_pwm =
+        last_confirmed_command.left_brushless_pwm;
+    state.control_debug_snapshot.steering.actuator.last_confirmed_right_brushless_pwm =
+        last_confirmed_command.right_brushless_pwm;
+    state.control_debug_snapshot.steering.actuator.raw_turn_output = 0;
+    state.control_debug_snapshot.steering.actuator.applied_turn_output = 0;
+    state.control_debug_snapshot.steering.actuator.left_drive_pwm_command = 0;
+    state.control_debug_snapshot.steering.actuator.right_drive_pwm_command = 0;
+    state.control_debug_snapshot.steering.actuator.left_brushless_pwm_command = 0;
+    state.control_debug_snapshot.steering.actuator.right_brushless_pwm_command = 0;
+
+    port::ControlCommandHistorySample terminal_sample{};
+    terminal_sample.time_ms = now_ms;
+    terminal_sample.valid = true;
+    terminal_sample.actuator_request_succeeded = false;
+    terminal_sample.actuator_applied = false;
+    terminal_sample.hold_disarmed = true;
+    terminal_sample.actuators_armed = previously_armed;
+    terminal_sample.last_confirmed_left_drive_pwm = last_confirmed_command.left_drive_pwm;
+    terminal_sample.last_confirmed_right_drive_pwm = last_confirmed_command.right_drive_pwm;
+    terminal_sample.last_confirmed_left_brushless_pwm = last_confirmed_command.left_brushless_pwm;
+    terminal_sample.last_confirmed_right_brushless_pwm = last_confirmed_command.right_brushless_pwm;
+    state.command_history.Push(terminal_sample);
+    state.actuators_armed = previously_armed;
+    ++state.control_cycle_count;
+}
+
+inline bool HasTerminalActuatorFailure(RuntimeState& state) {
+    std::lock_guard<std::mutex> lock(state.shared_mutex);
+    return state.control_observation.apply_outcome == safety::ControlApplyOutcome::kApplyFailed;
+}
+
 }  // namespace ls2k::runtime
 
 #endif  // LS2K_RUNTIME_RUNTIME_STATE_HPP

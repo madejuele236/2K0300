@@ -205,14 +205,25 @@ void AppendVisualReferenceCandidatePathSetJson(
     stream << "]}";
 }
 
-void AppendCircleV2PointObservationJson(std::ostringstream& stream,
-                                        const port::CircleV2PointObservation& point) {
+void AppendCircleOpeningObservationJson(
+    std::ostringstream& stream,
+    const port::CircleOpeningObservation& opening) {
     stream << "{\"available\":";
-    AppendJsonBool(stream, point.available);
-    stream << ",\"forward_m\":";
-    AppendOptionalJsonNumber(stream, point.available, point.point.forward_m);
-    stream << ",\"lateral_m\":";
-    AppendOptionalJsonNumber(stream, point.available, point.point.lateral_m);
+    AppendJsonBool(stream, opening.available);
+    stream << ",\"frontier_forward_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.frontier_forward_m);
+    stream << ",\"effective_lateral_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.effective_lateral_m);
+    stream << ",\"source\":";
+    AppendJsonString(stream, port::CircleOpeningSourceToken(opening.source));
+    stream << ",\"outward_distance_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.outward_distance_m);
+    stream << ",\"confirmed_forward_span_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.confirmed_forward_span_m);
+    stream << ",\"origin_connected\":";
+    AppendJsonBool(stream, opening.origin_connected);
+    stream << ",\"opposite_straight\":";
+    AppendJsonBool(stream, opening.opposite_straight);
     stream << "}";
 }
 
@@ -387,10 +398,10 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
            << snapshot.circle_v2.inner_trace_elapsed_ms;
     stream << ",\"directed_turn_angle_rad\":"
            << snapshot.circle_v2.directed_turn_angle_rad;
-    stream << ",\"entry_points\":{\"left\":";
-    AppendCircleV2PointObservationJson(stream, snapshot.circle_v2.entry_points.left);
+    stream << ",\"openings\":{\"left\":";
+    AppendCircleOpeningObservationJson(stream, snapshot.circle_v2.openings.left);
     stream << ",\"right\":";
-    AppendCircleV2PointObservationJson(stream, snapshot.circle_v2.entry_points.right);
+    AppendCircleOpeningObservationJson(stream, snapshot.circle_v2.openings.right);
     stream << "}";
     stream << "}";
     stream << ",\"ml\":";
@@ -414,6 +425,11 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
     AppendJsonString(stream, snapshot.reference.mode);
     stream << ",\"source\":";
     AppendJsonString(stream, snapshot.reference.source);
+    stream << ",\"control_path\":{\"sample_count\":"
+           << CountPresentPathSamples(snapshot.reference.control_path);
+    stream << ",\"samples\":";
+    AppendPathSamplesJson(stream, snapshot.reference.control_path);
+    stream << "}";
     stream << "}";
     stream << ",\"eligibility\":{\"usable\":";
     AppendJsonBool(stream, snapshot.eligibility.usable);
@@ -505,7 +521,11 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
     stream << ",\"reason\":";
     AppendJsonString(stream, snapshot.degraded.reason);
     stream << "}";
-    stream << ",\"yaw_control\":{\"turn_output_target\":";
+    stream << ",\"yaw_control\":{\"valid\":";
+    AppendJsonBool(stream, snapshot.yaw_control.valid);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, snapshot.yaw_control.reason);
+    stream << ",\"turn_output_target\":";
     AppendJsonNumber(stream, snapshot.yaw_control.turn_output_target);
     stream << ",\"lateral_term\":";
     AppendJsonNumber(stream, snapshot.yaw_control.lateral_term);
@@ -520,11 +540,64 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
     stream << ",\"right_drive_pwm_command\":" << snapshot.actuator.right_drive_pwm_command;
     stream << ",\"left_brushless_pwm_command\":" << snapshot.actuator.left_brushless_pwm_command;
     stream << ",\"right_brushless_pwm_command\":" << snapshot.actuator.right_brushless_pwm_command;
+    stream << ",\"left_drive_pwm_unconstrained\":";
+    AppendJsonNumber(stream, snapshot.actuator.left_drive_pwm_unconstrained);
+    stream << ",\"right_drive_pwm_unconstrained\":";
+    AppendJsonNumber(stream, snapshot.actuator.right_drive_pwm_unconstrained);
+    stream << ",\"left_drive_pwm_requested\":" << snapshot.actuator.left_drive_pwm_requested;
+    stream << ",\"right_drive_pwm_requested\":" << snapshot.actuator.right_drive_pwm_requested;
+    stream << ",\"left_drive_pwm_desired\":" << snapshot.actuator.left_drive_pwm_desired;
+    stream << ",\"right_drive_pwm_desired\":" << snapshot.actuator.right_drive_pwm_desired;
+    stream << ",\"left_drive_pwm_step_limited\":";
+    AppendJsonBool(stream, snapshot.actuator.left_drive_pwm_step_limited);
+    stream << ",\"right_drive_pwm_step_limited\":";
+    AppendJsonBool(stream, snapshot.actuator.right_drive_pwm_step_limited);
+    stream << ",\"left_drive_pwm_reverse_suppressed\":";
+    AppendJsonBool(stream, snapshot.actuator.left_drive_pwm_reverse_suppressed);
+    stream << ",\"right_drive_pwm_reverse_suppressed\":";
+    AppendJsonBool(stream, snapshot.actuator.right_drive_pwm_reverse_suppressed);
+    stream << ",\"left_drive_pwm_floor_adjusted\":";
+    AppendJsonBool(stream, snapshot.actuator.left_drive_pwm_floor_adjusted);
+    stream << ",\"right_drive_pwm_floor_adjusted\":";
+    AppendJsonBool(stream, snapshot.actuator.right_drive_pwm_floor_adjusted);
+    stream << ",\"left_pid_error\":";
+    AppendJsonNumber(stream, snapshot.actuator.left_pid_error);
+    stream << ",\"right_pid_error\":";
+    AppendJsonNumber(stream, snapshot.actuator.right_pid_error);
+    stream << ",\"left_pid_integral\":";
+    AppendJsonNumber(stream, snapshot.actuator.left_pid_integral);
+    stream << ",\"right_pid_integral\":";
+    AppendJsonNumber(stream, snapshot.actuator.right_pid_integral);
+    stream << ",\"left_pid_integral_candidate\":";
+    AppendJsonNumber(stream, snapshot.actuator.left_pid_integral_candidate);
+    stream << ",\"right_pid_integral_candidate\":";
+    AppendJsonNumber(stream, snapshot.actuator.right_pid_integral_candidate);
+    stream << ",\"left_pid_anti_windup_active\":";
+    AppendJsonBool(stream, snapshot.actuator.left_pid_anti_windup_active);
+    stream << ",\"right_pid_anti_windup_active\":";
+    AppendJsonBool(stream, snapshot.actuator.right_pid_anti_windup_active);
+    stream << ",\"left_pid_anti_windup_reason\":";
+    AppendJsonString(stream, snapshot.actuator.left_pid_anti_windup_reason);
+    stream << ",\"right_pid_anti_windup_reason\":";
+    AppendJsonString(stream, snapshot.actuator.right_pid_anti_windup_reason);
     stream << ",\"apply_outcome\":";
     AppendJsonString(stream, snapshot.actuator.apply_outcome);
+    stream << ",\"actuators_armed\":";
+    AppendJsonBool(stream, snapshot.actuator.actuators_armed);
+    stream << ",\"last_confirmed_left_drive_pwm\":" << snapshot.actuator.last_confirmed_left_drive_pwm;
+    stream << ",\"last_confirmed_right_drive_pwm\":" << snapshot.actuator.last_confirmed_right_drive_pwm;
+    stream << ",\"last_confirmed_left_brushless_pwm\":" << snapshot.actuator.last_confirmed_left_brushless_pwm;
+    stream << ",\"last_confirmed_right_brushless_pwm\":" << snapshot.actuator.last_confirmed_right_brushless_pwm;
     stream << "}";
     stream << ",\"perception_tag\":";
     AppendJsonString(stream, snapshot.perception_tag);
+    stream << ",\"otsu\":{\"valid\":";
+    AppendJsonBool(stream, snapshot.otsu.valid);
+    stream << ",\"threshold\":" << snapshot.otsu.threshold;
+    stream << ",\"source\":";
+    AppendJsonString(stream, port::ToString(snapshot.otsu.source));
+    stream << ",\"stale_frames\":"
+           << static_cast<unsigned int>(snapshot.otsu.stale_frames) << "}";
     stream << ",\"boundary_row_count\":" << snapshot.boundary_row_count;
     stream << ",\"boundary_jump_count\":" << snapshot.boundary_jump_count;
     stream << ",\"boundary_span_count\":" << snapshot.boundary_span_count;
@@ -680,6 +753,28 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"low_voltage_raw_threshold\":"
            << snapshot.param_snapshot.low_voltage_raw_threshold;
     header << ",\"raw_turn_output_limit\":" << snapshot.param_snapshot.raw_turn_output_limit;
+    header << ",\"pwm_limit\":" << snapshot.param_snapshot.pwm_limit;
+    header << ",\"pwm_floor\":" << snapshot.param_snapshot.pwm_floor;
+    header << ",\"prohibit_reverse_pwm\":";
+    AppendJsonBool(header, snapshot.param_snapshot.prohibit_reverse_pwm);
+    header << ",\"drive_pwm_step_limit\":" << snapshot.param_snapshot.drive_pwm_step_limit;
+    const auto append_wheel_pid = [&header](const char* key,
+                                            const port::WheelPidParameters& pid) {
+        header << ",\"" << key << "\":{";
+        header << "\"p\":";
+        AppendJsonNumber(header, pid.p);
+        header << ",\"i\":";
+        AppendJsonNumber(header, pid.i);
+        header << ",\"d\":";
+        AppendJsonNumber(header, pid.d);
+        header << ",\"integral_limit\":";
+        AppendJsonNumber(header, pid.integral_limit);
+        header << ",\"measurement_filter_alpha\":";
+        AppendJsonNumber(header, pid.measurement_filter_alpha);
+        header << "}";
+    };
+    append_wheel_pid("left_wheel_pid", snapshot.param_snapshot.left_wheel_pid);
+    append_wheel_pid("right_wheel_pid", snapshot.param_snapshot.right_wheel_pid);
     header << ",\"wheel_turn_accel_delta_scale\":";
     AppendJsonNumber(header, snapshot.param_snapshot.wheel_turn_accel_delta_scale);
     header << ",\"wheel_turn_decel_delta_scale\":";
@@ -732,10 +827,6 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"HOLD_LAST_MAX_CYCLES\":"
            << snapshot.param_snapshot.bev_classification.hold_last_max_cycles;
     header << "}";
-    header << ",\"BEV_BOUNDARY\":{";
-    header << "\"LOCAL_JUMP_MIN_Y\":"
-           << snapshot.param_snapshot.bev_boundary.local_jump_min_y;
-    header << "}";
     header << ",\"BEV_CONTROL_MODEL\":{";
     header << "\"LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN\":";
     AppendJsonNumber(header,
@@ -776,16 +867,31 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header,
                      snapshot.param_snapshot.bev_element
                          .circle_v2_opposite_straight_confidence_min);
-    header << ",\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\":"
-           << snapshot.param_snapshot.bev_element.circle_v2_entry_bottom_min_row_count;
-    header << ",\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":";
-    AppendJsonNumber(header,
-                     snapshot.param_snapshot.bev_element
-                         .circle_v2_entry_bottom_forward_min_m);
-    header << ",\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":";
-    AppendJsonNumber(header,
-                     snapshot.param_snapshot.bev_element
-                         .circle_v2_entry_bottom_forward_max_m);
+    const port::BEVElementParameters& circle = snapshot.param_snapshot.bev_element;
+    header << ",\"CIRCLE_V2_MIN_SAMPLEABLE_WIDTH_M\":";
+    AppendJsonNumber(header, circle.circle_v2_min_sampleable_width_m);
+    header << ",\"CIRCLE_V2_OPENING_FORWARD_MIN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_opening_forward_min_m);
+    header << ",\"CIRCLE_V2_OPENING_FORWARD_MAX_M\":";
+    AppendJsonNumber(header, circle.circle_v2_opening_forward_max_m);
+    header << ",\"CIRCLE_V2_OPENING_DISTANCE_MIN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_opening_distance_min_m);
+    header << ",\"CIRCLE_V2_OPENING_CONFIRM_FORWARD_SPAN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_opening_confirm_forward_span_m);
+    header << ",\"CIRCLE_V2_ENTRY_FORWARD_MIN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_entry_forward_min_m);
+    header << ",\"CIRCLE_V2_ENTRY_FORWARD_MAX_M\":";
+    AppendJsonNumber(header, circle.circle_v2_entry_forward_max_m);
+    header << ",\"CIRCLE_V2_INNER_GEOMETRY_FORWARD_MIN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_inner_geometry_forward_min_m);
+    header << ",\"CIRCLE_V2_INNER_GEOMETRY_FORWARD_MAX_M\":";
+    AppendJsonNumber(header, circle.circle_v2_inner_geometry_forward_max_m);
+    header << ",\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_exit_geometry_forward_min_m);
+    header << ",\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M\":";
+    AppendJsonNumber(header, circle.circle_v2_exit_geometry_forward_max_m);
+    header << ",\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_exit_straight_max_lateral_span_m);
     header << "}";
     header << ",\"REFERENCE_TIME_ALIGNMENT\":{";
     header << "\"ENABLED\":";

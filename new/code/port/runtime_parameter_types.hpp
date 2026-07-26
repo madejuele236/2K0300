@@ -12,10 +12,25 @@
 
 #include <string>
 
+#include "port/actuator_command_types.hpp"
 #include "port/bev_geometry_types.hpp"
 #include "port/visual_element_evidence_types.hpp"
 
 namespace ls2k::port {
+
+/// TCP protocol port domain shared by assistant and steering-media endpoints.
+inline constexpr int kMinimumTcpPort = 1;
+inline constexpr int kMaximumTcpPort = 65535;
+
+/// ParamStore policy for signed-millisecond scheduling and state-machine
+/// windows: services use explicit enable flags or documented zero-duration
+/// semantics, not INT_MAX sentinels. One day is the largest supported single
+/// finite-run window; larger values are configuration errors.
+inline constexpr int kMaximumRuntimeIntervalMs = 24 * 60 * 60 * 1000;
+
+/// The control timer drives safety-gate and actuator decisions. The supported
+/// control contract therefore requires at least one decision per second.
+inline constexpr int kMaximumControlPeriodMs = 1000;
 
 /**
  * @struct WheelPidParameters
@@ -24,11 +39,11 @@ namespace ls2k::port {
  * 左右轮可独立配置PID参数和测量滤波系数。
  */
 struct WheelPidParameters {
-    double p = 84.0;             ///< 比例增益
-    double i = 2.4;             ///< 积分增益
-    double d = 0.75;            ///< 微分增益
-    double integral_limit = 5000.0;  ///< 积分项限幅
-    double measurement_filter_alpha = 0.4;  ///< 测量值低通滤波系数（0~1，越小越平滑）
+    double p = 84.0;             ///< 有限比例增益
+    double i = 2.4;              ///< 有限积分增益
+    double d = 0.75;             ///< 有限微分增益
+    double integral_limit = 5000.0;  ///< 非负有限积分项限幅
+    double measurement_filter_alpha = 0.4;  ///< 有限低通系数：[0,1]；0=保持历史，1=完全采用新值
 };
 
 /**
@@ -39,7 +54,7 @@ struct WheelPidParameters {
  */
 struct AssistantTcpParameters {
     std::string host = "192.168.137.1";   ///< 上位机IP地址
-    int port = 48011;                     ///< TCP端口号
+    int port = 48011;                     ///< TCP端口号，[1,65535]
 };
 
 /// Reference time alignment 参数
@@ -126,7 +141,7 @@ struct MlClassMappingParameters {
 };
 
 struct MlManeuverParameters {
-    double speed_target = 0.0;
+    double speed_target = 0.0;  ///< ML 启用时为 (0,5000] 的 wheel mixer base；禁用时不可达
     int min_boundary_samples = 3;
     double exit_forward_m = 0.0;
     double exit_max_abs_lateral_error_m = 0.0;
@@ -155,59 +170,57 @@ struct MlParameters {
  */
 struct RuntimeParameters {
     // 运动控制参数
-    double running_speed_target = 300.0;  ///< 目标行驶速度（PWM，0~5000）
-    double yaw_rate_pid_p = 0.0;          ///< 偏航角速率PID比例增益
-    double yaw_rate_pid_i = 0.0;          ///< 偏航角速率PID积分增益
-    double yaw_rate_pid_d = 0.0;          ///< 偏航角速率PID微分增益
+    double running_speed_target = 300.0;  ///< wheel mixer base 目标，与启用的 ML 速度共用 [0,5000] 合同
+    double yaw_rate_pid_p = 0.0;          ///< 经生产 float 最坏 error 算术验证的偏航比例增益
+    double yaw_rate_pid_i = 0.0;          ///< 经 |积分累加器|<=1200 算术验证的偏航积分增益
+    double yaw_rate_pid_d = 0.0;          ///< 经生产最大 error delta 算术验证的偏航微分增益
     // 安全与低电压
     int low_voltage_raw_threshold = 200; ///< 低电压原始阈值
 
     // 控制周期与超时
-    int control_period_ms = 5;            ///< 控制周期（毫秒）
-    int perception_stale_ms = 120;        ///< 感知数据过期阈值（毫秒）
+    int control_period_ms = 5;            ///< 控制周期（毫秒），[1,1000]
+    int perception_stale_ms = 120;        ///< 感知数据过期阈值（毫秒），[1,24h]
 
     // 电机PWM限制
-    int pwm_limit = 9000;                 ///< PWM最大绝对值
-    int raw_turn_output_limit = 20000;    ///< 原始转向输出限幅
-    double wheel_turn_accel_delta_scale = 2.0;  ///< 差速加速侧 turn delta 缩放
-    double wheel_turn_decel_delta_scale = 1.0;  ///< 差速减速侧 turn delta 缩放
-    int pwm_floor = 0;                    ///< PWM最低有效值（低于此值电机不转）
-    bool prohibit_reverse_pwm = false;    ///< 是否禁止反转PWM
-    int prohibit_reverse_pwm_step_limit = 1000;  ///< 禁止反转时的阶梯限制
+    int pwm_limit = kDrivePwmDutyCapability;  ///< PWM最大绝对值，不得超过驱动硬件能力
+    int raw_turn_output_limit = 20000;    ///< 非负转向输出二次限幅（还受生产硬上界 9000 约束）
+    double wheel_turn_accel_delta_scale = 2.0;  ///< 非负有限，且最大 base + |turn|*scale 必须有限
+    double wheel_turn_decel_delta_scale = 1.0;  ///< 非负有限，且 |turn|*scale 必须有限
+    int pwm_floor = 0;                    ///< PWM最低有效值，必须在 [0, pwm_limit] 内
+    bool prohibit_reverse_pwm = true;     ///< 是否禁止反转PWM
+    int drive_pwm_step_limit = 1000;      ///< 左右有刷驱动 PWM 每控制周期最大变化量
     bool brushless_debug_fixed_pwm_enabled = false;  ///< 是否启用无刷电调固定 PWM 调试输出
     int brushless_debug_fixed_pwm = 1000;   ///< 无刷电调固定 PWM 调试输出值（0~1000）
 
     // 运动状态机参数
-    int motion_unveto_confirm_cycles = 3;   ///< 解除封锁需要的确认周期数
-    int motion_spinup_ms = 800;             ///< 电机启动加速时间（毫秒）
-    double motion_turn_limit_spinup = 1.0;  ///< 启动阶段的转向限制
-    int motion_pwm_step_limit = 3000;       ///< PWM每步最大变化量
-    int motion_stop_ms = 300;               ///< 停止超时时间（毫秒）
-    int motion_stop_encoder_threshold = 8;  ///< 停止判定编码器阈值
-    int motion_fault_rearm_hold_ms = 600;   ///< 故障后重新就绪等待时间（毫秒）
+    int motion_unveto_confirm_cycles = 3;   ///< 解除封锁需要的确认周期数，至少 1
+    int motion_spinup_ms = 800;             ///< 电机启动加速时间（毫秒），[0,24h]
+    double motion_turn_limit_spinup = 1.0;  ///< 启动阶段的有限转向比例，[0,1]
+    int motion_stop_ms = 300;               ///< 停止超时时间（毫秒），[0,24h]
+    int motion_stop_encoder_threshold = 8;  ///< 停止判定编码器阈值，[0,5000]
+    int motion_fault_rearm_hold_ms = 600;   ///< 故障后重新就绪等待时间（毫秒），[0,24h]
 
     // 左右轮独立PID
     WheelPidParameters left_wheel_pid{};    ///< 左轮PID参数
     WheelPidParameters right_wheel_pid{96.0, 2.2, 0.2, 5000.0, 0.4};  ///< 右轮PID参数
 
     // 调试与通信
-    int control_snapshot_emit_interval_ms = 100;  ///< 控制快照输出间隔（毫秒）
+    int control_snapshot_emit_interval_ms = 100;  ///< 控制快照输出间隔（毫秒），[1,24h]
     bool assistant_enabled = true;                ///< 是否启用助理连接
     AssistantTcpParameters assistant_tcp{};        ///< 助理TCP参数
     bool steering_media_enabled = true;            ///< 是否启用转向媒体服务
-    int steering_media_port = 48012;               ///< 媒体服务端口
-    int steering_media_publish_interval_ms = 20;   ///< 媒体发布间隔（毫秒）
+    int steering_media_port = 48012;               ///< 媒体服务端口，[1,65535]
+    int steering_media_publish_interval_ms = 20;   ///< 媒体发布间隔（毫秒），[0,24h]；0=每次 eligible tick
     int steering_media_downsample = 1;             ///< 媒体图像下采样因子
     bool steering_media_publish_latest_frame = false;  ///< 诊断开关：优先发布最新相机帧而非严格快照匹配帧
     int steering_media_gray_bits = 2;               ///< 媒体图像灰度位深，支持 1/2/4/8
     bool steering_media_publish_disarmed = true;   ///< 媒体发布是否处于未就绪状态
-    int low_voltage_sample_interval_ms = 1000;     ///< 低电压采样间隔（毫秒）
+    int low_voltage_sample_interval_ms = 1000;     ///< 低电压采样间隔（毫秒），[1,24h]
 
     // BEV参数
     BEVProjectorCalibration bev_projector{};             ///< BEV投影器标定参数
     BEVGeometryParameters bev_geometry{};                 ///< BEV几何参数
     BEVClassificationParameters bev_classification{};     ///< BEV分类参数
-    BEVBoundaryParameters bev_boundary{};                 ///< BEV局部边界参数
     BEVControlModelParameters bev_control_model{};        ///< BEV控制模型参数
     BEVElementParameters bev_element{};                   ///< BEV元素检测参数
     ReferenceTimeAlignmentParameters reference_time_alignment{};  ///< 参考时间对齐参数

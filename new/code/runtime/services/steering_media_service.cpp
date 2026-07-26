@@ -121,12 +121,17 @@ transport::SteeringMediaConfigSnapshot SteeringMediaService::BuildConfigSnapshot
     snapshot.param_snapshot.low_voltage_sample_interval_ms = params_.low_voltage_sample_interval_ms;
     snapshot.param_snapshot.low_voltage_raw_threshold = params_.low_voltage_raw_threshold;
     snapshot.param_snapshot.raw_turn_output_limit = params_.raw_turn_output_limit;
+    snapshot.param_snapshot.pwm_limit = params_.pwm_limit;
+    snapshot.param_snapshot.pwm_floor = params_.pwm_floor;
+    snapshot.param_snapshot.prohibit_reverse_pwm = params_.prohibit_reverse_pwm;
+    snapshot.param_snapshot.drive_pwm_step_limit = params_.drive_pwm_step_limit;
+    snapshot.param_snapshot.left_wheel_pid = params_.left_wheel_pid;
+    snapshot.param_snapshot.right_wheel_pid = params_.right_wheel_pid;
     snapshot.param_snapshot.wheel_turn_accel_delta_scale = params_.wheel_turn_accel_delta_scale;
     snapshot.param_snapshot.wheel_turn_decel_delta_scale = params_.wheel_turn_decel_delta_scale;
     snapshot.param_snapshot.bev_projector = params_.bev_projector;
     snapshot.param_snapshot.bev_geometry = params_.bev_geometry;
     snapshot.param_snapshot.bev_classification = params_.bev_classification;
-    snapshot.param_snapshot.bev_boundary = params_.bev_boundary;
     snapshot.param_snapshot.bev_control_model = params_.bev_control_model;
     snapshot.param_snapshot.bev_element = params_.bev_element;
     snapshot.param_snapshot.reference_time_alignment = params_.reference_time_alignment;
@@ -142,7 +147,7 @@ transport::SteeringMediaConfigSnapshot SteeringMediaService::BuildConfigSnapshot
 transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     const SteeringDebugSnapshot& snapshot) const {
     transport::SteeringMediaSnapshotView view{};
-    view.threshold = snapshot.threshold;
+    view.otsu = snapshot.otsu;
     view.perception_tag = snapshot.perception_tag;
     view.boundary_row_count = snapshot.boundary_row_count;
     view.boundary_jump_count = snapshot.boundary_jump_count;
@@ -163,6 +168,7 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.visual_reference.candidate_paths = snapshot.visual_reference.candidate_paths;
     view.reference.mode = snapshot.reference.mode;
     view.reference.source = snapshot.reference.source;
+    view.reference.control_path = snapshot.reference.control_path;
     view.eligibility.usable = snapshot.eligibility.usable;
     view.eligibility.leading_usable_samples = snapshot.eligibility.leading_usable_samples;
     view.eligibility.leading_min_forward_m = snapshot.eligibility.leading_min_forward_m;
@@ -221,6 +227,8 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.safety_gate.reason = snapshot.safety_gate.reason;
     view.degraded.active = snapshot.degraded.active;
     view.degraded.reason = snapshot.degraded.reason;
+    view.yaw_control.valid = snapshot.yaw_control.valid;
+    view.yaw_control.reason = snapshot.yaw_control.reason;
     view.yaw_control.turn_output_target = snapshot.yaw_control.turn_output_target;
     view.yaw_control.lateral_term = snapshot.yaw_control.lateral_term;
     view.yaw_control.heading_term = snapshot.yaw_control.heading_term;
@@ -231,7 +239,34 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.actuator.right_drive_pwm_command = snapshot.actuator.right_drive_pwm_command;
     view.actuator.left_brushless_pwm_command = snapshot.actuator.left_brushless_pwm_command;
     view.actuator.right_brushless_pwm_command = snapshot.actuator.right_brushless_pwm_command;
+    view.actuator.left_drive_pwm_unconstrained = snapshot.actuator.left_drive_pwm_unconstrained;
+    view.actuator.right_drive_pwm_unconstrained = snapshot.actuator.right_drive_pwm_unconstrained;
+    view.actuator.left_drive_pwm_requested = snapshot.actuator.left_drive_pwm_requested;
+    view.actuator.right_drive_pwm_requested = snapshot.actuator.right_drive_pwm_requested;
+    view.actuator.left_drive_pwm_desired = snapshot.actuator.left_drive_pwm_desired;
+    view.actuator.right_drive_pwm_desired = snapshot.actuator.right_drive_pwm_desired;
+    view.actuator.left_drive_pwm_step_limited = snapshot.actuator.left_drive_pwm_step_limited;
+    view.actuator.right_drive_pwm_step_limited = snapshot.actuator.right_drive_pwm_step_limited;
+    view.actuator.left_drive_pwm_reverse_suppressed = snapshot.actuator.left_drive_pwm_reverse_suppressed;
+    view.actuator.right_drive_pwm_reverse_suppressed = snapshot.actuator.right_drive_pwm_reverse_suppressed;
+    view.actuator.left_drive_pwm_floor_adjusted = snapshot.actuator.left_drive_pwm_floor_adjusted;
+    view.actuator.right_drive_pwm_floor_adjusted = snapshot.actuator.right_drive_pwm_floor_adjusted;
+    view.actuator.left_pid_error = snapshot.actuator.left_pid_error;
+    view.actuator.right_pid_error = snapshot.actuator.right_pid_error;
+    view.actuator.left_pid_integral = snapshot.actuator.left_pid_integral;
+    view.actuator.right_pid_integral = snapshot.actuator.right_pid_integral;
+    view.actuator.left_pid_integral_candidate = snapshot.actuator.left_pid_integral_candidate;
+    view.actuator.right_pid_integral_candidate = snapshot.actuator.right_pid_integral_candidate;
+    view.actuator.left_pid_anti_windup_active = snapshot.actuator.left_pid_anti_windup_active;
+    view.actuator.right_pid_anti_windup_active = snapshot.actuator.right_pid_anti_windup_active;
+    view.actuator.left_pid_anti_windup_reason = control::ToString(snapshot.actuator.left_pid_anti_windup_reason);
+    view.actuator.right_pid_anti_windup_reason = control::ToString(snapshot.actuator.right_pid_anti_windup_reason);
     view.actuator.apply_outcome = ToString(snapshot.actuator.apply_outcome);
+    view.actuator.actuators_armed = snapshot.actuator.actuators_armed;
+    view.actuator.last_confirmed_left_drive_pwm = snapshot.actuator.last_confirmed_left_drive_pwm;
+    view.actuator.last_confirmed_right_drive_pwm = snapshot.actuator.last_confirmed_right_drive_pwm;
+    view.actuator.last_confirmed_left_brushless_pwm = snapshot.actuator.last_confirmed_left_brushless_pwm;
+    view.actuator.last_confirmed_right_brushless_pwm = snapshot.actuator.last_confirmed_right_brushless_pwm;
     return view;
 }
 
@@ -413,7 +448,6 @@ void SteeringMediaService::Tick(RuntimeState& state,
     frame.steering_snapshot_frame_id = snapshot.steering.frame_id;
     frame.steering_snapshot_capture_time_ms = snapshot.steering.capture_time_ms;
     frame.steering_snapshot_aligned =
-        snapshot.valid && snapshot.steering.valid &&
         snapshot.steering.frame_id == capture_handle.frame_id &&
         snapshot.steering.capture_time_ms == capture_handle.capture_time_ms;
     FillImageFrame(capture->PixelView(), frame);

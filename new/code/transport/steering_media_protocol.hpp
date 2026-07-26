@@ -29,7 +29,7 @@ namespace ls2k::transport {
 std::size_t SteeringMediaImagePayloadBytes(int width, int height);
 
 /**
- * 参数快照视图 —— 包含速度目标、陀螺仪偏航 PID 和 BEV 配置的运行时参数快照。
+ * 参数快照视图 —— 包含控制、执行器 shaping、左右轮 PID 和 BEV 配置的运行时参数快照。
  */
 struct SteeringMediaParamSnapshotView {
     /** 运行速度目标值 */
@@ -48,6 +48,18 @@ struct SteeringMediaParamSnapshotView {
     int low_voltage_raw_threshold = 0;
     /** 原始转向输出限幅值 */
     int raw_turn_output_limit = 0;
+    /** 有刷驱动 PWM 硬限幅 */
+    int pwm_limit = 0;
+    /** 有刷驱动 PWM 非零输出地板 */
+    int pwm_floor = 0;
+    /** 是否禁止反向有刷驱动 PWM */
+    bool prohibit_reverse_pwm = true;
+    /** 有刷驱动 PWM 每控制周期最大变化量 */
+    int drive_pwm_step_limit = 0;
+    /** 左轮速度 PID 参数 */
+    port::WheelPidParameters left_wheel_pid{};
+    /** 右轮速度 PID 参数 */
+    port::WheelPidParameters right_wheel_pid{};
     /** 差速加速侧 turn delta 缩放 */
     double wheel_turn_accel_delta_scale = 1.0;
     /** 差速减速侧 turn delta 缩放 */
@@ -59,7 +71,6 @@ struct SteeringMediaParamSnapshotView {
     /** BEV 分类配置参数 */
     port::BEVClassificationParameters bev_classification{};
     /** BEV 局部边界配置参数 */
-    port::BEVBoundaryParameters bev_boundary{};
     /** BEV 控制模型参数 */
     port::BEVControlModelParameters bev_control_model{};
     /** BEV 元素检测参数（含圆形/路口退出） */
@@ -73,13 +84,15 @@ struct SteeringMediaParamSnapshotView {
 };
 
 /**
- * 转向参考视图 —— 描述当前转向参考的模式和数据来源。
+ * 转向参考视图 —— 描述当前真正进入控制的参考路径、模式和数据来源。
  */
 struct SteeringMediaReferenceView {
     /** 参考模式（如 "none" / "visual" / "gps" 等） */
     std::string mode = "none";
     /** 参考数据的来源描述 */
     std::string source = "none";
+    /** 控制时刻对齐/裁剪后真正进入控制的路径 */
+    port::BEVReferencePath control_path{};
 };
 
 /**
@@ -222,6 +235,10 @@ struct SteeringMediaDegradedView {
  * 偏航控制视图 —— 描述偏航控制的目标输出。
  */
 struct SteeringMediaYawControlView {
+    /** 控制器算术结果是否有效 */
+    bool valid = false;
+    /** 无效或未计算原因；有效时为 ok */
+    std::string reason = "not_computed";
     /** 转向输出目标值 */
     double turn_output_target = 0.0;
     /** 横向位置修正项 */
@@ -248,8 +265,35 @@ struct SteeringMediaActuatorView {
     int left_brushless_pwm_command = 0;
     /** 右无刷电调 PWM 命令 */
     int right_brushless_pwm_command = 0;
+    double left_drive_pwm_unconstrained = 0.0;
+    double right_drive_pwm_unconstrained = 0.0;
+    int left_drive_pwm_requested = 0;
+    int right_drive_pwm_requested = 0;
+    int left_drive_pwm_desired = 0;
+    int right_drive_pwm_desired = 0;
+    bool left_drive_pwm_step_limited = false;
+    bool right_drive_pwm_step_limited = false;
+    bool left_drive_pwm_reverse_suppressed = false;
+    bool right_drive_pwm_reverse_suppressed = false;
+    bool left_drive_pwm_floor_adjusted = false;
+    bool right_drive_pwm_floor_adjusted = false;
+    double left_pid_error = 0.0;
+    double right_pid_error = 0.0;
+    double left_pid_integral = 0.0;
+    double right_pid_integral = 0.0;
+    double left_pid_integral_candidate = 0.0;
+    double right_pid_integral_candidate = 0.0;
+    bool left_pid_anti_windup_active = false;
+    bool right_pid_anti_windup_active = false;
+    std::string left_pid_anti_windup_reason = "none";
+    std::string right_pid_anti_windup_reason = "none";
     /** 统一执行器施加结果 */
     std::string apply_outcome = "not_requested";
+    bool actuators_armed = false;
+    int last_confirmed_left_drive_pwm = 0;
+    int last_confirmed_right_drive_pwm = 0;
+    int last_confirmed_left_brushless_pwm = 0;
+    int last_confirmed_right_brushless_pwm = 0;
 };
 
 /**
@@ -262,13 +306,13 @@ using SteeringMediaElementEvidenceView = port::VisualElementEvidenceFrame;
  * 转向媒体快照视图 —— 包含感知、参考、控制、安全和执行器状态的完整快照。
  */
 struct SteeringMediaSnapshotView {
-    /** 当前阈值等级（用于调试和可视化） */
-    int threshold = 0;
+    /** 当前帧统一 Otsu 状态（用于调试和可视化） */
+    port::OtsuThresholdState otsu{};
     /** 感知事实标签 */
     std::string perception_tag = "none";
     /** V9 sparse boundary row 数量 */
     std::size_t boundary_row_count = 0;
-    /** V9 局部 Y 边界跳变数量 */
+    /** 稀疏 Otsu 二值转换边界数量 */
     std::size_t boundary_jump_count = 0;
     /** V9 同行边界 span 数量 */
     std::size_t boundary_span_count = 0;
@@ -350,7 +394,7 @@ struct SteeringMediaImageFrame {
     const char* pixel_format = "gray8";
     /** 图像源模式，snapshot_aligned 或 latest_camera_frame */
     const char* frame_source = "snapshot_aligned";
-    /** steering snapshot 是否与图像帧精确对齐 */
+    /** 图像 frame ID/采集时间是否与 steering snapshot 精确匹配；不表示控制有效性 */
     bool steering_snapshot_aligned = true;
     /** 关联 steering snapshot 的帧 ID */
     std::uint64_t steering_snapshot_frame_id = 0;

@@ -20,6 +20,7 @@ std::size_t ActiveSparseRowCount(const port::RuntimeParameters& params) {
 // 这些 row facts 同时服务基础 line reference 和 element evidence，是当前视觉事实的公共输入。
 // 这里不做 cross/circle 的语义判断，只描述这一行本身看到了什么。
 BEVSimpleRowScan ScanSparseRow(const port::CameraPixelFrameView& frame,
+                               const port::OtsuThresholdState& threshold,
                                const port::RuntimeParameters& params,
                                const BEVSampleProjectionLut& lut,
                                std::size_t row_index) {
@@ -70,7 +71,7 @@ BEVSimpleRowScan ScanSparseRow(const port::CameraPixelFrameView& frame,
         row.sampleable_width_m = std::max(0.0F, row.sampleable_right_m - row.sampleable_left_m);
     }
     ExtractSparseBoundaryRowFacts(luma_samples,
-                                  params.bev_boundary,
+                                  threshold,
                                   min_width_m,
                                   row);
     return row;
@@ -79,13 +80,14 @@ BEVSimpleRowScan ScanSparseRow(const port::CameraPixelFrameView& frame,
 }  // namespace
 
 std::vector<BEVSimpleRowScan> ScanSparseRows(const port::CameraPixelFrameView& frame,
+                                             const port::OtsuThresholdState& threshold,
                                              const port::RuntimeParameters& params,
                                              const BEVSampleProjectionLut& lut) {
     std::vector<BEVSimpleRowScan> rows;
     const std::size_t active_sparse_rows = ActiveSparseRowCount(params);
     rows.reserve(active_sparse_rows);
     for (std::size_t index = 0; index < active_sparse_rows; ++index) {
-        rows.push_back(ScanSparseRow(frame, params, lut, index));
+        rows.push_back(ScanSparseRow(frame, threshold, params, lut, index));
     }
     return rows;
 }

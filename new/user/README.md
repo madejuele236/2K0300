@@ -123,7 +123,7 @@ CONFIRM_POWERED_START=1 ./debug.sh steering drive --drive-s 10
 
 `--live-web` 只在主机侧增加 HTTP/WebSocket viewer；板端仍然只连接既有 steering media TCP 端口并发送 accepted envelope。浏览器端输入不会变成 assistant 命令。实时显示与 evidence 写盘由 `--media-record-mode` 解耦：`all` 写 raw+metadata，`metadata` 只写 frame metadata，`none` 只更新 live hub 和 summary。
 
-网页 BEV 显示只读消费真实 `config_snapshot` 里的 `BEV_PROJECTOR`/`BEV_GEOMETRY` 和每帧 gray payload，按 `STEERING_LIVE_VIEWER_README.md` 中记录的单应矩阵算法反投影采样；每帧 media header 同步携带 `steering_snapshot.visual_reference.path_candidates` 里的板端候选路径事实，网页直接把这些事实点绘制到 canvas 上，不在侧栏显示候选摘要，也不复刻板端候选路径算法。CircleV2 的独立几何中间点如果没有出现在发送端合同中，网页不推断、不绘制。
+网页 BEV 显示只读消费真实 `config_snapshot` 里的 `BEV_PROJECTOR`/`BEV_GEOMETRY` 和每帧 gray payload，按 `STEERING_LIVE_VIEWER_README.md` 中记录的单应矩阵算法反投影采样；每帧 media header 同步携带 `steering_snapshot.reference.control_path`，它是板端完成控制时刻对齐/裁剪后真正进入控制的路径。网页只绘制这份事实，不显示 `visual_reference.path_candidates` 原始候选，也不在网页复刻裁剪算法。CircleV2 的独立几何中间点如果没有出现在发送端合同中，网页不推断、不绘制。
 
 摄像头角度变化后，先让车在直道中心静止，并保持 live viewer 收到图像，再用多点拟合工具生成 `BEV_PROJECTOR` 建议：
 

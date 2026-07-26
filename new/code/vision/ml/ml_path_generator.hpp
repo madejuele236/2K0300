@@ -4,7 +4,7 @@
 #include <cstddef>
 
 #include "port/ml_types.hpp"
-#include "vision/bev/bev_road_path_facts.hpp"
+#include "vision/bev/bev_reference_path_builder.hpp"
 
 namespace ls2k::vision::ml {
 

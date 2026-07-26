@@ -38,6 +38,9 @@ ControlGateDecision EvaluateControlGate(const ControlGateInputs& inputs) {
     if (!inputs.encoder_valid) {
         return {true, ControlVetoReason::kEncoderInvalid};
     }
+    if (inputs.initial_start_boundary && inputs.reference_control_degraded) {
+        return {true, ControlVetoReason::kInitialReferenceHoldNotAllowed};
+    }
     return {false, ControlVetoReason::kNone};
 }
 
@@ -51,12 +54,16 @@ const char* ToString(ControlVetoReason reason) {
             return "perception_invalid";
         case ControlVetoReason::kReferenceControlNotReady:
             return "reference_control_not_ready";
+        case ControlVetoReason::kInitialReferenceHoldNotAllowed:
+            return "initial_reference_hold_not_allowed";
         case ControlVetoReason::kLowVoltage:
             return "low_voltage";
         case ControlVetoReason::kImuInvalid:
             return "imu_invalid";
         case ControlVetoReason::kEncoderInvalid:
             return "encoder_invalid";
+        case ControlVetoReason::kYawControlInvalid:
+            return "yaw_control_invalid";
     }
     return "unknown";
 }
@@ -69,12 +76,16 @@ const char* ToDiagnosticCode(ControlVetoReason reason) {
             return "control.veto.perception_invalid";
         case ControlVetoReason::kReferenceControlNotReady:
             return "control.veto.reference_control_not_ready";
+        case ControlVetoReason::kInitialReferenceHoldNotAllowed:
+            return "control.veto.initial_reference_hold_not_allowed";
         case ControlVetoReason::kLowVoltage:
             return "control.veto.low_voltage";
         case ControlVetoReason::kImuInvalid:
             return "control.veto.imu_invalid";
         case ControlVetoReason::kEncoderInvalid:
             return "control.veto.encoder_invalid";
+        case ControlVetoReason::kYawControlInvalid:
+            return "control.veto.yaw_control_invalid";
         case ControlVetoReason::kNone:
             return "control.veto.none";
     }

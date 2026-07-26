@@ -14,12 +14,14 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     transport::AssistantTelemetryView telemetry{};
     telemetry.motion_phase = ToString(snapshot.motion_phase);
     telemetry.perception_tag = snapshot.steering.perception_tag;
+    telemetry.otsu = snapshot.steering.otsu;
     telemetry.boundary_row_count = snapshot.steering.boundary_row_count;
     telemetry.boundary_jump_count = snapshot.steering.boundary_jump_count;
     telemetry.boundary_span_count = snapshot.steering.boundary_span_count;
     telemetry.ml = snapshot.steering.ml;
     telemetry.speed_selection_source = snapshot.steering.speed_selection_source;
     telemetry.element_evidence = snapshot.steering.element_evidence;
+    telemetry.circle_v2 = snapshot.steering.circle_v2;
     telemetry.visual_reference.present = snapshot.steering.visual_reference.present;
     telemetry.visual_reference.source = snapshot.steering.visual_reference.source;
     telemetry.visual_reference.reason = snapshot.steering.visual_reference.reason;
@@ -63,6 +65,8 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     telemetry.safety_gate.reason = snapshot.steering.safety_gate.reason;
     telemetry.degraded.active = snapshot.steering.degraded.active;
     telemetry.degraded.reason = snapshot.steering.degraded.reason;
+    telemetry.yaw_control.valid = snapshot.steering.yaw_control.valid;
+    telemetry.yaw_control.reason = snapshot.steering.yaw_control.reason;
     telemetry.yaw_control.turn_output_target =
         snapshot.steering.yaw_control.turn_output_target;
     telemetry.yaw_control.lateral_term = snapshot.steering.yaw_control.lateral_term;
@@ -83,7 +87,34 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     telemetry.right_drive_pwm_command = snapshot.right_drive_pwm_command;
     telemetry.left_brushless_pwm_command = snapshot.left_brushless_pwm_command;
     telemetry.right_brushless_pwm_command = snapshot.right_brushless_pwm_command;
+    telemetry.left_drive_pwm_unconstrained = snapshot.left_drive_pwm_unconstrained;
+    telemetry.right_drive_pwm_unconstrained = snapshot.right_drive_pwm_unconstrained;
+    telemetry.left_drive_pwm_requested = snapshot.left_drive_pwm_requested;
+    telemetry.right_drive_pwm_requested = snapshot.right_drive_pwm_requested;
+    telemetry.left_drive_pwm_desired = snapshot.left_drive_pwm_desired;
+    telemetry.right_drive_pwm_desired = snapshot.right_drive_pwm_desired;
+    telemetry.left_drive_pwm_step_limited = snapshot.left_drive_pwm_step_limited;
+    telemetry.right_drive_pwm_step_limited = snapshot.right_drive_pwm_step_limited;
+    telemetry.left_drive_pwm_reverse_suppressed = snapshot.left_drive_pwm_reverse_suppressed;
+    telemetry.right_drive_pwm_reverse_suppressed = snapshot.right_drive_pwm_reverse_suppressed;
+    telemetry.left_drive_pwm_floor_adjusted = snapshot.left_drive_pwm_floor_adjusted;
+    telemetry.right_drive_pwm_floor_adjusted = snapshot.right_drive_pwm_floor_adjusted;
+    telemetry.left_pid_error = snapshot.left_pid_error;
+    telemetry.right_pid_error = snapshot.right_pid_error;
+    telemetry.left_pid_integral = snapshot.left_pid_integral;
+    telemetry.right_pid_integral = snapshot.right_pid_integral;
+    telemetry.left_pid_integral_candidate = snapshot.left_pid_integral_candidate;
+    telemetry.right_pid_integral_candidate = snapshot.right_pid_integral_candidate;
+    telemetry.left_pid_anti_windup_active = snapshot.left_pid_anti_windup_active;
+    telemetry.right_pid_anti_windup_active = snapshot.right_pid_anti_windup_active;
+    telemetry.left_pid_anti_windup_reason = control::ToString(snapshot.left_pid_anti_windup_reason);
+    telemetry.right_pid_anti_windup_reason = control::ToString(snapshot.right_pid_anti_windup_reason);
     telemetry.actuator_apply_outcome = ToString(snapshot.apply_outcome);
+    telemetry.actuators_armed = snapshot.actuators_armed;
+    telemetry.last_confirmed_left_drive_pwm = snapshot.last_confirmed_left_drive_pwm;
+    telemetry.last_confirmed_right_drive_pwm = snapshot.last_confirmed_right_drive_pwm;
+    telemetry.last_confirmed_left_brushless_pwm = snapshot.last_confirmed_left_brushless_pwm;
+    telemetry.last_confirmed_right_brushless_pwm = snapshot.last_confirmed_right_brushless_pwm;
     return telemetry;
 }
 

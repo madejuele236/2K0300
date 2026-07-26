@@ -6,7 +6,7 @@
 #include "port/motion_history_types.hpp"
 #include "port/runtime_parameter_types.hpp"
 #include "port/visual_reference_orchestration_types.hpp"
-#include "vision/bev/bev_road_path_facts.hpp"
+#include "vision/bev/bev_reference_path_builder.hpp"
 #include "vision/bev/bev_projector.hpp"
 #include "vision/ml/red_rectangle_detector.hpp"
 #include "vision/ml/selected_ml_classifier.hpp"

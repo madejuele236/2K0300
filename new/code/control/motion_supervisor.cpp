@@ -56,7 +56,6 @@ MotionDecision Finalize(const MotionSupervisorInputs& inputs,
     decision.reset_ready = reset_ready;
     decision.effective_speed_target = effective_speed_target;
     decision.turn_limit_scale = std::clamp(turn_limit_scale, 0.0, 1.0);
-    decision.pwm_step_limit = inputs.motion_pwm_step_limit;
     decision.state.last_effective_speed_target = std::max(0.0, effective_speed_target);
     if (decision.state.phase != MotionPhase::kStopping) {
         decision.state.stop_entry_speed_target = 0.0;

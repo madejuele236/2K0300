@@ -11,6 +11,9 @@
 namespace ls2k::vision {
 
 using port::CircleDir;
+using port::CircleOpeningObservation;
+using port::CircleOpeningPairObservation;
+using port::CircleOpeningSource;
 using port::CirclePhase;
 using port::CircleV2Memory;
 using port::CircleV2Params;
@@ -27,6 +30,7 @@ struct CircleV2StepResult {
 };
 
 const char* ToString(CircleDir dir);
+const char* ToString(CircleOpeningSource source);
 const char* ToString(CirclePhase phase);
 const char* ToString(CircleV2ReferenceRole role);
 const char* ToString(CircleV2TelemetryReason reason);

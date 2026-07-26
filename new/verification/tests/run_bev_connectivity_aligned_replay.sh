@@ -3,9 +3,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-SOURCE="${REPO_ROOT}/new/verification/live-check-20260712/latest.bin"
+CAPTURE_DIR="${BEV_CONNECTIVITY_CAPTURE_DIR:-${REPO_ROOT}/new/verification/host-capture-20260726T090850Z/steering-media}"
+FRAME_ID="${BEV_CONNECTIVITY_FRAME_ID:-607}"
+METADATA="${CAPTURE_DIR}/frame_metadata.jsonl"
+RAW_FRAME="${CAPTURE_DIR}/frames/frame-$(printf '%06d' "${FRAME_ID}").raw"
 PARAMS="${REPO_ROOT}/new/config/default_params.json"
-EVIDENCE_DIR="${REPO_ROOT}/new/verification/bev-connectivity-replay-20260713"
+EVIDENCE_DIR="${REPO_ROOT}/new/verification/bev-connectivity-replay-20260726"
 OUT_BIN="${SCRIPT_DIR}/bev_connectivity_aligned_replay"
 
 mkdir -p "${EVIDENCE_DIR}"
@@ -18,12 +21,14 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/platform/param_store.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_image_segment_connectivity.cpp" \
-  "${REPO_ROOT}/new/code/vision/bev/bev_reference_path_builder.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/otsu_threshold.cpp" \
   -o "${OUT_BIN}" \
   $(pkg-config --libs opencv4)
 
-SOURCE_SHA256="$(sha256sum "${SOURCE}" | awk '{print $1}')"
+METADATA_SHA256="$(sha256sum "${METADATA}" | awk '{print $1}')"
+RAW_SHA256="$(sha256sum "${RAW_FRAME}" | awk '{print $1}')"
 PARAMS_SHA256="$(sha256sum "${PARAMS}" | awk '{print $1}')"
-"${OUT_BIN}" "${SOURCE}" "${PARAMS}" "${EVIDENCE_DIR}/report.json" \
-  "${SOURCE_SHA256}" "${PARAMS_SHA256}"
+"${OUT_BIN}" "${METADATA}" "${RAW_FRAME}" "${PARAMS}" \
+  "${EVIDENCE_DIR}/report-frame-${FRAME_ID}.json" "${METADATA_SHA256}" "${RAW_SHA256}" \
+  "${PARAMS_SHA256}" 320 240 "${FRAME_ID}"

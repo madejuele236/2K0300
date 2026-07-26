@@ -24,6 +24,8 @@ struct ControlCycleInputs {
     bool apply_ok = false;
     bool apply_suppressed_by_profile = false;
     bool hold_disarmed = false;
+    port::ActuatorCommand previous_confirmed_command{};
+    port::ActuatorCommand applied_command{};
     bool previously_armed = false;
 };
 
@@ -35,10 +37,10 @@ struct ControlCycleObservation {
     bool motion_reset_ready = false;
     bool requested_nonzero_output = false;
     ControlApplyOutcome apply_outcome = ControlApplyOutcome::kNotRequested;
-    int applied_left_drive_pwm = 0;
-    int applied_right_drive_pwm = 0;
-    int applied_left_brushless_pwm = 0;
-    int applied_right_brushless_pwm = 0;
+    int applied_left_drive_pwm = 0;      ///< 最后一次确认的硬件左驱动 PWM
+    int applied_right_drive_pwm = 0;     ///< 最后一次确认的硬件右驱动 PWM
+    int applied_left_brushless_pwm = 0;  ///< 最后一次确认的硬件左无刷 PWM
+    int applied_right_brushless_pwm = 0; ///< 最后一次确认的硬件右无刷 PWM
     bool actuators_armed = false;
     bool arming_transition = false;
 };

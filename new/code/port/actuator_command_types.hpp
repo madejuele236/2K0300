@@ -10,6 +10,9 @@
 
 namespace ls2k::port {
 
+/// 有刷驱动硬件可接受的 PWM duty 最大绝对值。
+inline constexpr int kDrivePwmDutyCapability = 9000;
+
 /**
  * @struct ActuatorCommand
  * @brief 执行器指令，包含左右驱动PWM值、左右无刷电调PWM值和急停标志
@@ -23,6 +26,12 @@ struct ActuatorCommand {
     int left_brushless_pwm = 0;    ///< 左无刷电调PWM duty；P828；0=关闭，500~1000=例程油门区间
     int right_brushless_pwm = 0;   ///< 右无刷电调PWM duty；P829；0=关闭，500~1000=例程油门区间
     bool emergency_stop = true;    ///< 急停标志。true=立即停止，false=正常行驶
+};
+
+/// 执行器提交结果；applied_command 是本周期硬件实际接受的输出事实。
+struct ActuatorApplyResult {
+    bool ok = false;
+    ActuatorCommand applied_command{};
 };
 
 }  // namespace ls2k::port

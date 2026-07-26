@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "port/ml_types.hpp"
+#include "port/otsu_threshold_types.hpp"
+#include "port/perception_result.hpp"
 #include "port/visual_element_evidence_types.hpp"
 
 namespace ls2k::transport {
@@ -147,6 +149,8 @@ struct AssistantDegradedView {
 
 /// @brief 偏航控制视图
 struct AssistantYawControlView {
+    bool valid = false;
+    std::string reason = "not_computed";
     double turn_output_target = 0.0;  ///< 偏航（转向）输出目标值
     double lateral_term = 0.0;        ///< 横向位置修正项
     double heading_term = 0.0;        ///< 航向误差修正项
@@ -163,13 +167,15 @@ using AssistantElementEvidenceView = port::VisualElementEvidenceFrame;
 struct AssistantTelemetryView {
     std::string motion_phase = "DISARMED";       ///< 运动阶段描述
     std::string perception_tag = "none";         ///< 感知事实标签
-    std::uint64_t boundary_row_count = 0;         ///< V9 sparse boundary row 数量
-    std::uint64_t boundary_jump_count = 0;        ///< V9 局部 Y 边界跳变数量
-    std::uint64_t boundary_span_count = 0;        ///< V9 同行边界 span 数量
+    port::OtsuThresholdState otsu{};              ///< 当前帧统一 Otsu 状态
+    std::uint64_t boundary_row_count = 0;         ///< sparse boundary row 数量
+    std::uint64_t boundary_jump_count = 0;        ///< 二值转换边界数量
+    std::uint64_t boundary_span_count = 0;        ///< 同行边界 span 数量
     port::MlTelemetrySnapshot ml{};               ///< ML 每帧事实（不含 ROI 字节序列化）
     std::string speed_selection_source = "running_default";  ///< 速度选择来源
     AssistantPerceptionHealthView perception_health{};  ///< 感知健康视图
     AssistantElementEvidenceView element_evidence{};    ///< 元素证据帧
+    port::CircleV2TelemetrySnapshot circle_v2{};         ///< CircleV2 opening/state facts
     AssistantVisualReferenceView visual_reference{};    ///< 视觉参考视图
     AssistantReferenceView reference{};                 ///< 参考路径视图
     AssistantEligibilityView eligibility{};             ///< 合格性视图
@@ -194,7 +200,34 @@ struct AssistantTelemetryView {
     int right_drive_pwm_command = 0;              ///< 右驱动 PWM 指令值
     int left_brushless_pwm_command = 0;           ///< 左无刷电调 PWM 指令值
     int right_brushless_pwm_command = 0;          ///< 右无刷电调 PWM 指令值
+    double left_drive_pwm_unconstrained = 0.0;    ///< 左轮 PID 未限幅输出
+    double right_drive_pwm_unconstrained = 0.0;   ///< 右轮 PID 未限幅输出
+    int left_drive_pwm_requested = 0;             ///< 左轮硬限幅后的请求
+    int right_drive_pwm_requested = 0;            ///< 右轮硬限幅后的请求
+    int left_drive_pwm_desired = 0;               ///< 左轮方向/floor 策略后的期望值
+    int right_drive_pwm_desired = 0;              ///< 右轮方向/floor 策略后的期望值
+    bool left_drive_pwm_step_limited = false;
+    bool right_drive_pwm_step_limited = false;
+    bool left_drive_pwm_reverse_suppressed = false;
+    bool right_drive_pwm_reverse_suppressed = false;
+    bool left_drive_pwm_floor_adjusted = false;
+    bool right_drive_pwm_floor_adjusted = false;
+    double left_pid_error = 0.0;
+    double right_pid_error = 0.0;
+    double left_pid_integral = 0.0;
+    double right_pid_integral = 0.0;
+    double left_pid_integral_candidate = 0.0;
+    double right_pid_integral_candidate = 0.0;
+    bool left_pid_anti_windup_active = false;
+    bool right_pid_anti_windup_active = false;
+    std::string left_pid_anti_windup_reason = "none";
+    std::string right_pid_anti_windup_reason = "none";
     std::string actuator_apply_outcome = "not_requested";  ///< 统一执行器施加结果
+    bool actuators_armed = false;
+    int last_confirmed_left_drive_pwm = 0;
+    int last_confirmed_right_drive_pwm = 0;
+    int last_confirmed_left_brushless_pwm = 0;
+    int last_confirmed_right_brushless_pwm = 0;
 };
 
 /// @brief 解码一行 JSON 格式的助手入站消息

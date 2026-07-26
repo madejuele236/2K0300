@@ -45,7 +45,6 @@ struct MotionSupervisorInputs {
     int motion_unveto_confirm_cycles = 0;    ///< 取消 veto 的确认周期数
     int motion_spinup_ms = 0;               ///< 启动加速持续时间（ms）
     double motion_turn_limit_spinup = 1.0;   ///< 启动阶段的转向限制
-    int motion_pwm_step_limit = 0;           ///< PWM 每周期变化限制
     int motion_stop_ms = 0;                  ///< 停止持续时间（ms）
     int motion_stop_encoder_threshold = 0;   ///< 停止判定编码器阈值
     int motion_fault_rearm_hold_ms = 0;      ///< 故障复位的保持时间（ms）
@@ -66,7 +65,6 @@ struct MotionDecision {
     bool reset_ready = false;                        ///< 故障恢复是否就绪
     double effective_speed_target = 0.0;             ///< 有效速度目标
     double turn_limit_scale = 1.0;                   ///< 转向限制缩放因子
-    int pwm_step_limit = 0;                          ///< PWM 每周期变化限制
 };
 
 /// 判断是否为驱动阶段（SPINUP / RUNNING / STOPPING）

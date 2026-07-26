@@ -11,9 +11,18 @@
 #define LS2K_PORT_SENSOR_SAMPLE_TYPES_HPP
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 namespace ls2k::port {
+
+/// IMU producer 的陀螺仪换算合同。原始样本和启动 bias 样本均为 int16，
+/// 因此校准后的最大可达计数差为 32767 - (-32768) = 65535。
+inline constexpr float kGyroRadPerSecPerCount = 0.0010641F;
+inline constexpr float kMaximumProducedGyroMagnitudeRadPerSec =
+    static_cast<float>(static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::max()) -
+                       static_cast<std::int32_t>(std::numeric_limits<std::int16_t>::min())) *
+    kGyroRadPerSecPerCount;
 
 /**
  * @struct ImuSample

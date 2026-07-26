@@ -105,6 +105,11 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " frame_id=" << snapshot.steering.frame_id
                      << " capture_time_ms=" << snapshot.steering.capture_time_ms
                      << " perception_tag=" << snapshot.steering.perception_tag
+                     << " otsu.valid=" << BoolToken(snapshot.steering.otsu.valid)
+                     << " otsu.threshold=" << snapshot.steering.otsu.threshold
+                     << " otsu.source=" << port::ToString(snapshot.steering.otsu.source)
+                     << " otsu.stale_frames="
+                     << static_cast<unsigned int>(snapshot.steering.otsu.stale_frames)
                      << " boundary_row_count=" << snapshot.steering.boundary_row_count
                      << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
                      << " boundary_span_count=" << snapshot.steering.boundary_span_count
@@ -194,18 +199,40 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.circle_v2.inner_trace_elapsed_ms
                      << " circle_v2.directed_turn_angle_rad="
                      << snapshot.steering.circle_v2.directed_turn_angle_rad
-                     << " circle_v2.entry_points.left.available="
-                     << BoolToken(snapshot.steering.circle_v2.entry_points.left.available)
-                     << " circle_v2.entry_points.left.forward_m="
-                     << snapshot.steering.circle_v2.entry_points.left.point.forward_m
-                     << " circle_v2.entry_points.left.lateral_m="
-                     << snapshot.steering.circle_v2.entry_points.left.point.lateral_m
-                     << " circle_v2.entry_points.right.available="
-                     << BoolToken(snapshot.steering.circle_v2.entry_points.right.available)
-                     << " circle_v2.entry_points.right.forward_m="
-                     << snapshot.steering.circle_v2.entry_points.right.point.forward_m
-                     << " circle_v2.entry_points.right.lateral_m="
-                     << snapshot.steering.circle_v2.entry_points.right.point.lateral_m;
+                     << " circle_v2.openings.left.available="
+                     << BoolToken(snapshot.steering.circle_v2.openings.left.available)
+                     << " circle_v2.openings.left.frontier_forward_m="
+                     << snapshot.steering.circle_v2.openings.left.frontier_forward_m
+                     << " circle_v2.openings.left.effective_lateral_m="
+                     << snapshot.steering.circle_v2.openings.left.effective_lateral_m
+                     << " circle_v2.openings.left.source="
+                     << port::CircleOpeningSourceToken(
+                            snapshot.steering.circle_v2.openings.left.source)
+                     << " circle_v2.openings.left.outward_distance_m="
+                     << snapshot.steering.circle_v2.openings.left.outward_distance_m
+                     << " circle_v2.openings.left.confirmed_forward_span_m="
+                     << snapshot.steering.circle_v2.openings.left.confirmed_forward_span_m
+                     << " circle_v2.openings.left.origin_connected="
+                     << BoolToken(snapshot.steering.circle_v2.openings.left.origin_connected)
+                     << " circle_v2.openings.left.opposite_straight="
+                     << BoolToken(snapshot.steering.circle_v2.openings.left.opposite_straight)
+                     << " circle_v2.openings.right.available="
+                     << BoolToken(snapshot.steering.circle_v2.openings.right.available)
+                     << " circle_v2.openings.right.frontier_forward_m="
+                     << snapshot.steering.circle_v2.openings.right.frontier_forward_m
+                     << " circle_v2.openings.right.effective_lateral_m="
+                     << snapshot.steering.circle_v2.openings.right.effective_lateral_m
+                     << " circle_v2.openings.right.source="
+                     << port::CircleOpeningSourceToken(
+                            snapshot.steering.circle_v2.openings.right.source)
+                     << " circle_v2.openings.right.outward_distance_m="
+                     << snapshot.steering.circle_v2.openings.right.outward_distance_m
+                     << " circle_v2.openings.right.confirmed_forward_span_m="
+                     << snapshot.steering.circle_v2.openings.right.confirmed_forward_span_m
+                     << " circle_v2.openings.right.origin_connected="
+                     << BoolToken(snapshot.steering.circle_v2.openings.right.origin_connected)
+                     << " circle_v2.openings.right.opposite_straight="
+                     << BoolToken(snapshot.steering.circle_v2.openings.right.opposite_straight);
     for (std::size_t index = 0; index < snapshot.steering.element_evidence.records.size(); ++index) {
         const port::VisualElementEvidenceRecord& record =
             snapshot.steering.element_evidence.records[index];
@@ -332,6 +359,8 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " safety_gate.reason=" << snapshot.steering.safety_gate.reason
                      << " degraded.active=" << BoolToken(snapshot.steering.degraded.active)
                      << " degraded.reason=" << snapshot.steering.degraded.reason
+                     << " yaw_control.valid=" << BoolToken(snapshot.steering.yaw_control.valid)
+                     << " yaw_control.reason=" << snapshot.steering.yaw_control.reason
                      << " yaw_control.turn_output_target="
                      << snapshot.steering.yaw_control.turn_output_target
                      << " yaw_control.lateral_term="
@@ -341,6 +370,11 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " yaw_control.curvature_term="
                      << snapshot.steering.yaw_control.curvature_term
                      << " perception_tag=" << snapshot.steering.perception_tag
+                     << " otsu.valid=" << BoolToken(snapshot.steering.otsu.valid)
+                     << " otsu.threshold=" << snapshot.steering.otsu.threshold
+                     << " otsu.source=" << port::ToString(snapshot.steering.otsu.source)
+                     << " otsu.stale_frames="
+                     << static_cast<unsigned int>(snapshot.steering.otsu.stale_frames)
                      << " boundary_row_count=" << snapshot.steering.boundary_row_count
                      << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
                      << " boundary_span_count=" << snapshot.steering.boundary_span_count
@@ -354,6 +388,50 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.actuator.left_brushless_pwm_command
                      << " actuator.right_brushless_pwm_command="
                      << snapshot.steering.actuator.right_brushless_pwm_command
+                     << " actuator.left_drive_pwm_unconstrained="
+                     << snapshot.steering.actuator.left_drive_pwm_unconstrained
+                     << " actuator.right_drive_pwm_unconstrained="
+                     << snapshot.steering.actuator.right_drive_pwm_unconstrained
+                     << " actuator.left_drive_pwm_requested="
+                     << snapshot.steering.actuator.left_drive_pwm_requested
+                     << " actuator.right_drive_pwm_requested="
+                     << snapshot.steering.actuator.right_drive_pwm_requested
+                     << " actuator.left_drive_pwm_desired="
+                     << snapshot.steering.actuator.left_drive_pwm_desired
+                     << " actuator.right_drive_pwm_desired="
+                     << snapshot.steering.actuator.right_drive_pwm_desired
+                     << " actuator.left_drive_pwm_step_limited="
+                     << BoolToken(snapshot.steering.actuator.left_drive_pwm_step_limited)
+                     << " actuator.right_drive_pwm_step_limited="
+                     << BoolToken(snapshot.steering.actuator.right_drive_pwm_step_limited)
+                     << " actuator.left_drive_pwm_reverse_suppressed="
+                     << BoolToken(snapshot.steering.actuator.left_drive_pwm_reverse_suppressed)
+                     << " actuator.right_drive_pwm_reverse_suppressed="
+                     << BoolToken(snapshot.steering.actuator.right_drive_pwm_reverse_suppressed)
+                     << " actuator.left_drive_pwm_floor_adjusted="
+                     << BoolToken(snapshot.steering.actuator.left_drive_pwm_floor_adjusted)
+                     << " actuator.right_drive_pwm_floor_adjusted="
+                     << BoolToken(snapshot.steering.actuator.right_drive_pwm_floor_adjusted)
+                     << " actuator.left_pid_error="
+                     << snapshot.steering.actuator.left_pid_error
+                     << " actuator.right_pid_error="
+                     << snapshot.steering.actuator.right_pid_error
+                     << " actuator.left_pid_integral="
+                     << snapshot.steering.actuator.left_pid_integral
+                     << " actuator.right_pid_integral="
+                     << snapshot.steering.actuator.right_pid_integral
+                     << " actuator.left_pid_integral_candidate="
+                     << snapshot.steering.actuator.left_pid_integral_candidate
+                     << " actuator.right_pid_integral_candidate="
+                     << snapshot.steering.actuator.right_pid_integral_candidate
+                     << " actuator.left_pid_anti_windup_active="
+                     << BoolToken(snapshot.steering.actuator.left_pid_anti_windup_active)
+                     << " actuator.right_pid_anti_windup_active="
+                     << BoolToken(snapshot.steering.actuator.right_pid_anti_windup_active)
+                     << " actuator.left_pid_anti_windup_reason="
+                     << control::ToString(snapshot.steering.actuator.left_pid_anti_windup_reason)
+                     << " actuator.right_pid_anti_windup_reason="
+                     << control::ToString(snapshot.steering.actuator.right_pid_anti_windup_reason)
                      << " actuator.apply_outcome="
                      << ToString(snapshot.steering.actuator.apply_outcome);
     const std::size_t candidate_path_count =

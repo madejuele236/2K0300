@@ -258,6 +258,22 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
       font-weight: 650;
       text-decoration: none;
     }
+    .view-switch button {
+      min-height: 22px;
+      padding: 3px 8px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .view-switch button.active {
+      background: var(--blue);
+      color: #fff;
+    }
     .view-switch a.active {
       background: var(--surface-blue);
       color: var(--accent);
@@ -721,6 +737,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
         <nav class="view-switch" aria-label="View mode">
           <a id="cameraViewLink" href="?view=camera">Camera</a>
           <a id="waveformViewLink" href="?view=waveform">Waveform</a>
+          <button id="binaryToggle" type="button" aria-pressed="false">Binary</button>
         </nav>
         <span class="status-pill"><span class="status-dot" id="statusDot"></span><span id="status">connecting</span></span>
         <span class="status-pill" id="displayMode">BEV</span>
@@ -731,6 +748,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
       <div class="control-chip"><span class="metric-label">Reference</span><strong class="metric-value" id="referenceSummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">Safety</span><strong class="metric-value" id="safetySummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">Camera</span><strong class="metric-value" id="cameraSummary">-</strong></div>
+      <div class="control-chip"><span class="metric-label">Otsu</span><strong class="metric-value" id="otsuSummary">-</strong></div>
     </section>
     <section class="viewer-panel">
       <div class="viewer-caption">
@@ -802,8 +820,14 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
     <section class="panel">
       <h2>FSM</h2>
       <dl>
+        <dt>Cross</dt><dd id="crossState">-</dd>
+        <dt>Cross range</dt><dd id="crossRange">-</dd>
+        <dt>Cross candidate</dt><dd id="crossCandidate">-</dd>
+        <dt>Cross reason</dt><dd id="crossReason">-</dd>
         <dt>Circle</dt><dd id="circleFsm">-</dd>
         <dt>Circle geom</dt><dd id="circleGeometry">-</dd>
+        <dt>Circle left</dt><dd id="circleOpeningLeft">-</dd>
+        <dt>Circle right</dt><dd id="circleOpeningRight">-</dd>
         <dt>Circle reason</dt><dd id="circleReason">-</dd>
       </dl>
     </section>
@@ -846,6 +870,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
 <script>
 const canvas = document.getElementById("frame");
 const ctx = canvas.getContext("2d");
+const binaryToggle = document.getElementById("binaryToggle");
 const wheelCharts = [
   {
     name: "left",
@@ -888,6 +913,7 @@ const fields = {
   referenceSummary: document.getElementById("referenceSummary"),
   safetySummary: document.getElementById("safetySummary"),
   cameraSummary: document.getElementById("cameraSummary"),
+  otsuSummary: document.getElementById("otsuSummary"),
   displayFps: document.getElementById("displayFps"),
   latency: document.getElementById("latency"),
   frameId: document.getElementById("frameId"),
@@ -895,8 +921,14 @@ const fields = {
   source: document.getElementById("source"),
   displayMode: document.getElementById("displayMode"),
   motionFsm: document.getElementById("motionFsm"),
+  crossState: document.getElementById("crossState"),
+  crossRange: document.getElementById("crossRange"),
+  crossCandidate: document.getElementById("crossCandidate"),
+  crossReason: document.getElementById("crossReason"),
   circleFsm: document.getElementById("circleFsm"),
   circleGeometry: document.getElementById("circleGeometry"),
+  circleOpeningLeft: document.getElementById("circleOpeningLeft"),
+  circleOpeningRight: document.getElementById("circleOpeningRight"),
   circleReason: document.getElementById("circleReason"),
   reference: document.getElementById("reference"),
   gate: document.getElementById("gate"),
@@ -953,6 +985,15 @@ function formatBool(value) {
 }
 function formatNumber(value, digits = 3) {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(digits) : "-";
+}
+
+function formatCircleOpening(opening) {
+  if (!opening || opening.available !== true) return "unavailable";
+  return `f=${formatNumber(opening.frontier_forward_m, 3)}m / ` +
+    `l=${formatNumber(opening.effective_lateral_m, 3)}m / ` +
+    `d=${formatNumber(opening.outward_distance_m, 3)}m / ` +
+    `span=${formatNumber(opening.confirmed_forward_span_m, 3)}m / ` +
+    `${opening.source ?? "none"} / opp=${formatBool(opening.opposite_straight ?? null)}`;
 }
 function formatInt(value) {
   return typeof value === "number" && Number.isFinite(value) ? String(Math.round(value)) : "-";
@@ -1271,6 +1312,33 @@ function renderBevFrame(header, decoded) {
 function renderGray(header, payload) {
   const decoded = decodeGray(header, payload);
   if (!decoded) return null;
+  if (binaryEnabled) {
+    const bits = packedGrayBits(header);
+    const otsu = nested(header, ["steering_snapshot", "otsu"], null);
+    const threshold = numberOrNull(otsu?.threshold);
+    const exactGray8 = bits == null &&
+      (header.payload_encoding === "gray8" || header.pixel_format === "gray8");
+    if (exactGray8 && otsu?.valid === true && threshold != null) {
+      const binary = new Uint8ClampedArray(decoded.pixels.length);
+      for (let index = 0; index < decoded.pixels.length; ++index) {
+        binary[index] = decoded.pixels[index] > threshold ? 255 : 0;
+      }
+      const rendered = renderRawFrame({
+        width: decoded.width,
+        height: decoded.height,
+        pixels: binary,
+        stats: imageStats(binary),
+      });
+      return { ...rendered, display: `binary raw Y>${threshold}` };
+    }
+    const raw = renderRawFrame(decoded);
+    return {
+      ...raw,
+      display: exactGray8
+        ? "binary unavailable: otsu invalid"
+        : "binary unavailable: requires gray8",
+    };
+  }
   if (initialDisplayMode === "bev") {
     const bev = renderBevFrame(header, decoded);
     if (bev) return bev;
@@ -1279,21 +1347,9 @@ function renderGray(header, payload) {
   }
   return renderRawFrame(decoded);
 }
-function pathCandidateItems(header) {
-  const items = nested(header, ["steering_snapshot", "visual_reference", "path_candidates", "items"], []);
-  return Array.isArray(items) ? items : [];
-}
-function candidateColor(kind, index) {
-  const palette = {
-    line: "#20c5ff",
-    cross_exit: "#ffb000",
-    circle_left: "#ff4fd8",
-    circle_right: "#8b5cf6",
-    roadblock_bypass: "#ff4f5e",
-    ml_grounded: "#34d399",
-  };
-  const fallback = ["#20c5ff", "#ffb000", "#34d399", "#ff4f5e", "#8b5cf6"];
-  return palette[kind] || fallback[index % fallback.length];
+function controlPathSamples(header) {
+  const samples = nested(header, ["steering_snapshot", "reference", "control_path", "samples"], []);
+  return Array.isArray(samples) ? samples : [];
 }
 function finiteSamplePoint(sample) {
   const forwardM = numberOrNull(sample?.forward_m);
@@ -1332,46 +1388,43 @@ function visibleCanvasPoint(point) {
     point.x <= canvas.width + margin &&
     point.y <= canvas.height + margin;
 }
-function drawPathCandidateOverlay(header, renderInfo) {
-  const items = pathCandidateItems(header);
-  if (!items.length || !renderInfo) return;
+function drawControlPathOverlay(header, renderInfo) {
+  const samples = controlPathSamples(header);
+  if (!samples.length || !renderInfo) return;
+  const points = samples
+    .map(finiteSamplePoint)
+    .filter(Boolean)
+    .map((point) => mapBevSampleToCanvas(point, renderInfo, header))
+    .filter(visibleCanvasPoint);
+  if (!points.length) return;
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
-  items.forEach((candidate, index) => {
-    const points = (Array.isArray(candidate.samples) ? candidate.samples : [])
-      .map(finiteSamplePoint)
-      .filter(Boolean)
-      .map((point) => mapBevSampleToCanvas(point, renderInfo, header))
-      .filter(visibleCanvasPoint);
-    if (!points.length) return;
-    const color = candidateColor(candidate.kind, index);
-    if (points.length >= 2) {
-      ctx.beginPath();
-      points.forEach((point, pointIndex) => {
-        if (pointIndex === 0) {
-          ctx.moveTo(point.x, point.y);
-        } else {
-          ctx.lineTo(point.x, point.y);
-        }
-      });
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.72)";
-      ctx.lineWidth = 7;
-      ctx.stroke();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = index === 0 ? 3.2 : 2.4;
-      ctx.stroke();
-    }
-    points.forEach((point) => {
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, index === 0 ? 3.6 : 3.0, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, index === 0 ? 2.5 : 2.0, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
+  if (points.length >= 2) {
+    ctx.beginPath();
+    points.forEach((point, pointIndex) => {
+      if (pointIndex === 0) {
+        ctx.moveTo(point.x, point.y);
+      } else {
+        ctx.lineTo(point.x, point.y);
+      }
     });
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.72)";
+    ctx.lineWidth = 7;
+    ctx.stroke();
+    ctx.strokeStyle = "#34d399";
+    ctx.lineWidth = 3.2;
+    ctx.stroke();
+  }
+  points.forEach((point) => {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 3.6, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#34d399";
+    ctx.fill();
   });
   ctx.restore();
 }
@@ -1393,6 +1446,12 @@ const websocketStaleMs = 1000;
 const telemetryUpdateMs = 100;
 const configFetchRetryMs = 1000;
 const initialDisplayMode = "__LS2K_DISPLAY_MODE__";
+let binaryEnabled = false;
+binaryToggle.addEventListener("click", () => {
+  binaryEnabled = !binaryEnabled;
+  binaryToggle.classList.toggle("active", binaryEnabled);
+  binaryToggle.setAttribute("aria-pressed", binaryEnabled ? "true" : "false");
+});
 const speedPollDelayMs = 100;
 const speedWindowMs = 60000;
 let latestSpeedSequence = 0;
@@ -1487,11 +1546,13 @@ function handleEnvelope(buffer, transport) {
     latestAuxiliaryPayload = segments.auxiliary;
     const pixelStats = renderGray(header, segments.primary);
     if (!pixelStats) return;
-    drawPathCandidateOverlay(header, pixelStats);
+    drawControlPathOverlay(header, pixelStats);
     drawAuxiliaryInset(latestAuxiliaryPayload);
     latestFrameId = header.frame_id ?? latestFrameId;
     const steering = header.steering_snapshot || {};
     const camera = header.camera_frame || {};
+    const cross = nested(steering, ["element_evidence", "cross_exit"], {}) || {};
+    const crossCandidate = cross.candidate || {};
     const circle = steering.circle_v2 || {};
     const nowMs = performance.now();
     if (lastRenderMs > 0) {
@@ -1517,6 +1578,10 @@ function handleEnvelope(buffer, transport) {
       `${nested(steering, ["safety_gate", "reason"])}`;
     fields.cameraSummary.textContent =
       `${camera.source ?? "-"} / seq=${camera.v4l2_sequence ?? "-"}`;
+    const otsu = steering.otsu || {};
+    fields.otsuSummary.textContent =
+      `${otsu.valid === true ? otsu.threshold : "none"} / ` +
+      `${otsu.source ?? "none"} / stale=${otsu.stale_frames ?? 0}`;
     fields.latency.textContent =
       `pubDelay=${formatInt((header.publish_time_ms ?? 0) - (header.capture_time_ms ?? 0))}ms / ` +
       `cap=${header.capture_time_ms ?? "-"} / host=${header.host_received_monotonic_ms ?? "-"}`;
@@ -1531,10 +1596,24 @@ function handleEnvelope(buffer, transport) {
       `${header.frame_source ?? "-"} / aligned=${formatBool(nested(header, ["snapshot_alignment", "aligned"], null))}`;
     fields.displayMode.textContent = pixelStats.display ?? (initialDisplayMode === "bev" ? "BEV" : "Raw");
     fields.motionFsm.textContent = header.motion_phase ?? "-";
+    fields.crossState.textContent =
+      `${cross.present === true ? "present" : cross.present === false ? "absent" : "-"} / ` +
+      `absentRows=${cross.boundary_absent_row_count ?? "-"}`;
+    fields.crossRange.textContent =
+      `f=[${formatNumber(cross.forward_min_m, 3)}, ${formatNumber(cross.forward_max_m, 3)}]m / ` +
+      `l=[${formatNumber(cross.lateral_min_m, 3)}, ${formatNumber(cross.lateral_max_m, 3)}]m`;
+    fields.crossCandidate.textContent =
+      `built=${formatBool(crossCandidate.built ?? null)} / ` +
+      `takeover=${formatBool(crossCandidate.takeover_enabled ?? null)} / ` +
+      `arbitration=${formatBool(crossCandidate.included_in_arbitration ?? null)}`;
+    fields.crossReason.textContent =
+      `${cross.reason ?? "-"} / candidate=${crossCandidate.reason ?? "-"}`;
     fields.circleFsm.textContent =
       `${circle.enabled === false ? "off" : circle.frame_phase ?? "-"} -> ${circle.next_phase ?? "-"}` +
       ` / ${circle.dir ?? "-"} / ${circle.reference_role ?? "-"}`;
     fields.circleGeometry.textContent = formatBool(circle.geometry_available ?? null);
+    fields.circleOpeningLeft.textContent = formatCircleOpening(nested(circle, ["openings", "left"], null));
+    fields.circleOpeningRight.textContent = formatCircleOpening(nested(circle, ["openings", "right"], null));
     fields.circleReason.textContent = circle.reason ?? "-";
     fields.reference.textContent = `${nested(steering, ["reference", "mode"])} / ${nested(steering, ["reference", "source"])}`;
     fields.gate.textContent =

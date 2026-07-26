@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -19,6 +20,22 @@
 #include "runtime/services/steering_media_service.hpp"
 
 namespace {
+
+void WriteStrictJsonArtifact(const std::string& filename, const std::string& json) {
+    const char* artifact_dir = std::getenv("LS2K_STRICT_JSON_ARTIFACT_DIR");
+    if (artifact_dir == nullptr || artifact_dir[0] == '\0') {
+        return;
+    }
+    const std::string path = std::string(artifact_dir) + "/" + filename;
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+        throw std::runtime_error("failed to open strict JSON artifact: " + path);
+    }
+    output << json;
+    if (!output.good()) {
+        throw std::runtime_error("failed to write strict JSON artifact: " + path);
+    }
+}
 
 class CollectingDiagnostics final : public ls2k::port::DiagnosticSink {
 public:
@@ -188,6 +205,20 @@ void AddCandidatePath(ls2k::observability::SteeringDebugSnapshot& snapshot,
         MakeCandidatePath(kind, source, lateral_base_m));
 }
 
+void SetControlPath(ls2k::observability::SteeringDebugSnapshot& snapshot,
+                    float lateral_base_m) {
+    snapshot.reference.control_path.mode = ls2k::port::ReferenceMode::kIntervalCenter;
+    for (std::size_t index = 0; index < 2U; ++index) {
+        ls2k::port::BEVPathSample& sample =
+            snapshot.reference.control_path.sampled_path[index];
+        sample.present = true;
+        sample.point.forward_m = 0.11F + 0.07F * static_cast<float>(index);
+        sample.point.lateral_m = lateral_base_m + 0.02F * static_cast<float>(index);
+        sample.confidence = 0.85F;
+        sample.source = ls2k::port::BEVPathPointSource::kIntervalCenter;
+    }
+}
+
 void TestReporterEmitsMinimalSteeringSnapshot() {
     CollectingDiagnostics diagnostics;
     ls2k::observability::ControlDebugReporter reporter;
@@ -205,7 +236,8 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.valid = true;
     snapshot.steering.frame_id = 7;
     snapshot.steering.capture_time_ms = 88;
-    snapshot.steering.threshold = 91;
+    snapshot.steering.otsu = {
+        true, 91, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
     snapshot.steering.ml.enabled = true;
     snapshot.steering.ml.detector_valid = true;
     snapshot.steering.ml.detector.frame_id = 7;
@@ -248,9 +280,15 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.circle_v2.reference_role = "exit_trace";
     snapshot.steering.circle_v2.reason = "exit_hold_released";
     snapshot.steering.circle_v2.geometry_available = true;
-    snapshot.steering.circle_v2.entry_points.left.available = true;
-    snapshot.steering.circle_v2.entry_points.left.point.forward_m = 0.5F;
-    snapshot.steering.circle_v2.entry_points.left.point.lateral_m = -0.25F;
+    snapshot.steering.circle_v2.openings.left.available = true;
+    snapshot.steering.circle_v2.openings.left.frontier_forward_m = 0.5F;
+    snapshot.steering.circle_v2.openings.left.effective_lateral_m = -0.25F;
+    snapshot.steering.circle_v2.openings.left.source =
+        ls2k::port::CircleOpeningSource::kObservedBoundary;
+    snapshot.steering.circle_v2.openings.left.outward_distance_m = 0.08F;
+    snapshot.steering.circle_v2.openings.left.confirmed_forward_span_m = 0.12F;
+    snapshot.steering.circle_v2.openings.left.origin_connected = true;
+    snapshot.steering.circle_v2.openings.left.opposite_straight = true;
     ls2k::port::VisualElementEvidenceRecord record{};
     record.id = "synthetic_marker";
     record.present = true;
@@ -323,8 +361,37 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.actuator.right_drive_pwm_command = 102;
     snapshot.steering.actuator.left_brushless_pwm_command = 501;
     snapshot.steering.actuator.right_brushless_pwm_command = 502;
+    snapshot.steering.actuator.left_drive_pwm_unconstrained = 125.5;
+    snapshot.steering.actuator.right_drive_pwm_unconstrained = -25.5;
+    snapshot.steering.actuator.left_drive_pwm_requested = 126;
+    snapshot.steering.actuator.right_drive_pwm_requested = -26;
+    snapshot.steering.actuator.left_drive_pwm_desired = 240;
+    snapshot.steering.actuator.right_drive_pwm_desired = 0;
+    snapshot.steering.actuator.left_drive_pwm_step_limited = true;
+    snapshot.steering.actuator.right_drive_pwm_step_limited = false;
+    snapshot.steering.actuator.left_drive_pwm_reverse_suppressed = false;
+    snapshot.steering.actuator.right_drive_pwm_reverse_suppressed = true;
+    snapshot.steering.actuator.left_drive_pwm_floor_adjusted = true;
+    snapshot.steering.actuator.right_drive_pwm_floor_adjusted = false;
+    snapshot.steering.actuator.left_pid_error = 3.0;
+    snapshot.steering.actuator.right_pid_error = -4.0;
+    snapshot.steering.actuator.left_pid_integral = 7.0;
+    snapshot.steering.actuator.right_pid_integral = -8.0;
+    snapshot.steering.actuator.left_pid_integral_candidate = 10.0;
+    snapshot.steering.actuator.right_pid_integral_candidate = -12.0;
+    snapshot.steering.actuator.left_pid_anti_windup_active = true;
+    snapshot.steering.actuator.right_pid_anti_windup_active = false;
+    snapshot.steering.actuator.left_pid_anti_windup_reason =
+        ls2k::control::WheelPidAntiWindupReason::kActuatorLimit;
+    snapshot.steering.actuator.right_pid_anti_windup_reason =
+        ls2k::control::WheelPidAntiWindupReason::kNone;
     snapshot.steering.actuator.apply_outcome =
         ls2k::safety::ControlApplyOutcome::kDriveCommandApplied;
+    snapshot.steering.actuator.actuators_armed = true;
+    snapshot.steering.actuator.last_confirmed_left_drive_pwm = 101;
+    snapshot.steering.actuator.last_confirmed_right_drive_pwm = 102;
+    snapshot.steering.actuator.last_confirmed_left_brushless_pwm = 501;
+    snapshot.steering.actuator.last_confirmed_right_brushless_pwm = 502;
     snapshot.steering_internal.valid = true;
     snapshot.steering_internal.frame_id = 7;
     snapshot.steering_internal.capture_time_ms = 88;
@@ -345,6 +412,11 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     const std::string& message = diagnostics.events[1].message;
     Require(diagnostics.events[1].code == "control.steering_snapshot",
             "second diagnostic must be control.steering_snapshot");
+    Require(Contains(message, "otsu.valid=true") &&
+                Contains(message, "otsu.threshold=91") &&
+                Contains(message, "otsu.source=current") &&
+                Contains(message, "otsu.stale_frames=0"),
+            "steering snapshot must expose the complete Otsu state");
     Require(Contains(message, "ml.detector_valid=true") &&
                 Contains(message, "ml.roi.valid=true") &&
                 Contains(message, "ml.classification.backend=tflite_int8") &&
@@ -400,12 +472,12 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose CircleV2 reason");
     Require(Contains(message, "circle_v2.geometry_available=true"),
             "steering snapshot must expose CircleV2 geometry availability");
-    Require(Contains(message, "circle_v2.entry_points.left.available=true"),
-            "steering snapshot must expose CircleV2 left P availability");
-    Require(Contains(message, "circle_v2.entry_points.left.forward_m=0.5"),
-            "steering snapshot must expose CircleV2 left P forward coordinate");
-    Require(Contains(message, "circle_v2.entry_points.left.lateral_m=-0.25"),
-            "steering snapshot must expose CircleV2 left P lateral coordinate");
+    Require(Contains(message, "circle_v2.openings.left.available=true"),
+            "steering snapshot must expose CircleV2 left opening availability");
+    Require(Contains(message, "circle_v2.openings.left.frontier_forward_m=0.5"),
+            "steering snapshot must expose CircleV2 left opening frontier");
+    Require(Contains(message, "circle_v2.openings.left.source=observed_boundary"),
+            "steering snapshot must expose CircleV2 opening source");
     Require(Contains(message, "element_evidence.records[0].id=synthetic_marker"),
             "steering snapshot must expose generic evidence record id");
     Require(Contains(message, "element_evidence.records[0].support.boundary_span_count=7"),
@@ -440,6 +512,32 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose left brushless PWM command");
     Require(Contains(message, "actuator.right_brushless_pwm_command=502"),
             "steering snapshot must expose right brushless PWM command");
+    Require(Contains(message, "actuator.left_drive_pwm_unconstrained=125.5") &&
+                Contains(message, "actuator.right_drive_pwm_unconstrained=-25.5") &&
+                Contains(message, "actuator.left_drive_pwm_requested=126") &&
+                Contains(message, "actuator.right_drive_pwm_requested=-26") &&
+                Contains(message, "actuator.left_drive_pwm_desired=240") &&
+                Contains(message, "actuator.right_drive_pwm_desired=0"),
+            "steering snapshot must expose both channels' PID-to-shaper value chain");
+    Require(Contains(message, "actuator.left_drive_pwm_step_limited=true") &&
+                Contains(message, "actuator.right_drive_pwm_step_limited=false") &&
+                Contains(message, "actuator.left_drive_pwm_reverse_suppressed=false") &&
+                Contains(message, "actuator.right_drive_pwm_reverse_suppressed=true") &&
+                Contains(message, "actuator.left_drive_pwm_floor_adjusted=true") &&
+                Contains(message, "actuator.right_drive_pwm_floor_adjusted=false"),
+            "steering snapshot must expose both channels' shaping facts without recomputation");
+    Require(Contains(message, "actuator.left_pid_error=3") &&
+                Contains(message, "actuator.right_pid_error=-4") &&
+                Contains(message, "actuator.left_pid_integral=7") &&
+                Contains(message, "actuator.right_pid_integral=-8") &&
+                Contains(message, "actuator.left_pid_integral_candidate=10") &&
+                Contains(message, "actuator.right_pid_integral_candidate=-12"),
+            "steering snapshot must expose both channels' PID integral evidence");
+    Require(Contains(message, "actuator.left_pid_anti_windup_active=true") &&
+                Contains(message, "actuator.right_pid_anti_windup_active=false") &&
+                Contains(message, "actuator.left_pid_anti_windup_reason=actuator_limit") &&
+                Contains(message, "actuator.right_pid_anti_windup_reason=none"),
+            "steering snapshot must expose authoritative anti-windup decisions and reasons");
     Require(Contains(message, "actuator.apply_outcome=drive_command_applied"),
             "steering snapshot must expose actuator apply outcome");
     Require(!Contains(message, "near_lateral_error"),
@@ -495,6 +593,12 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.control_period_ms = 5;
     config.param_snapshot.low_voltage_raw_threshold = 400;
     config.param_snapshot.raw_turn_output_limit = 8000;
+    config.param_snapshot.pwm_limit = 4321;
+    config.param_snapshot.pwm_floor = 237;
+    config.param_snapshot.prohibit_reverse_pwm = false;
+    config.param_snapshot.drive_pwm_step_limit = 654;
+    config.param_snapshot.left_wheel_pid = {81.5, 2.75, 0.625, 321.0, 0.35};
+    config.param_snapshot.right_wheel_pid = {97.5, 1.875, 0.125, 456.0, 0.65};
     config.param_snapshot.wheel_turn_accel_delta_scale = 1.25;
     config.param_snapshot.wheel_turn_decel_delta_scale = 0.75;
     config.param_snapshot.bev_control_model.lateral_offset_to_wheel_delta_gain = 180.0;
@@ -558,6 +662,16 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include low-voltage raw threshold");
     Require(Contains(header_json, "\"raw_turn_output_limit\":8000"),
             "config snapshot must include raw turn output limit");
+    Require(Contains(header_json, "\"pwm_limit\":4321") &&
+                Contains(header_json, "\"pwm_floor\":237") &&
+                Contains(header_json, "\"prohibit_reverse_pwm\":false") &&
+                Contains(header_json, "\"drive_pwm_step_limit\":654"),
+            "config snapshot must include every drive shaping parameter");
+    Require(Contains(header_json,
+                     "\"left_wheel_pid\":{\"p\":81.5,\"i\":2.75,\"d\":0.625,\"integral_limit\":321,\"measurement_filter_alpha\":0.35}") &&
+                Contains(header_json,
+                         "\"right_wheel_pid\":{\"p\":97.5,\"i\":1.875,\"d\":0.125,\"integral_limit\":456,\"measurement_filter_alpha\":0.65}"),
+            "config snapshot must include every left and right wheel PID parameter");
     Require(Contains(header_json, "\"wheel_turn_accel_delta_scale\":1.25"),
             "config snapshot must include accel-side turn delta scale");
     Require(Contains(header_json, "\"wheel_turn_decel_delta_scale\":0.75"),
@@ -592,10 +706,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include BEV classification group");
     Require(Contains(header_json, "\"WHITE_CONFIDENCE_MIN\":0.600000023842"),
             "config snapshot must include white classification confidence");
-    Require(Contains(header_json, "\"BEV_BOUNDARY\""),
-            "config snapshot must include BEV boundary group");
-    Require(Contains(header_json, "\"LOCAL_JUMP_MIN_Y\":32"),
-            "config snapshot must include local Y boundary jump threshold");
+    Require(!Contains(header_json, "\"BEV_BOUNDARY\""),
+            "config snapshot must not expose removed local Y boundary settings");
     Require(Contains(header_json, "\"BEV_CONTROL_MODEL\""),
             "config snapshot must include BEV control model group");
     Require(!Contains(header_json, "\"CURVATURE_COMMAND_LIMIT\""),
@@ -626,14 +738,20 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
             "config snapshot must include CircleV2 opposite-straight confidence threshold");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\":6"),
-            "config snapshot must include CircleV2 entry bottom min row count");
-    Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\""),
-            "config snapshot must not include removed CircleV2 entry bottom row-count field");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.130440279841"),
-            "config snapshot must include CircleV2 entry bottom forward min");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.456541001797"),
-            "config snapshot must include CircleV2 entry bottom forward max");
+    Require(Contains(header_json, "\"CIRCLE_V2_MIN_SAMPLEABLE_WIDTH_M\":"),
+            "config snapshot must include CircleV2 sampleable width");
+    Require(Contains(header_json, "\"CIRCLE_V2_OPENING_DISTANCE_MIN_M\":"),
+            "config snapshot must include CircleV2 opening distance");
+    Require(Contains(header_json, "\"CIRCLE_V2_OPENING_CONFIRM_FORWARD_SPAN_M\":"),
+            "config snapshot must include CircleV2 metric confirmation span");
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_FORWARD_MIN_M\":" ) &&
+                Contains(header_json, "\"CIRCLE_V2_ENTRY_FORWARD_MAX_M\":"),
+            "config snapshot must include CircleV2 entry ROI");
+    Require(Contains(header_json, "\"CIRCLE_V2_INNER_GEOMETRY_FORWARD_MIN_M\":" ) &&
+                Contains(header_json, "\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M\":"),
+            "config snapshot must include CircleV2 geometry ROIs");
+    Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM"),
+            "config snapshot must not include removed CircleV2 entry-bottom fields");
     Require(!Contains(header_json, "\"CIRCLE_ENTRY_"),
             "config snapshot must not include legacy circle entry parameters");
     Require(!Contains(header_json, "\"CIRCLE_EVIDENCE_"),
@@ -947,6 +1065,8 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
     first_frame.width = 320;
     first_frame.height = 240;
     first_frame.motion_phase = "RUNNING";
+    first_frame.steering_snapshot.otsu = {
+        true, 91, ls2k::port::OtsuThresholdSource::kCached, 2U};
     first_frame.steering_snapshot.reference_control.ready = true;
     first_frame.steering_snapshot.reference_time_alignment.enabled = true;
     first_frame.steering_snapshot.reference_time_alignment.valid = true;
@@ -1031,6 +1151,9 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
             "image frame must expose frame-store lookup misses");
     Require(Contains(header_json, "\"reference_control\":{\"ready\":true"),
             "image frame snapshot must nest reference-control readiness");
+    Require(Contains(header_json,
+                     "\"otsu\":{\"valid\":true,\"threshold\":91,\"source\":\"cached\",\"stale_frames\":2}"),
+            "image frame snapshot must preserve Otsu value, source, and staleness");
     Require(Contains(header_json, "\"reference_time_alignment\":{\"enabled\":true"),
             "image frame snapshot must nest reference time alignment");
     Require(Contains(header_json, "\"control_effective_time_ms\":1045"),
@@ -1103,6 +1226,12 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     params.yaw_rate_pid_d = 0.0;
     params.running_speed_target = 100.0;
     params.control_period_ms = 5;
+    params.pwm_limit = 4321;
+    params.pwm_floor = 237;
+    params.prohibit_reverse_pwm = false;
+    params.drive_pwm_step_limit = 654;
+    params.left_wheel_pid = {81.5, 2.75, 0.625, 321.0, 0.35};
+    params.right_wheel_pid = {97.5, 1.875, 0.125, 456.0, 0.65};
     params.bev_control_model.lateral_offset_to_wheel_delta_gain = 180.0;
     params.bev_geometry.boundary_trace_max_adjacent_distance_m = 0.45F;
     service.Start(params, diagnostics);
@@ -1147,9 +1276,16 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.circle_v2.reference_role = "inner_trace";
         state.control_debug_snapshot.steering.circle_v2.reason = "none";
         state.control_debug_snapshot.steering.circle_v2.geometry_available = true;
-        state.control_debug_snapshot.steering.circle_v2.entry_points.left.available = true;
-        state.control_debug_snapshot.steering.circle_v2.entry_points.left.point.forward_m = 0.5F;
-        state.control_debug_snapshot.steering.circle_v2.entry_points.left.point.lateral_m = -0.25F;
+        auto& left_opening =
+            state.control_debug_snapshot.steering.circle_v2.openings.left;
+        left_opening.available = true;
+        left_opening.frontier_forward_m = 0.5F;
+        left_opening.effective_lateral_m = -0.25F;
+        left_opening.source = ls2k::port::CircleOpeningSource::kFovEdgeLowerBound;
+        left_opening.outward_distance_m = 0.08F;
+        left_opening.confirmed_forward_span_m = 0.12F;
+        left_opening.origin_connected = true;
+        left_opening.opposite_straight = true;
         ls2k::port::VisualElementEvidenceRecord record{};
         record.id = "synthetic_marker";
         record.present = true;
@@ -1168,6 +1304,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
                          -0.02F);
         state.control_debug_snapshot.steering.reference.mode = "interval_center";
         state.control_debug_snapshot.steering.reference.source = "simple_interval_center";
+        SetControlPath(state.control_debug_snapshot.steering, 0.31F);
         state.control_debug_snapshot.steering.eligibility.usable = true;
         state.control_debug_snapshot.steering.eligibility.leading_usable_samples = 4;
         state.control_debug_snapshot.steering.eligibility.leading_min_forward_m = 0.061;
@@ -1214,8 +1351,27 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.actuator.right_drive_pwm_command = 102;
         state.control_debug_snapshot.steering.actuator.left_brushless_pwm_command = 501;
         state.control_debug_snapshot.steering.actuator.right_brushless_pwm_command = 502;
+        state.control_debug_snapshot.steering.actuator.left_drive_pwm_unconstrained = 125.5;
+        state.control_debug_snapshot.steering.actuator.right_drive_pwm_unconstrained = -25.5;
+        state.control_debug_snapshot.steering.actuator.left_drive_pwm_requested = 126;
+        state.control_debug_snapshot.steering.actuator.right_drive_pwm_requested = -26;
+        state.control_debug_snapshot.steering.actuator.left_drive_pwm_desired = 126;
+        state.control_debug_snapshot.steering.actuator.right_drive_pwm_desired = 0;
+        state.control_debug_snapshot.steering.actuator.left_drive_pwm_step_limited = true;
+        state.control_debug_snapshot.steering.actuator.right_drive_pwm_reverse_suppressed = true;
+        state.control_debug_snapshot.steering.actuator.left_pid_error = 3.0;
+        state.control_debug_snapshot.steering.actuator.left_pid_integral = 7.0;
+        state.control_debug_snapshot.steering.actuator.left_pid_integral_candidate = 10.0;
+        state.control_debug_snapshot.steering.actuator.left_pid_anti_windup_active = true;
+        state.control_debug_snapshot.steering.actuator.left_pid_anti_windup_reason =
+            ls2k::control::WheelPidAntiWindupReason::kActuatorLimit;
         state.control_debug_snapshot.steering.actuator.apply_outcome =
             ls2k::safety::ControlApplyOutcome::kDriveCommandApplied;
+        state.control_debug_snapshot.steering.actuator.actuators_armed = true;
+        state.control_debug_snapshot.steering.actuator.last_confirmed_left_drive_pwm = 101;
+        state.control_debug_snapshot.steering.actuator.last_confirmed_right_drive_pwm = 102;
+        state.control_debug_snapshot.steering.actuator.last_confirmed_left_brushless_pwm = 501;
+        state.control_debug_snapshot.steering.actuator.last_confirmed_right_brushless_pwm = 502;
     }
     FillMatchingCapture(frame_store, 41, 1234, metadata);
     {
@@ -1241,8 +1397,19 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
                                                         payload,
                                                         error),
             "config snapshot frame should decode");
+    WriteStrictJsonArtifact("steering_media_config_snapshot.json", header_json);
     Require(Contains(header_json, "\"type\":\"config_snapshot\""),
             "first emitted frame must be config_snapshot");
+    Require(Contains(header_json, "\"pwm_limit\":4321") &&
+                Contains(header_json, "\"pwm_floor\":237") &&
+                Contains(header_json, "\"prohibit_reverse_pwm\":false") &&
+                Contains(header_json, "\"drive_pwm_step_limit\":654"),
+            "service config snapshot must preserve non-default shaping params passed to Start");
+    Require(Contains(header_json,
+                     "\"left_wheel_pid\":{\"p\":81.5,\"i\":2.75,\"d\":0.625,\"integral_limit\":321,\"measurement_filter_alpha\":0.35}") &&
+                Contains(header_json,
+                         "\"right_wheel_pid\":{\"p\":97.5,\"i\":1.875,\"d\":0.125,\"integral_limit\":456,\"measurement_filter_alpha\":0.65}"),
+            "service config snapshot must preserve every non-default wheel PID field passed to Start");
     Require(!Contains(header_json, std::string("pid_turn_") + "camera"),
             "service config snapshot must not export removed camera PID parameters");
     Require(Contains(header_json, "\"BEV_PROJECTOR\""),
@@ -1262,10 +1429,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     const std::string removed_forward_alias = std::string("\"delta_") + "s_m\"";
     Require(!Contains(header_json, removed_forward_alias),
             "service config snapshot must not expose removed forward compatibility field");
-    Require(Contains(header_json, "\"BEV_BOUNDARY\""),
-            "service config snapshot must expose BEV boundary settings");
-    Require(Contains(header_json, "\"LOCAL_JUMP_MIN_Y\":32"),
-            "service config snapshot must expose local Y boundary jump threshold");
+    Require(!Contains(header_json, "\"BEV_BOUNDARY\""),
+            "service config snapshot must not expose removed local Y boundary settings");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "service config snapshot must not expose removed cross white-ratio settings");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
@@ -1278,14 +1443,18 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must expose CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
             "service config snapshot must expose CircleV2 opposite-straight confidence threshold");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_MIN_ROW_COUNT\":6"),
-            "service config snapshot must expose CircleV2 entry bottom min row count");
-    Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_ROW_COUNT\""),
-            "service config snapshot must not expose removed CircleV2 entry bottom row-count field");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MIN_M\":0.130440279841"),
-            "service config snapshot must expose CircleV2 entry bottom forward min");
-    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM_FORWARD_MAX_M\":0.456541001797"),
-            "service config snapshot must expose CircleV2 entry bottom forward max");
+    Require(Contains(header_json, "\"CIRCLE_V2_MIN_SAMPLEABLE_WIDTH_M\":"),
+            "service config snapshot must expose CircleV2 sampleable width");
+    Require(Contains(header_json, "\"CIRCLE_V2_OPENING_DISTANCE_MIN_M\":"),
+            "service config snapshot must expose CircleV2 opening distance");
+    Require(Contains(header_json, "\"CIRCLE_V2_ENTRY_FORWARD_MIN_M\":" ) &&
+                Contains(header_json, "\"CIRCLE_V2_ENTRY_FORWARD_MAX_M\":"),
+            "service config snapshot must expose CircleV2 entry ROI");
+    Require(Contains(header_json, "\"CIRCLE_V2_INNER_GEOMETRY_FORWARD_MIN_M\":" ) &&
+                Contains(header_json, "\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M\":"),
+            "service config snapshot must expose CircleV2 geometry ROIs");
+    Require(!Contains(header_json, "\"CIRCLE_V2_ENTRY_BOTTOM"),
+            "service config snapshot must not expose removed CircleV2 entry-bottom fields");
     Require(!Contains(header_json, "\"CIRCLE_ENTRY_"),
             "service config snapshot must not expose legacy circle entry settings");
     Require(!Contains(header_json, "\"CIRCLE_EVIDENCE_"),
@@ -1309,6 +1478,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
                                                         payload,
                                                         error),
             "image frame should decode");
+    WriteStrictJsonArtifact("steering_media_image_header.json", header_json);
     Require(Contains(header_json, "\"type\":\"image_frame\""),
             "second emitted frame must be image_frame");
     Require(Contains(header_json, "\"camera_frame\":{\"source\":\"service_v4l2\""),
@@ -1339,10 +1509,10 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must expose CircleV2 reference role");
     Require(Contains(header_json, "\"geometry_available\":true"),
             "image frame must expose CircleV2 geometry availability");
-    Require(Contains(header_json, "\"entry_points\":{\"left\":{\"available\":true,\"forward_m\":0.5,\"lateral_m\":-0.25}"),
-            "image frame must expose CircleV2 left P coordinate");
-    Require(Contains(header_json, "\"right\":{\"available\":false,\"forward_m\":null,\"lateral_m\":null}"),
-            "image frame must expose absent CircleV2 right P as null coordinates");
+    Require(Contains(header_json, "\"openings\":{\"left\":{\"available\":true,\"frontier_forward_m\":0.5,\"effective_lateral_m\":-0.25,\"source\":\"fov_edge_lower_bound\""),
+            "image frame must expose CircleV2 left opening facts");
+    Require(Contains(header_json, "\"right\":{\"available\":false,\"frontier_forward_m\":null,\"effective_lateral_m\":null,\"source\":\"none\""),
+            "image frame must expose absent CircleV2 right opening with null metrics");
     Require(!Contains(header_json, "\"circle_entry"),
             "image frame must not expose legacy circle entry diagnostics");
     Require(Contains(header_json, "\"records\":[{\"id\":\"synthetic_marker\""),
@@ -1355,6 +1525,10 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include visual reference path candidate set");
     Require(Contains(header_json, "\"samples\":[{\"index\":0,\"forward_m\":"),
             "image frame must include path candidate BEV samples");
+    Require(Contains(header_json, "\"control_path\":{\"sample_count\":2"),
+            "image frame must include the path that actually enters control");
+    Require(Contains(header_json, "\"lateral_m\":0.31"),
+            "control path must remain distinct from the raw candidate path");
     Require(Contains(header_json, "\"reference_control\":{\"ready\":true"),
             "image frame must include reference-control readiness");
     Require(Contains(header_json, "\"safety_gate\":{\"veto_active\":false"),
@@ -1411,6 +1585,15 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include curvature yaw term");
     Require(Contains(header_json, "\"left_drive_pwm_command\":101"),
             "image frame must include left drive PWM command");
+    Require(Contains(header_json, "\"left_drive_pwm_unconstrained\":125.5") &&
+                Contains(header_json, "\"left_drive_pwm_requested\":126") &&
+                Contains(header_json, "\"left_drive_pwm_desired\":126"),
+            "image frame must expose the PWM shaping chain");
+    Require(Contains(header_json, "\"right_drive_pwm_reverse_suppressed\":true"),
+            "image frame must expose reverse suppression");
+    Require(Contains(header_json, "\"left_pid_anti_windup_active\":true") &&
+                Contains(header_json, "\"left_pid_anti_windup_reason\":\"actuator_limit\""),
+            "image frame must expose anti-windup state and reason");
     Require(Contains(header_json, "\"right_drive_pwm_command\":102"),
             "image frame must include right drive PWM command");
     Require(Contains(header_json, "\"left_brushless_pwm_command\":501"),
@@ -1419,7 +1602,11 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must include right brushless PWM command");
     Require(Contains(header_json, "\"apply_outcome\":\"drive_command_applied\""),
             "image frame must include actuator apply outcome");
-    Require(Contains(header_json, "\"reference\":{\"mode\":\"interval_center\",\"source\":\"simple_interval_center\"}"),
+    Require(Contains(header_json, "\"actuators_armed\":true") &&
+                Contains(header_json, "\"last_confirmed_left_drive_pwm\":101") &&
+                Contains(header_json, "\"last_confirmed_right_drive_pwm\":102"),
+            "image frame must include the last confirmed actuator state");
+    Require(Contains(header_json, "\"reference\":{\"mode\":\"interval_center\",\"source\":\"simple_interval_center\",\"control_path\":"),
             "image frame must include nested reference facts");
     Require(!Contains(header_json, "\"reference_mode\""),
             "image frame must not include old flat reference mode");
@@ -1542,6 +1729,93 @@ void TestServicePublishesFromRecentMatchingCapture() {
         Require(payload[320U * 240U + index] == static_cast<std::uint8_t>(index & 0xFFU),
                 "media frame must preserve the board-produced ML ROI bytes");
     }
+}
+
+void TestServiceKeepsExactAlignmentWhenSteeringIsInvalid() {
+    auto* fake_transport = new FakeSteeringMediaTransport();
+    ls2k::runtime::SteeringMediaService service{ls2k::transport::SteeringMediaLink{
+        std::unique_ptr<ls2k::transport::ISteeringMediaTransport>(fake_transport)}};
+    CollectingDiagnostics diagnostics;
+
+    ls2k::port::RuntimeParameters params{};
+    params.assistant_tcp.host = "127.0.0.1";
+    params.steering_media_enabled = true;
+    params.steering_media_port = 8890;
+    params.steering_media_publish_interval_ms = 0;
+    params.steering_media_publish_disarmed = true;
+    params.steering_media_gray_bits = 8;
+    service.Start(params, diagnostics);
+
+    ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
+    {
+        std::lock_guard<std::mutex> lock(state.shared_mutex);
+        state.control_debug_snapshot.valid = true;
+        state.control_debug_snapshot.motion_phase = ls2k::control::MotionPhase::kDisarmed;
+        state.control_debug_snapshot.steering.valid = false;
+        state.control_debug_snapshot.steering.frame_id = 77;
+        state.control_debug_snapshot.steering.capture_time_ms = 7700;
+        state.control_debug_snapshot.steering.yaw_control.valid = false;
+        state.control_debug_snapshot.steering.yaw_control.reason = "imu_sample_invalid";
+    }
+    FillMatchingCapture(frame_store, 77, 7700);
+
+    fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
+    service.Tick(state, frame_store, diagnostics);
+
+    Require(fake_transport->sent_frames.size() == 2,
+            "exact capture must publish even when steering/yaw control is invalid");
+    std::string header_json;
+    std::vector<std::uint8_t> payload;
+    std::string error;
+    Require(ls2k::transport::DecodeSteeringMediaEnvelope(fake_transport->sent_frames[1].data(),
+                                                        fake_transport->sent_frames[1].size(),
+                                                        header_json,
+                                                        payload,
+                                                        error),
+            "invalid-steering exact image frame should decode");
+    Require(Contains(header_json, "\"frame_source\":\"snapshot_aligned\""),
+            "AcquireExact publication must retain snapshot_aligned frame source");
+    Require(Contains(header_json, "\"snapshot_alignment\":{\"aligned\":true"),
+            "exact frame ID/time match must remain aligned despite invalid steering");
+    Require(Contains(header_json,
+                     "\"yaw_control\":{\"valid\":false,\"reason\":\"imu_sample_invalid\""),
+            "yaw-control validity and reason must remain independent from media alignment");
+}
+
+void TestServiceSkipsImageWhenExactCaptureIsMissing() {
+    auto* fake_transport = new FakeSteeringMediaTransport();
+    ls2k::runtime::SteeringMediaService service{ls2k::transport::SteeringMediaLink{
+        std::unique_ptr<ls2k::transport::ISteeringMediaTransport>(fake_transport)}};
+    CollectingDiagnostics diagnostics;
+
+    ls2k::port::RuntimeParameters params{};
+    params.assistant_tcp.host = "127.0.0.1";
+    params.steering_media_enabled = true;
+    params.steering_media_port = 8890;
+    params.steering_media_publish_interval_ms = 0;
+    params.steering_media_publish_disarmed = true;
+    service.Start(params, diagnostics);
+
+    ls2k::runtime::RuntimeState state{};
+    ls2k::runtime::CameraFrameStore frame_store{state};
+    {
+        std::lock_guard<std::mutex> lock(state.shared_mutex);
+        state.control_debug_snapshot.valid = true;
+        state.control_debug_snapshot.motion_phase = ls2k::control::MotionPhase::kDisarmed;
+        state.control_debug_snapshot.steering.valid = true;
+        state.control_debug_snapshot.steering.frame_id = 88;
+        state.control_debug_snapshot.steering.capture_time_ms = 8800;
+    }
+    FillMatchingCapture(frame_store, 89, 8900);
+
+    fake_transport->SetState(ls2k::transport::SteeringMediaTransportState::kReady, "fake ready");
+    service.Tick(state, frame_store, diagnostics);
+
+    Require(fake_transport->sent_frames.size() == 1,
+            "AcquireExact miss must publish config only, never a falsely aligned image");
+    Require(frame_store.Health().lookup_miss_count == 1,
+            "AcquireExact miss must remain visible in camera store health");
 }
 
 void TestServicePublishesLumaFromRawYuyvCapture() {
@@ -1808,6 +2082,8 @@ int main() {
         TestLinkDoesNotCacheFrameAcceptedInFlight();
         TestServicePublishesConfigSnapshotOnReadyTransition();
         TestServicePublishesFromRecentMatchingCapture();
+        TestServiceKeepsExactAlignmentWhenSteeringIsInvalid();
+        TestServiceSkipsImageWhenExactCaptureIsMissing();
         TestServicePublishesLumaFromRawYuyvCapture();
         TestServiceCanPublishLatestCameraFrameForLiveView();
         TestServiceSkipsDisarmedImagesAndPublishesRunningImage();

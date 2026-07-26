@@ -44,6 +44,8 @@ namespace {
 ControlGateInputs BuildControlGateInputs(const port::PerceptionResult& perception,
                                          const port::ImuSample& imu,
                                          const port::EncoderDelta& encoder,
+                                         MotionPhase motion_phase,
+                                         const MotionIntent& motion_intent,
                                          bool low_voltage_emergency,
                                          uint64_t now_ms,
                                          const port::RuntimeParameters& params) {
@@ -54,8 +56,13 @@ ControlGateInputs BuildControlGateInputs(const port::PerceptionResult& perceptio
     inputs.perception_publish_time_ms = perception.publish_time_ms;
     inputs.perception_projector_ok = perception.perception_health.projector_ok;
     inputs.reference_control_ready = perception.reference_control.ready;
+    inputs.reference_control_degraded = perception.reference_control.degraded;
+    inputs.initial_start_boundary =
+        (motion_phase == MotionPhase::kDisarmed || motion_phase == MotionPhase::kStartRequested) &&
+        motion_intent.start_requested && !motion_intent.stop_requested;
     inputs.low_voltage_emergency = low_voltage_emergency;
-    inputs.imu_valid = imu.valid;
+    inputs.imu_valid = imu.valid && std::isfinite(imu.gyro_z) &&
+                       std::abs(imu.gyro_z) <= port::kMaximumProducedGyroMagnitudeRadPerSec;
     inputs.encoder_valid = encoder.valid;
     inputs.now_ms = now_ms;
     inputs.perception_stale_ms = params.perception_stale_ms;
@@ -85,7 +92,6 @@ MotionSupervisorInputs BuildMotionSupervisorInputs(bool startup_complete,
     inputs.motion_unveto_confirm_cycles = params.motion_unveto_confirm_cycles;
     inputs.motion_spinup_ms = params.motion_spinup_ms;
     inputs.motion_turn_limit_spinup = params.motion_turn_limit_spinup;
-    inputs.motion_pwm_step_limit = params.motion_pwm_step_limit;
     inputs.motion_stop_ms = params.motion_stop_ms;
     inputs.motion_stop_encoder_threshold = params.motion_stop_encoder_threshold;
     inputs.motion_fault_rearm_hold_ms = params.motion_fault_rearm_hold_ms;
@@ -168,10 +174,36 @@ void EmitGateIntervalDiagnostics(port::DiagnosticSink& diagnostics,
     }
 }
 
-// 将转向输出限制在 [-turn_limit, +turn_limit] 范围内
-int ClampTurnOutput(float turn_output, double turn_limit_scale, int pwm_limit) {
-    const float turn_limit = static_cast<float>(std::max(0.0, turn_limit_scale) * pwm_limit);
-    return static_cast<int>(std::round(std::clamp(turn_output, -turn_limit, turn_limit)));
+// 将有限转向输出限制在生产共享上界内。任何无效输入必须在 round/cast 前失败。
+bool ClampTurnOutput(float turn_output,
+                     double turn_limit_scale,
+                     int configured_turn_limit,
+                     int& clamped_output) noexcept {
+    clamped_output = 0;
+    if (!std::isfinite(turn_output) || !std::isfinite(turn_limit_scale) ||
+        turn_limit_scale < 0.0 || turn_limit_scale > 1.0 || configured_turn_limit < 0) {
+        return false;
+    }
+    const double bounded_configured_limit = static_cast<double>(std::min(
+        configured_turn_limit, control::kAppliedTurnOutputMagnitudeLimit));
+    const double turn_limit = turn_limit_scale * bounded_configured_limit;
+    if (!std::isfinite(turn_limit) || turn_limit < 0.0 ||
+        turn_limit > control::kAppliedTurnOutputMagnitudeLimit) {
+        return false;
+    }
+    const double bounded_output = std::clamp(static_cast<double>(turn_output),
+                                             -turn_limit,
+                                             turn_limit);
+    if (!std::isfinite(bounded_output)) {
+        return false;
+    }
+    const double rounded_output = std::round(bounded_output);
+    if (!std::isfinite(rounded_output) ||
+        std::abs(rounded_output) > control::kAppliedTurnOutputMagnitudeLimit) {
+        return false;
+    }
+    clamped_output = static_cast<int>(rounded_output);
+    return true;
 }
 
 control::WheelTargetMixerParameters BuildWheelTargetMixerParameters(
@@ -198,7 +230,12 @@ struct ControlDebugSnapshotInputs {
     const port::PerceptionResult& perception;                    ///< 感知结果
     const port::EncoderDelta& encoder;                           ///< 编码器差值
     const port::ActuatorCommand& command;                        ///< 执行器命令
-    ControlApplyOutcome apply_outcome = ControlApplyOutcome::kNotRequested;  ///< 统一执行器施加结果
+    const control::ActuatorCommandShapingResult& command_shaping;
+    const control::WheelPidComputation& left_pid_computation;
+    const control::WheelPidComputation& right_pid_computation;
+    const control::WheelPidCommitResult& left_pid_commit;
+    const control::WheelPidCommitResult& right_pid_commit;
+    const ControlCycleObservation& observation;                ///< 本周期请求结果与最后确认硬件状态
     const ControlGateDecision& gate;                             ///< 门控决策
     const MotionDecision& final_motion;                          ///< 最终运动决策
     const RuntimeTuningSnapshot& tuning_snapshot;                ///< 运行时调参快照
@@ -209,6 +246,7 @@ struct ControlDebugSnapshotInputs {
     uint64_t cycle_count = 0;                      ///< 控制周期计数
     int raw_turn_output = 0;                       ///< 原始转向输出
     int applied_turn_output = 0;                   ///< 应用后的转向输出
+    control::SteeringYawStatus yaw_fault_status = control::SteeringYawStatus::kNotComputed;
     bool steering_terms_valid = false;              ///< 转向项是否有效
 };
 
@@ -319,12 +357,41 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.right_drive_pwm_command = inputs.command.right_drive_pwm;
     debug_snapshot.left_brushless_pwm_command = inputs.command.left_brushless_pwm;
     debug_snapshot.right_brushless_pwm_command = inputs.command.right_brushless_pwm;
-    debug_snapshot.apply_outcome = inputs.apply_outcome;
+    debug_snapshot.left_drive_pwm_unconstrained = inputs.left_pid_computation.unconstrained_output;
+    debug_snapshot.right_drive_pwm_unconstrained = inputs.right_pid_computation.unconstrained_output;
+    debug_snapshot.left_drive_pwm_requested = inputs.command_shaping.left.requested_pwm;
+    debug_snapshot.right_drive_pwm_requested = inputs.command_shaping.right.requested_pwm;
+    debug_snapshot.left_drive_pwm_desired = inputs.command_shaping.left.desired_pwm;
+    debug_snapshot.right_drive_pwm_desired = inputs.command_shaping.right.desired_pwm;
+    debug_snapshot.left_drive_pwm_step_limited = inputs.command_shaping.left.step_limited;
+    debug_snapshot.right_drive_pwm_step_limited = inputs.command_shaping.right.step_limited;
+    debug_snapshot.left_drive_pwm_reverse_suppressed =
+        inputs.command_shaping.left.reverse_suppressed;
+    debug_snapshot.right_drive_pwm_reverse_suppressed =
+        inputs.command_shaping.right.reverse_suppressed;
+    debug_snapshot.left_drive_pwm_floor_adjusted = inputs.command_shaping.left.floor_adjusted;
+    debug_snapshot.right_drive_pwm_floor_adjusted = inputs.command_shaping.right.floor_adjusted;
+    debug_snapshot.left_pid_error = inputs.left_pid_computation.error;
+    debug_snapshot.right_pid_error = inputs.right_pid_computation.error;
+    debug_snapshot.left_pid_integral = inputs.left_pid_commit.integral;
+    debug_snapshot.right_pid_integral = inputs.right_pid_commit.integral;
+    debug_snapshot.left_pid_integral_candidate = inputs.left_pid_computation.candidate_integral;
+    debug_snapshot.right_pid_integral_candidate = inputs.right_pid_computation.candidate_integral;
+    debug_snapshot.left_pid_anti_windup_active = inputs.left_pid_commit.anti_windup_active;
+    debug_snapshot.right_pid_anti_windup_active = inputs.right_pid_commit.anti_windup_active;
+    debug_snapshot.left_pid_anti_windup_reason = inputs.left_pid_commit.reason;
+    debug_snapshot.right_pid_anti_windup_reason = inputs.right_pid_commit.reason;
+    debug_snapshot.apply_outcome = inputs.observation.apply_outcome;
+    debug_snapshot.actuators_armed = inputs.observation.actuators_armed;
+    debug_snapshot.last_confirmed_left_drive_pwm = inputs.observation.applied_left_drive_pwm;
+    debug_snapshot.last_confirmed_right_drive_pwm = inputs.observation.applied_right_drive_pwm;
+    debug_snapshot.last_confirmed_left_brushless_pwm = inputs.observation.applied_left_brushless_pwm;
+    debug_snapshot.last_confirmed_right_brushless_pwm = inputs.observation.applied_right_brushless_pwm;
     debug_snapshot.emergency_stop = inputs.command.emergency_stop;
     debug_snapshot.steering.valid = inputs.steering_terms_valid;
     debug_snapshot.steering.frame_id = perception.frame_id;
     debug_snapshot.steering.capture_time_ms = perception.capture_time_ms;
-    debug_snapshot.steering.threshold = perception.threshold;
+    debug_snapshot.steering.otsu = perception.otsu;
     debug_snapshot.steering.perception_tag = perception.perception_tag;
     debug_snapshot.steering.boundary_row_count = perception.boundary_row_count;
     debug_snapshot.steering.boundary_jump_count = perception.boundary_jump_count;
@@ -349,6 +416,7 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
         perception.visual_reference_candidate_paths;
     debug_snapshot.steering.reference.mode = perception.reference_mode;
     debug_snapshot.steering.reference.source = perception.reference_source;
+    debug_snapshot.steering.reference.control_path = perception.reference_path;
     debug_snapshot.steering.eligibility.usable = perception.reference_usability.usable;
     debug_snapshot.steering.eligibility.leading_usable_samples =
         perception.reference_usability.leading_usable_samples;
@@ -427,6 +495,15 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.degraded.active = perception.reference_control.degraded;
     debug_snapshot.steering.degraded.reason =
         perception.reference_control.degraded ? perception.reference_control.reason : "none";
+    debug_snapshot.steering.yaw_control.valid =
+        inputs.yaw_fault_status == control::SteeringYawStatus::kNotComputed &&
+        inputs.turn_output_target_result.valid && inputs.gyro_turn.valid;
+    debug_snapshot.steering.yaw_control.reason =
+        inputs.yaw_fault_status != control::SteeringYawStatus::kNotComputed
+            ? control::ToString(inputs.yaw_fault_status)
+            : !inputs.turn_output_target_result.valid
+            ? control::ToString(inputs.turn_output_target_result.status)
+            : control::ToString(inputs.gyro_turn.status);
     debug_snapshot.steering.yaw_control.turn_output_target =
         inputs.turn_output_target_result.turn_output_target;
     debug_snapshot.steering.yaw_control.lateral_term =
@@ -441,7 +518,56 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.actuator.right_drive_pwm_command = inputs.command.right_drive_pwm;
     debug_snapshot.steering.actuator.left_brushless_pwm_command = inputs.command.left_brushless_pwm;
     debug_snapshot.steering.actuator.right_brushless_pwm_command = inputs.command.right_brushless_pwm;
-    debug_snapshot.steering.actuator.apply_outcome = inputs.apply_outcome;
+    debug_snapshot.steering.actuator.left_drive_pwm_unconstrained =
+        debug_snapshot.left_drive_pwm_unconstrained;
+    debug_snapshot.steering.actuator.right_drive_pwm_unconstrained =
+        debug_snapshot.right_drive_pwm_unconstrained;
+    debug_snapshot.steering.actuator.left_drive_pwm_requested =
+        debug_snapshot.left_drive_pwm_requested;
+    debug_snapshot.steering.actuator.right_drive_pwm_requested =
+        debug_snapshot.right_drive_pwm_requested;
+    debug_snapshot.steering.actuator.left_drive_pwm_desired =
+        debug_snapshot.left_drive_pwm_desired;
+    debug_snapshot.steering.actuator.right_drive_pwm_desired =
+        debug_snapshot.right_drive_pwm_desired;
+    debug_snapshot.steering.actuator.left_drive_pwm_step_limited =
+        debug_snapshot.left_drive_pwm_step_limited;
+    debug_snapshot.steering.actuator.right_drive_pwm_step_limited =
+        debug_snapshot.right_drive_pwm_step_limited;
+    debug_snapshot.steering.actuator.left_drive_pwm_reverse_suppressed =
+        debug_snapshot.left_drive_pwm_reverse_suppressed;
+    debug_snapshot.steering.actuator.right_drive_pwm_reverse_suppressed =
+        debug_snapshot.right_drive_pwm_reverse_suppressed;
+    debug_snapshot.steering.actuator.left_drive_pwm_floor_adjusted =
+        debug_snapshot.left_drive_pwm_floor_adjusted;
+    debug_snapshot.steering.actuator.right_drive_pwm_floor_adjusted =
+        debug_snapshot.right_drive_pwm_floor_adjusted;
+    debug_snapshot.steering.actuator.left_pid_error = debug_snapshot.left_pid_error;
+    debug_snapshot.steering.actuator.right_pid_error = debug_snapshot.right_pid_error;
+    debug_snapshot.steering.actuator.left_pid_integral = debug_snapshot.left_pid_integral;
+    debug_snapshot.steering.actuator.right_pid_integral = debug_snapshot.right_pid_integral;
+    debug_snapshot.steering.actuator.left_pid_integral_candidate =
+        debug_snapshot.left_pid_integral_candidate;
+    debug_snapshot.steering.actuator.right_pid_integral_candidate =
+        debug_snapshot.right_pid_integral_candidate;
+    debug_snapshot.steering.actuator.left_pid_anti_windup_active =
+        debug_snapshot.left_pid_anti_windup_active;
+    debug_snapshot.steering.actuator.right_pid_anti_windup_active =
+        debug_snapshot.right_pid_anti_windup_active;
+    debug_snapshot.steering.actuator.left_pid_anti_windup_reason =
+        debug_snapshot.left_pid_anti_windup_reason;
+    debug_snapshot.steering.actuator.right_pid_anti_windup_reason =
+        debug_snapshot.right_pid_anti_windup_reason;
+    debug_snapshot.steering.actuator.apply_outcome = inputs.observation.apply_outcome;
+    debug_snapshot.steering.actuator.actuators_armed = inputs.observation.actuators_armed;
+    debug_snapshot.steering.actuator.last_confirmed_left_drive_pwm =
+        inputs.observation.applied_left_drive_pwm;
+    debug_snapshot.steering.actuator.last_confirmed_right_drive_pwm =
+        inputs.observation.applied_right_drive_pwm;
+    debug_snapshot.steering.actuator.last_confirmed_left_brushless_pwm =
+        inputs.observation.applied_left_brushless_pwm;
+    debug_snapshot.steering.actuator.last_confirmed_right_brushless_pwm =
+        inputs.observation.applied_right_brushless_pwm;
 
     debug_snapshot.steering_internal.valid = inputs.steering_terms_valid;
     debug_snapshot.steering_internal.frame_id = perception.frame_id;
@@ -461,81 +587,6 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering_internal.gyro_p_term = inputs.gyro_turn.gyro_p_term;
     debug_snapshot.steering_internal.gyro_d_term = inputs.gyro_turn.gyro_d_term;
     return debug_snapshot;
-}
-
-// 限制每周期 PWM 变化量（平滑控制输出，防止跳变）
-port::ActuatorCommand ApplyPwmStepLimit(const port::ActuatorCommand& previous,
-                                        port::ActuatorCommand command,
-                                        int pwm_step_limit) {
-    if (command.emergency_stop || pwm_step_limit <= 0) {
-        return command;
-    }
-    command.left_drive_pwm =
-        std::clamp(command.left_drive_pwm, previous.left_drive_pwm - pwm_step_limit, previous.left_drive_pwm + pwm_step_limit);
-    command.right_drive_pwm =
-        std::clamp(command.right_drive_pwm, previous.right_drive_pwm - pwm_step_limit, previous.right_drive_pwm + pwm_step_limit);
-    command.left_brushless_pwm = std::clamp(command.left_brushless_pwm,
-                                            previous.left_brushless_pwm - pwm_step_limit,
-                                            previous.left_brushless_pwm + pwm_step_limit);
-    command.right_brushless_pwm = std::clamp(command.right_brushless_pwm,
-                                             previous.right_brushless_pwm - pwm_step_limit,
-                                             previous.right_brushless_pwm + pwm_step_limit);
-    return command;
-}
-
-// 单通道 PWM 地板值限制 —— 确保非零 PWM 不小于 pwm_floor
-int ApplySinglePwmFloor(int pwm, int pwm_limit, int pwm_floor) {
-    if (pwm == 0 || pwm_floor <= 0) {
-        return pwm;
-    }
-    const int clamped_floor = std::min(std::max(0, pwm_floor), std::max(0, pwm_limit));
-    if (clamped_floor == 0) {
-        return pwm;
-    }
-    if (pwm > 0) {
-        return std::clamp(std::max(pwm, clamped_floor), 0, pwm_limit);
-    }
-    return std::clamp(std::min(pwm, -clamped_floor), -pwm_limit, 0);
-}
-
-// 对左右通道分别施加 PWM 地板值限制
-port::ActuatorCommand ApplyPwmFloor(port::ActuatorCommand command, int pwm_limit, int pwm_floor) {
-    if (command.emergency_stop) {
-        return command;
-    }
-    command.left_drive_pwm = ApplySinglePwmFloor(command.left_drive_pwm, pwm_limit, pwm_floor);
-    command.right_drive_pwm = ApplySinglePwmFloor(command.right_drive_pwm, pwm_limit, pwm_floor);
-    return command;
-}
-
-// 单通道禁止反转保护 —— 防止正向行驶中 PWM 意外跳负
-int ApplySingleProhibitReverse(int previous_pwm, int requested_pwm, double target_speed, int pwm_step_limit) {
-    if (requested_pwm >= 0) {
-        return requested_pwm;
-    }
-    if (target_speed <= 0.0) {
-        return 0;
-    }
-    if (pwm_step_limit <= 0) {
-        return 0;
-    }
-    return std::max(0, previous_pwm - pwm_step_limit);
-}
-
-// 对左右通道施加禁止反转保护（仅在 prohibit_reverse_pwm 启用时）
-port::ActuatorCommand ApplyProhibitReverse(const port::ActuatorCommand& previous_command,
-                                           port::ActuatorCommand command,
-                                           const control::WheelSpeedTargets& wheel_targets,
-                                           bool prohibit_reverse_pwm,
-                                           int pwm_step_limit) {
-    if (command.emergency_stop || !prohibit_reverse_pwm) {
-        return command;
-    }
-    command.left_drive_pwm =
-        ApplySingleProhibitReverse(previous_command.left_drive_pwm, command.left_drive_pwm, wheel_targets.left, pwm_step_limit);
-    command.right_drive_pwm =
-        ApplySingleProhibitReverse(previous_command.right_drive_pwm, command.right_drive_pwm, wheel_targets.right, pwm_step_limit);
-    return command;
 }
 
 // 全局重置控制器，并请求 perception owner 在下一帧重置自己的记忆。
@@ -763,9 +814,16 @@ bool ControlLoop::Start(const port::RuntimeParameters& params) {
                            port::NowMs()});
     }
 
+    if (!yaw_controller_.Configure(params)) {
+        diagnostics_.Emit({port::DiagnosticLevel::kFailSafe,
+                           "control.yaw.invalid_configuration",
+                           "control loop refused to start because yaw controller parameters violate the production float arithmetic contract",
+                           port::NowMs()});
+        return false;
+    }
     params_ = params;
-    yaw_controller_.Configure(params_);
     yaw_controller_.Reset();
+    latched_yaw_fault_status_ = control::SteeringYawStatus::kNotComputed;
     left_wheel_pid_.Configure(params_.left_wheel_pid);
     right_wheel_pid_.Configure(params_.right_wheel_pid);
     left_wheel_pid_.Reset();
@@ -775,6 +833,7 @@ bool ControlLoop::Start(const port::RuntimeParameters& params) {
 
     state_.timer_started = false;
     state_.actuators_armed = false;
+    state_.last_command = {};
     state_.control_observation = {};
     state_.control_debug_snapshot = {};
     state_.command_history.Clear();
@@ -786,6 +845,8 @@ bool ControlLoop::Start(const port::RuntimeParameters& params) {
     state_.motion_state.clean_gate_cycles = 0;
 
     motion_reset_ready_reported_ = false;
+    timer_failure_.store(false);
+    actuator_disable_ok_.store(true);
     running_ = true;
     const bool timer_ok = platform_.timer->Start(
         profile_.timer,
@@ -832,16 +893,34 @@ bool ControlLoop::Start(const port::RuntimeParameters& params) {
 }
 
 // 停止控制循环：停止定时器 → 禁用电机 → 复位运行时状态
-void ControlLoop::Stop() {
-    if (!running_) {
-        return;
+ControlLoopTerminalResult ControlLoop::Stop() {
+    if (!running_.exchange(false)) {
+        return {timer_failure_.load(), actuator_disable_ok_.load()};
     }
-    running_ = false;
     platform_.timer->Stop(diagnostics_);
+    bool disable_ok = true;
     if (platform_.actuator) {
-        platform_.actuator->Disable(diagnostics_);
+        disable_ok = platform_.actuator->Disable(diagnostics_);
+        if (!disable_ok) {
+            actuator_disable_ok_.store(false);
+            diagnostics_.Emit({port::DiagnosticLevel::kFailSafe,
+                               "control.stop.disable_failed",
+                               "control loop stop could not confirm safe actuator disable",
+                               port::NowMs()});
+        }
     }
-    ResetDisarmedControlState();
+    if (disable_ok && actuator_disable_ok_.load()) {
+        ResetDisarmedControlState();
+    } else {
+        ResetControllerState(yaw_controller_,
+                             left_wheel_pid_,
+                             right_wheel_pid_,
+                             steering_control_memory_,
+                             state_);
+        latched_yaw_fault_status_ = control::SteeringYawStatus::kNotComputed;
+        PreserveTerminalActuatorFailure(state_, MotionPhase::kDisarmed, port::NowMs());
+    }
+    return {timer_failure_.load(), actuator_disable_ok_.load()};
 }
 
 // 处理定时器故障 —— 进入 FAIL_SAFE_LATCHED 并请求退出
@@ -851,14 +930,35 @@ void ControlLoop::HandleTimerFailure() {
     }
 
     const uint64_t now_ms = port::NowMs();
+    timer_failure_.store(true);
     diagnostics_.Emit({port::DiagnosticLevel::kFailSafe,
                        "control.timer.runtime_failure",
                        "control timer stopped unexpectedly; runtime entered FAIL_SAFE_LATCHED and will shut down",
                        now_ms});
     if (platform_.actuator) {
-        platform_.actuator->Disable(diagnostics_);
+        if (!platform_.actuator->Disable(diagnostics_)) {
+            actuator_disable_ok_.store(false);
+            diagnostics_.Emit({port::DiagnosticLevel::kFailSafe,
+                               "control.timer.disable_failed",
+                               "timer failure handler could not confirm safe actuator disable",
+                               now_ms});
+        }
     }
-    LatchTimerFailureState(now_ms);
+    if (actuator_disable_ok_.load()) {
+        LatchTimerFailureState(now_ms);
+    } else {
+        ResetControllerState(yaw_controller_,
+                             left_wheel_pid_,
+                             right_wheel_pid_,
+                             steering_control_memory_,
+                             state_);
+        latched_yaw_fault_status_ = control::SteeringYawStatus::kNotComputed;
+        PreserveTerminalActuatorFailure(state_, MotionPhase::kFailSafeLatched, now_ms);
+        std::lock_guard<std::mutex> lock(state_.shared_mutex);
+        state_.motion_intent.start_requested = false;
+        state_.motion_intent.stop_requested = false;
+        state_.motion_intent.reset_fault_requested = false;
+    }
     state_.exit_requested.store(true);
     state_.stop_requested.store(true);
 }
@@ -873,6 +973,7 @@ void ControlLoop::ResetDisarmedControlState() {
     state_.control_debug_snapshot = {};
     state_.command_history.Clear();
     ResetSteeringControlMemory(steering_control_memory_);
+    latched_yaw_fault_status_ = control::SteeringYawStatus::kNotComputed;
     state_.perception_memory_reset_generation.fetch_add(1);
     state_.motion_state.phase = MotionPhase::kDisarmed;
     state_.motion_state.phase_entry_ms = port::NowMs();
@@ -894,6 +995,7 @@ void ControlLoop::LatchTimerFailureState(uint64_t now_ms) {
     state_.control_debug_snapshot = {};
     state_.command_history.Clear();
     ResetSteeringControlMemory(steering_control_memory_);
+    latched_yaw_fault_status_ = control::SteeringYawStatus::kNotComputed;
     state_.perception_memory_reset_generation.fetch_add(1);
     state_.control_debug_snapshot.valid = true;
     state_.control_debug_snapshot.timestamp_ms = now_ms;
@@ -964,19 +1066,17 @@ void ControlLoop::Tick() {
     // --- 第 2 阶段：门控评估 ---
     ControlGateDecision gate{};
     gate =
-        EvaluateControlGate(BuildControlGateInputs(perception, imu, encoder, low_voltage_emergency, now_ms, params_));
-    EmitVetoDiagnostics(diagnostics_, gate, now_ms);
-    EmitGateIntervalDiagnostics(diagnostics_,
-                                have_gate_interval_,
-                                last_gate_veto_,
-                                last_gate_reason_,
-                                gate_interval_start_ms_,
-                                gate_interval_reported_,
-                                gate,
-                                now_ms);
+        EvaluateControlGate(BuildControlGateInputs(perception,
+                                                   imu,
+                                                   encoder,
+                                                   previous_motion_state.phase,
+                                                   motion_intent,
+                                                   low_voltage_emergency,
+                                                   now_ms,
+                                                   params_));
 
     // --- 第 3 阶段：运动监督 ---
-    const MotionDecision motion = motion_supervisor_.Evaluate(BuildMotionSupervisorInputs(
+    MotionDecision motion = motion_supervisor_.Evaluate(BuildMotionSupervisorInputs(
         state_.startup_complete, previous_motion_state, motion_intent, tuning_snapshot,
         perception, gate, encoder, now_ms, params_));
 
@@ -989,12 +1089,19 @@ void ControlLoop::Tick() {
     }
 
     port::ActuatorCommand command{};
+    control::ActuatorCommandShapingResult command_shaping{};
+    control::WheelPidComputation left_pid_computation{};
+    control::WheelPidComputation right_pid_computation{};
+    control::WheelPidCommitResult left_pid_commit{};
+    control::WheelPidCommitResult right_pid_commit{};
+    bool wheel_pid_evaluated = false;
     control::WheelSpeedTargets wheel_targets{};
     bool hold_disarmed = false;
     int raw_turn_output = 0;
     int applied_turn_output = 0;
     control::TurnOutputTargetComputation turn_output_target_result{};
     control::GyroTurnComputation gyro_turn{};
+    control::SteeringYawStatus yaw_fault_status = control::SteeringYawStatus::kNotComputed;
     bool steering_terms_valid = perception.published && perception.fresh &&
                                perception.frame_id != 0 && perception.capture_time_ms != 0;
     // --- 第 4 阶段：转向计算与执行器命令 ---
@@ -1004,51 +1111,108 @@ void ControlLoop::Tick() {
         hold_disarmed = true;
         command = {0, 0, 0, 0, false};
     } else if (motion.state.phase == MotionPhase::kStopping) {
-        // STOPPING owns the actuator ramp-down directly so real output converges
-        // to zero even if the legacy speed controller still carries residual integral state.
-        command = ApplyPwmStepLimit(previous_command, {0, 0, 0, 0, false}, motion.pwm_step_limit);
+        command_shaping = control::ShapeActuatorCommand(previous_command,
+                                                        {0, 0, 0, 0, false},
+                                                        params_.pwm_limit,
+                                                        params_.pwm_floor,
+                                                        params_.prohibit_reverse_pwm,
+                                                        params_.drive_pwm_step_limit);
+        command = command_shaping.command;
     } else {
         const double constrained_speed_target = motion.effective_speed_target;
         turn_output_target_result =
             yaw_controller_.ComputeTurnOutputTarget(perception.reference_tracking_geometry,
                                                     constrained_speed_target,
                                                     steering_control_memory_.controller_memory);
-        gyro_turn = yaw_controller_.ComputeGyroTurn(turn_output_target_result.turn_output_target,
-                                                   imu.gyro_z,
-                                                   steering_control_memory_.controller_memory);
-        raw_turn_output = ClampTurnOutput(
-            gyro_turn.raw_turn_output,
-            motion.turn_limit_scale,
-            params_.raw_turn_output_limit);
-        applied_turn_output = raw_turn_output;
-        if (tuning_snapshot.tuning_mode_enabled && tuning_snapshot.turn_suppressed) {
-            applied_turn_output = 0;
+        if (!turn_output_target_result.valid) {
+            yaw_fault_status = turn_output_target_result.status;
+        } else {
+            gyro_turn = yaw_controller_.ComputeGyroTurn(turn_output_target_result.turn_output_target,
+                                                        imu.gyro_z,
+                                                        steering_control_memory_.controller_memory);
+            if (!gyro_turn.valid) {
+                yaw_fault_status = gyro_turn.status;
+            } else if (!ClampTurnOutput(gyro_turn.raw_turn_output,
+                                        motion.turn_limit_scale,
+                                        params_.raw_turn_output_limit,
+                                        raw_turn_output)) {
+                yaw_fault_status = control::SteeringYawStatus::kNonFiniteArithmetic;
+            }
         }
-        const control::WheelTargetMixerParameters mixer_params = BuildWheelTargetMixerParameters(params_);
-        wheel_targets =
-            wheel_target_mixer_.Compute(constrained_speed_target, applied_turn_output, mixer_params);
-        const int left_drive_pwm = left_wheel_pid_.Compute(wheel_targets.left, encoder.left, params_.pwm_limit);
-        const int right_drive_pwm = right_wheel_pid_.Compute(wheel_targets.right, encoder.right, params_.pwm_limit);
-        const int brushless_pwm =
-            params_.brushless_debug_fixed_pwm_enabled ? params_.brushless_debug_fixed_pwm : 0;
-        command = actuator_command_builder_.Compose(left_drive_pwm,
-                                                    right_drive_pwm,
-                                                    brushless_pwm,
-                                                    brushless_pwm,
-                                                    false,
-                                                    params_.pwm_limit,
-                                                    1000);
-        if (motion.state.phase == MotionPhase::kSpinup || motion.state.phase == MotionPhase::kStopping) {
-            command = ApplyPwmStepLimit(previous_command, command, motion.pwm_step_limit);
+
+        if (yaw_fault_status == control::SteeringYawStatus::kNotComputed) {
+            applied_turn_output = raw_turn_output;
+            if (tuning_snapshot.tuning_mode_enabled && tuning_snapshot.turn_suppressed) {
+                applied_turn_output = 0;
+            }
+            const control::WheelTargetMixerParameters mixer_params = BuildWheelTargetMixerParameters(params_);
+            wheel_targets =
+                wheel_target_mixer_.Compute(constrained_speed_target, applied_turn_output, mixer_params);
+            left_pid_computation =
+                left_wheel_pid_.Evaluate(wheel_targets.left, encoder.left, params_.pwm_limit);
+            right_pid_computation =
+                right_wheel_pid_.Evaluate(wheel_targets.right, encoder.right, params_.pwm_limit);
+            wheel_pid_evaluated = true;
+            const int brushless_pwm =
+                params_.brushless_debug_fixed_pwm_enabled ? params_.brushless_debug_fixed_pwm : 0;
+            const port::ActuatorCommand requested_command = actuator_command_builder_.Compose(
+                left_pid_computation.requested_pwm,
+                right_pid_computation.requested_pwm,
+                brushless_pwm,
+                brushless_pwm,
+                false,
+                params_.pwm_limit,
+                1000);
+            command_shaping = control::ShapeActuatorCommand(previous_command,
+                                                            requested_command,
+                                                            params_.pwm_limit,
+                                                            params_.pwm_floor,
+                                                            params_.prohibit_reverse_pwm,
+                                                            params_.drive_pwm_step_limit);
+            command = command_shaping.command;
         }
-        command = ApplyPwmFloor(command, params_.pwm_limit, params_.pwm_floor);
-        command = ApplyProhibitReverse(
-            previous_command,
-            command,
-            wheel_targets,
-            params_.prohibit_reverse_pwm,
-            params_.prohibit_reverse_pwm_step_limit);
     }
+
+    if (yaw_fault_status != control::SteeringYawStatus::kNotComputed) {
+        if (latched_yaw_fault_status_ == control::SteeringYawStatus::kNotComputed) {
+            latched_yaw_fault_status_ = yaw_fault_status;
+        }
+        gate = {true, ControlVetoReason::kYawControlInvalid};
+        motion = motion_supervisor_.Evaluate(BuildMotionSupervisorInputs(
+            state_.startup_complete, previous_motion_state, motion_intent, tuning_snapshot,
+            perception, gate, encoder, now_ms, params_));
+        if (motion.reset_controllers) {
+            ResetControllerState(yaw_controller_,
+                                 left_wheel_pid_,
+                                 right_wheel_pid_,
+                                 steering_control_memory_,
+                                 state_);
+        }
+        command = {};
+        command_shaping = {};
+        wheel_targets = {};
+        raw_turn_output = 0;
+        applied_turn_output = 0;
+        wheel_pid_evaluated = false;
+        steering_terms_valid = false;
+        port::EmitRateLimited(diagnostics_,
+                              {port::DiagnosticLevel::kFailSafe,
+                               "control.yaw.invalid",
+                               std::string("yaw controller rejected the drive computation before wheel mixing: ") +
+                                   control::ToString(yaw_fault_status),
+                               now_ms},
+                              1000);
+    }
+
+    EmitVetoDiagnostics(diagnostics_, gate, now_ms);
+    EmitGateIntervalDiagnostics(diagnostics_,
+                                have_gate_interval_,
+                                last_gate_veto_,
+                                last_gate_reason_,
+                                gate_interval_start_ms_,
+                                gate_interval_reported_,
+                                gate,
+                                now_ms);
     // --- 第 5 阶段：执行器施加 + 诊断输出 ---
     const bool diagnostics_only_actuator =
         profile_.actuator.mode == port::SubsystemMode::kAdaptationHook ||
@@ -1085,24 +1249,79 @@ void ControlLoop::Tick() {
                                   wheel_target_mixer_,
                                   BuildWheelTargetMixerParameters(params_));
 
+    // The second STOPPING evaluation can complete the lifecycle in this same
+    // cycle. All actuator disposition and downstream facts must consume that
+    // final decision, rather than the first evaluation's hold state.
+    const bool final_hold_disarmed = final_motion.hold_disarmed;
     bool apply_ok = true;
-    if (diagnostics_only_actuator || hold_disarmed) {
-        platform_.actuator->Disable(diagnostics_);
+    port::ActuatorCommand applied_command{};
+    if (diagnostics_only_actuator || final_hold_disarmed) {
+        apply_ok = platform_.actuator->Disable(diagnostics_);
+        if (!apply_ok) {
+            actuator_disable_ok_.store(false);
+            state_.exit_requested.store(true);
+            state_.stop_requested.store(true);
+        }
     } else {
         LS2K_PERF_SCOPE(port::PerfStage::kControlApply);
-        apply_ok = platform_.actuator->Apply(command, diagnostics_);
+        const port::ActuatorApplyResult apply_result =
+            platform_.actuator->Apply(command, diagnostics_);
+        apply_ok = apply_result.ok;
+        applied_command = apply_result.applied_command;
+        if (apply_ok) {
+            control::ReconcileAppliedDrivePwm(command_shaping.left,
+                                              applied_command.left_drive_pwm);
+            control::ReconcileAppliedDrivePwm(command_shaping.right,
+                                              applied_command.right_drive_pwm);
+        }
+    }
+
+    const bool actuator_applied =
+        apply_ok && !diagnostics_only_actuator && !final_hold_disarmed && !command.emergency_stop;
+    if (wheel_pid_evaluated) {
+        left_pid_commit = left_wheel_pid_.CommitAppliedOutput(
+            left_pid_computation, command_shaping.left, actuator_applied);
+        right_pid_commit = right_wheel_pid_.CommitAppliedOutput(
+            right_pid_computation, command_shaping.right, actuator_applied);
+    } else {
+        // STOPPING may complete through the second MotionSupervisor::Evaluate above,
+        // which resets both controllers after this cycle's command reaches zero.
+        // Snapshot facts must be sampled after that final decision/reset, not cached
+        // before command shaping.
+        left_pid_commit.integral = left_wheel_pid_.integral();
+        right_pid_commit.integral = right_wheel_pid_.integral();
     }
 
     ControlCycleObservation observation = ObserveControlCycle(
-        {gate, command, final_motion.state.phase, apply_ok, diagnostics_only_actuator, hold_disarmed, previous_observation.actuators_armed});
+        {gate,
+         command,
+         final_motion.state.phase,
+         apply_ok,
+         diagnostics_only_actuator,
+         final_hold_disarmed,
+         previous_command,
+         applied_command,
+         previous_observation.actuators_armed});
     observation.motion_reset_ready = final_motion.reset_ready;
     EmitObservationDiagnostics(diagnostics_, previous_observation, observation, now_ms);
 
+    if (final_motion.state.phase != MotionPhase::kFailSafeLatched) {
+        latched_yaw_fault_status_ = control::SteeringYawStatus::kNotComputed;
+    }
+    const control::SteeringYawStatus snapshot_yaw_fault_status =
+        latched_yaw_fault_status_ != control::SteeringYawStatus::kNotComputed
+            ? latched_yaw_fault_status_
+            : yaw_fault_status;
     const ControlDebugSnapshot debug_snapshot =
         BuildControlDebugSnapshot({perception,
                                    encoder,
                                    command,
-                                   observation.apply_outcome,
+                                   command_shaping,
+                                   left_pid_computation,
+                                   right_pid_computation,
+                                   left_pid_commit,
+                                   right_pid_commit,
+                                   observation,
                                    gate,
                                    final_motion,
                                    tuning_snapshot,
@@ -1113,16 +1332,17 @@ void ControlLoop::Tick() {
                                    state_.control_cycle_count.load() + 1,
                                    raw_turn_output,
                                    applied_turn_output,
+                                   snapshot_yaw_fault_status,
                                    steering_terms_valid});
     debug_reporter_.MaybeEmit(debug_snapshot, diagnostics_);
 
     port::ControlCommandHistorySample command_history_sample{};
     command_history_sample.time_ms = now_ms;
     command_history_sample.valid = true;
-    command_history_sample.actuator_applied =
-        apply_ok && !diagnostics_only_actuator && !hold_disarmed && !command.emergency_stop;
+    command_history_sample.actuator_request_succeeded = apply_ok;
+    command_history_sample.actuator_applied = actuator_applied;
     command_history_sample.diagnostics_only = diagnostics_only_actuator;
-    command_history_sample.hold_disarmed = hold_disarmed;
+    command_history_sample.hold_disarmed = final_hold_disarmed;
     command_history_sample.emergency_stop = command.emergency_stop;
     command_history_sample.raw_turn_output = raw_turn_output;
     command_history_sample.applied_turn_output = applied_turn_output;
@@ -1132,6 +1352,11 @@ void ControlLoop::Tick() {
     command_history_sample.right_drive_pwm = command.right_drive_pwm;
     command_history_sample.left_brushless_pwm = command.left_brushless_pwm;
     command_history_sample.right_brushless_pwm = command.right_brushless_pwm;
+    command_history_sample.actuators_armed = observation.actuators_armed;
+    command_history_sample.last_confirmed_left_drive_pwm = observation.applied_left_drive_pwm;
+    command_history_sample.last_confirmed_right_drive_pwm = observation.applied_right_drive_pwm;
+    command_history_sample.last_confirmed_left_brushless_pwm = observation.applied_left_brushless_pwm;
+    command_history_sample.last_confirmed_right_brushless_pwm = observation.applied_right_brushless_pwm;
 
     {
         std::lock_guard<std::mutex> lock(state_.shared_mutex);
@@ -1140,9 +1365,11 @@ void ControlLoop::Tick() {
         if (final_motion.consume_reset_request) {
             state_.motion_intent.reset_fault_requested = false;
         }
-        state_.last_command = (apply_ok && !diagnostics_only_actuator && !hold_disarmed && !command.emergency_stop)
-                                  ? command
-                                  : port::ActuatorCommand{};
+        state_.last_command = {observation.applied_left_drive_pwm,
+                               observation.applied_right_drive_pwm,
+                               observation.applied_left_brushless_pwm,
+                               observation.applied_right_brushless_pwm,
+                               false};
         state_.control_observation = observation;
         state_.control_debug_snapshot = debug_snapshot;
         state_.actuators_armed = observation.actuators_armed;

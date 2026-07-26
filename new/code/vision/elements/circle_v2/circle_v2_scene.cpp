@@ -16,6 +16,10 @@ const char* ToString(CircleDir dir) {
     return "none";
 }
 
+const char* ToString(CircleOpeningSource source) {
+    return port::CircleOpeningSourceToken(source);
+}
+
 const char* ToString(CirclePhase phase) {
     switch (phase) {
         case CirclePhase::kIdle:
