@@ -5,28 +5,16 @@
 #include <cmath>
 #include <cstddef>
 
+#include "port/bev_reference_path_utils.hpp"
+
 namespace ls2k::reference {
 namespace {
-
-bool IsReferencePointPresent(const port::BEVPathSample& sample) {
-    return sample.present && std::isfinite(sample.point.forward_m) &&
-           std::isfinite(sample.point.lateral_m);
-}
 
 port::ReferenceTrackingGeometry UncomputedOutput(const std::string& reason) {
     port::ReferenceTrackingGeometry output{};
     output.computed = false;
     output.reason = reason;
     return output;
-}
-
-std::size_t FirstPresentSegmentStart(const port::BEVReferencePath& reference_path) {
-    for (std::size_t index = 0; index < reference_path.sampled_path.size(); ++index) {
-        if (IsReferencePointPresent(reference_path.sampled_path[index])) {
-            return index;
-        }
-    }
-    return reference_path.sampled_path.size();
 }
 
 std::size_t TrackingFitMinSamples(const port::BEVControlModelParameters& control_model) {
@@ -89,14 +77,8 @@ port::ReferenceTrackingGeometry ComputeReferenceTrackingGeometry(
         return UncomputedOutput(usability.reason);
     }
 
-    const std::size_t start_index = FirstPresentSegmentStart(reference_path);
-    if (start_index >= reference_path.sampled_path.size()) {
-        return UncomputedOutput("reference_tracking_geometry_unavailable");
-    }
-
     const std::size_t bounded_count =
-        std::min(usability.leading_usable_samples,
-                 reference_path.sampled_path.size() - start_index);
+        std::min(usability.leading_usable_samples, reference_path.sampled_path.size());
     const std::size_t min_samples = TrackingFitMinSamples(control_model);
 
     float sum_x0 = 0.0F;
@@ -110,9 +92,11 @@ port::ReferenceTrackingGeometry ComputeReferenceTrackingGeometry(
     float evaluation_forward_m = 0.0F;
     std::size_t used_count = 0;
 
-    for (std::size_t index = 0; index < bounded_count; ++index) {
-        const port::BEVPathSample& sample = reference_path.sampled_path[start_index + index];
-        if (!IsReferencePointPresent(sample)) {
+    for (const port::BEVPathSample& sample : reference_path.sampled_path) {
+        if (!port::IsFiniteReferenceSample(sample)) {
+            continue;
+        }
+        if (used_count >= bounded_count) {
             break;
         }
         const float x = sample.point.forward_m;

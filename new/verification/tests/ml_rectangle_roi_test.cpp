@@ -10,8 +10,31 @@
 #include "vision/bev/bev_projector.hpp"
 #include "vision/ml/red_rectangle_detector.hpp"
 #include "vision/ml/roi_sampler.hpp"
+#include "vision/ml/ml_observer.hpp"
 
 namespace {
+
+class FakeClassifier final : public ls2k::vision::ml::MlClassifier {
+public:
+    bool Initialize() override { return true; }
+    ls2k::port::MlClassifierOutput Predict(
+        const ls2k::port::MlGrayRoi32& roi) override {
+        ls2k::port::MlClassifierOutput out{};
+        if (!roi.valid) return out;
+        out.classification.valid = true;
+        out.classification.backend = ls2k::port::MlClassifierBackend::kV9Hamming;
+        out.classification.class_id = 1;
+        out.classification.margin = 10;
+        out.classification.distance_valid = true;
+        out.classification.best_distance = 5;
+        return out;
+    }
+    const char* BackendName() const override { return "fake_v9"; }
+    const char* ArtifactId() const override { return "fake-artifact"; }
+    const char* ArtifactSha256() const override { return "fake-sha"; }
+    std::size_t ArtifactItemCount() const override { return 3U; }
+    std::size_t WorkingMemoryBytes() const override { return 0U; }
+};
 
 void Expect(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -223,6 +246,35 @@ void TestRoiTopRowIsFarthestForwardAndAxisCanonicalization() {
            "ROI crop size must use calibrated marker truth, not grid-quantized box edges");
 }
 
+void TestObserverPublishesRecognitionWithoutPathInputs() {
+    std::vector<std::uint8_t> frame(80U * 160U, 0U);
+    for (int row = 0; row < 80; ++row) {
+        for (int pair = 0; pair < 40; ++pair) {
+            SetYuyvPair(frame, row, pair, 20, 128, 20, 128);
+        }
+    }
+    PaintMarker(frame, 0.25F, 0.0F, 0.25F);
+    const auto view = View(frame);
+    const auto projector = MakeProjector();
+    FakeClassifier classifier{};
+    ls2k::port::MlParameters params{};
+    params.enabled = true;
+    params.roi = DetectorParameters();
+    ls2k::vision::ml::MlRedRectangleProjectionLut lut{};
+    const ls2k::vision::ml::MlObservation observation =
+        ls2k::vision::ml::RunMlObserver(
+            {&view, &projector, &lut, &classifier}, params);
+    Expect(observation.accepted && observation.detector_valid &&
+               observation.roi.valid && observation.classification.valid,
+           "observer must publish the complete recognition chain");
+    Expect(observation.classification.class_id == 1 &&
+               observation.mapped_action == ls2k::port::MlAction::kLeft,
+           "observer must publish raw class and mapped action facts");
+    Expect(std::string(observation.artifact_candidate_id) == "fake-artifact" &&
+               std::string(observation.artifact_sha256) == "fake-sha",
+           "observer must preserve classifier identity facts");
+}
+
 }  // namespace
 
 int main() {
@@ -231,6 +283,7 @@ int main() {
         TestPositiveAndNegativeFortyFiveDegreeDetection();
         TestExpandedRedRangeRejectsNonRedAndWrongSizeDistractors();
         TestRoiTopRowIsFarthestForwardAndAxisCanonicalization();
+        TestObserverPublishesRecognitionWithoutPathInputs();
     } catch (const std::exception& error) {
         std::cerr << "ml_rectangle_roi_test failed: " << error.what() << '\n';
         return 1;

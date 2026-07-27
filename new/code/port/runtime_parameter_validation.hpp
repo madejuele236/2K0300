@@ -67,7 +67,7 @@ inline bool ValidateMlParameters(const MlParameters& params,
         return false;
     }
     if (!params.enabled) {
-        return true;
+        return !params.maneuver.enabled;
     }
 
     const MlRoiParameters& roi = params.roi;
@@ -85,7 +85,7 @@ inline bool ValidateMlParameters(const MlParameters& params,
         FiniteInRange(roi.score_red_fill_weight, 0.0, 1.0e9) &&
         FiniteInRange(roi.score_orientation_weight, 0.0, 1.0e9) &&
         std::isfinite(score_total) && score_total > 0.0;
-    return std::isfinite(roi.search_forward_min_m) &&
+    const bool observation_valid = std::isfinite(roi.search_forward_min_m) &&
            std::isfinite(roi.search_forward_max_m) &&
            roi.search_forward_max_m > roi.search_forward_min_m &&
            std::isfinite(roi.search_lateral_limit_m) && roi.search_lateral_limit_m > 0.0 &&
@@ -103,16 +103,17 @@ inline bool ValidateMlParameters(const MlParameters& params,
            FiniteInRange(roi.max_long_edge_to_lateral_rad, 1.0e-12, 1.5707963267948966) &&
            roi.min_component_cells >= 1 &&
            FiniteInRange(roi.min_rectangularity, 1.0e-12, 1.0) &&
-           FiniteInRange(roi.min_red_fill_ratio, 1.0e-12, 1.0) && scores_valid &&
-           std::isfinite(odometry.encoder_ticks_to_meter) &&
+           FiniteInRange(roi.min_red_fill_ratio, 1.0e-12, 1.0) && scores_valid;
+    if (!observation_valid || !params.maneuver.enabled) {
+        return observation_valid;
+    }
+    return std::isfinite(odometry.encoder_ticks_to_meter) &&
            odometry.encoder_ticks_to_meter > 0.0 &&
            std::isfinite(maneuver.speed_target) && maneuver.speed_target > 0.0 &&
-           maneuver.min_boundary_samples >= 3 && std::isfinite(maneuver.exit_forward_m) &&
+           maneuver.min_boundary_samples >= 3 &&
+           FiniteInRange(maneuver.path_outward_offset_m, 0.0, 2.0) &&
+           std::isfinite(maneuver.exit_forward_m) &&
            maneuver.exit_forward_m > 0.0 &&
-           std::isfinite(maneuver.exit_max_abs_lateral_error_m) &&
-           maneuver.exit_max_abs_lateral_error_m >= 0.0 &&
-           std::isfinite(maneuver.exit_max_abs_heading_error_rad) &&
-           maneuver.exit_max_abs_heading_error_rad >= 0.0 &&
            maneuver.max_duration_ms >= 1 && maneuver.max_integration_gap_ms >= 1 &&
            maneuver.cooldown_ms >= 0;
 }

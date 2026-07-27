@@ -124,6 +124,10 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "circle.phase2.reference_build";
         case PerfStage::kVisualElementPipeline:
             return "visual.element_pipeline";
+        case PerfStage::kCrossExitDetection:
+            return "cross.detect";
+        case PerfStage::kCrossStraightPlanning:
+            return "cross.plan_straight";
         case PerfStage::kCircleV2Scene:
             return "circle.v2.scene";
         case PerfStage::kVisualLineCandidate:

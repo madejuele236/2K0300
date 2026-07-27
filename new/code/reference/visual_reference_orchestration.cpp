@@ -1,6 +1,6 @@
 #include "reference/visual_reference_orchestration.hpp"
 
-#include <cmath>
+#include "port/bev_reference_path_utils.hpp"
 
 namespace ls2k::reference {
 namespace {
@@ -34,8 +34,7 @@ int Priority(port::VisualReferenceCandidateKind kind) {
     return 0;
 }
 
-/// 验证候选是否有效
-/// 检查：候选存在、参考路径模式正确、首个采样点存在、无间隙、坐标有限
+/// 验证候选是否有效。单个无效槽不代表整条候选无效；选择时会统一紧凑化。
 CandidateValidation ValidateCandidate(const port::VisualReferenceCandidate& candidate) {
     if (!candidate.present) {
         return {};
@@ -43,6 +42,7 @@ CandidateValidation ValidateCandidate(const port::VisualReferenceCandidate& cand
     switch (candidate.reference_path.mode) {
         case port::ReferenceMode::kIntervalCenter:
         case port::ReferenceMode::kMlObservedBoundary:
+        case port::ReferenceMode::kMlBoundaryOffset:
             break;
         case port::ReferenceMode::kHoldLast:
             return {false, "hold_candidate_not_visual"};
@@ -50,23 +50,8 @@ CandidateValidation ValidateCandidate(const port::VisualReferenceCandidate& cand
             return {false, "none_candidate_not_visual"};
     }
 
-    const auto& samples = candidate.reference_path.sampled_path;
-    if (!samples[0].present) {
-        return {false, "missing_leading_reference_sample"};
-    }
-
-    bool gap_seen = false;
-    for (const port::BEVPathSample& sample : samples) {
-        if (!sample.present) {
-            gap_seen = true;
-            continue;
-        }
-        if (gap_seen) {
-            return {false, "non_contiguous_reference_candidate"};
-        }
-        if (!std::isfinite(sample.point.forward_m) || !std::isfinite(sample.point.lateral_m)) {
-            return {false, "non_finite_reference_candidate"};
-        }
+    if (port::CountFiniteReferenceSamples(candidate.reference_path) == 0U) {
+        return {false, "reference_candidate_has_no_valid_samples"};
     }
     return {true, "none"};
 }
@@ -76,7 +61,10 @@ void SelectCandidate(port::VisualReferenceSelection& selection,
                      const port::VisualReferenceCandidate& candidate,
                      const char* reason) {
     selection.present = true;
+    selection.kind_valid = true;
+    selection.kind = candidate.kind;
     selection.reference_path = candidate.reference_path;
+    port::CompactFiniteReferenceSamples(selection.reference_path);
     selection.source = candidate.source.empty() ? ToString(candidate.kind) : candidate.source;
     selection.reason = reason;
 }
@@ -109,7 +97,7 @@ port::VisualReferenceCandidate MakeLineVisualReferenceCandidate(
     const port::BEVReferencePath& reference_path,
     const std::string& source) {
     port::VisualReferenceCandidate candidate{};
-    candidate.present = reference_path.sampled_path[0].present;
+    candidate.present = port::CountFiniteReferenceSamples(reference_path) > 0U;
     candidate.kind = port::VisualReferenceCandidateKind::kLine;
     candidate.reference_path = reference_path;
     candidate.source = source.empty() ? "line" : source;

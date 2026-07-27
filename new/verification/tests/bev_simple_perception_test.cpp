@@ -537,10 +537,13 @@ void TestHoldIsExplicitNonVisualSource() {
     ls2k::port::ReferenceHoldState invalid_geometry_memory = first_hold;
     invalid_geometry_memory.last_reference[0].point.lateral_m =
         std::numeric_limits<float>::quiet_NaN();
-    const ls2k::port::ReferenceContinuityResult rejected_invalid_geometry =
+    const ls2k::port::ReferenceContinuityResult held_without_invalid_geometry =
         ls2k::reference::BuildReferenceHoldCandidate(invalid_geometry_memory, params);
-    Expect(!rejected_invalid_geometry.hold_selected,
-           "hold continuity must reject non-finite leading geometry");
+    Expect(held_without_invalid_geometry.hold_selected,
+           "hold continuity must remove one non-finite sample without rejecting the path");
+    Expect(std::isfinite(
+               held_without_invalid_geometry.reference_path.sampled_path[0].point.lateral_m),
+           "the first remaining finite hold sample must be compacted to index zero");
 
     ls2k::port::RuntimeParameters changed_geometry = params;
     changed_geometry.bev_geometry.lateral_step_m *= 0.5F;

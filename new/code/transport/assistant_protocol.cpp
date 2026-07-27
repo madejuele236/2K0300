@@ -263,6 +263,10 @@ void AppendMlTelemetryJson(std::ostringstream& stream,
                            double effective_speed_target) {
     stream << "{\"enabled\":";
     AppendJsonBool(stream, ml.enabled);
+    stream << ",\"maneuver_enabled\":";
+    AppendJsonBool(stream, ml.maneuver_enabled);
+    stream << ",\"takeover_selected\":";
+    AppendJsonBool(stream, ml.takeover_selected);
     stream << ",\"artifact\":{\"candidate_id\":";
     AppendJsonString(stream, ml.artifact_candidate_id == nullptr
                                  ? "unavailable" : ml.artifact_candidate_id);
@@ -366,24 +370,14 @@ void AppendMlTelemetryJson(std::ostringstream& stream,
     stream << ",\"confirm_count\":" << ml.confirm_count;
     stream << ",\"active\":";
     AppendJsonBool(stream, ml.active);
-    stream << ",\"anchor\":{\"forward_m\":";
-    AppendJsonNumber(stream, ml.anchor.forward_m);
-    stream << ",\"lateral_m\":";
-    AppendJsonNumber(stream, ml.anchor.lateral_m);
-    stream << "},\"pose_delta\":{\"valid\":";
-    AppendJsonBool(stream, ml.pose_delta.valid);
-    stream << ",\"forward_m\":";
-    AppendJsonNumber(stream, ml.pose_delta.forward_m);
-    stream << ",\"lateral_m\":";
-    AppendJsonNumber(stream, ml.pose_delta.lateral_m);
-    stream << ",\"yaw_rad\":";
-    AppendJsonNumber(stream, ml.pose_delta.yaw_rad);
-    stream << "},\"progress_m\":";
-    AppendJsonNumber(stream, ml.progress_m);
-    stream << ",\"lateral_error_m\":";
-    AppendJsonNumber(stream, ml.lateral_error_m);
-    stream << ",\"heading_error_rad\":";
-    AppendJsonNumber(stream, ml.heading_error_rad);
+    stream << ",\"odometry\":{\"valid\":";
+    AppendJsonBool(stream, ml.odometry_valid);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, ml.odometry_reason == nullptr ? "unknown" : ml.odometry_reason);
+    stream << "}";
+    stream << ",\"traveled_forward_m\":";
+    AppendJsonNumber(stream, ml.traveled_forward_m);
+    stream << ",\"elapsed_ms\":" << ml.elapsed_ms;
     stream << ",\"path_sample_count\":" << ml.path_sample_count;
     stream << ",\"speed_selection\":{\"source\":";
     AppendJsonString(stream, speed_selection_source);

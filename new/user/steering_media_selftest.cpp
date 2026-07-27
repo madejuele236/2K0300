@@ -239,6 +239,8 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.otsu = {
         true, 91, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
     snapshot.steering.ml.enabled = true;
+    snapshot.steering.ml.maneuver_enabled = true;
+    snapshot.steering.ml.takeover_selected = true;
     snapshot.steering.ml.detector_valid = true;
     snapshot.steering.ml.detector.frame_id = 7;
     snapshot.steering.ml.detector.center = {0.15F, -0.03F};
@@ -601,6 +603,7 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_control_model.tracking_fit_min_samples = 5;
     config.param_snapshot.bev_element.cross_min_sampleable_per_row = 9;
     config.param_snapshot.bev_element.cross_connectivity_sample_index = 6;
+    config.param_snapshot.bev_element.cross_boundary_expansion_min_m = 0.071F;
     config.param_snapshot.reference_time_alignment.enabled = true;
     config.param_snapshot.reference_time_alignment.max_age_ms = 120;
     config.param_snapshot.reference_time_alignment.effective_delay_ms = 25;
@@ -633,6 +636,7 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.ml.tflite_identity.max_best_distance = 2076;
     config.param_snapshot.ml.tflite_identity.confirm_frames = 5;
     config.param_snapshot.ml.class_mapping.class_1_action = "left";
+    config.param_snapshot.ml.maneuver.enabled = true;
     config.param_snapshot.ml.maneuver.speed_target = 77.0;
 
     std::vector<std::uint8_t> encoded;
@@ -722,6 +726,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include cross per-row sampleable minimum");
     Require(Contains(header_json, "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\":6"),
             "config snapshot must include cross connectivity sample index");
+    Require(Contains(header_json, "\"CROSS_BOUNDARY_EXPANSION_MIN_M\":0.0710000023246"),
+            "config snapshot must include cross expansion distance");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "config snapshot must not include removed cross white-ratio threshold");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
@@ -788,8 +794,9 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include independent TFLite identity policy");
     Require(Contains(header_json, "\"CLASS_1_ACTION\":\"left\""),
             "config snapshot must include ML class mapping");
-    Require(Contains(header_json, "\"SPEED_TARGET\":77"),
-            "config snapshot must include ML maneuver speed");
+    Require(Contains(header_json,
+                     "\"MANEUVER\":{\"ENABLED\":true,\"SPEED_TARGET\":77"),
+            "config snapshot must include ML maneuver ownership and speed");
     Require(Contains(header_json, "\"WHEEL_TRACK_M\":0.42"),
             "config snapshot must include wheel track");
     Require(Contains(header_json, "\"USE_WHEEL_YAW_FALLBACK\":true"),
@@ -1230,6 +1237,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     params.right_wheel_pid = {97.5, 1.875, 0.125, 456.0, 0.65};
     params.bev_control_model.lateral_offset_to_wheel_delta_gain = 180.0;
     params.bev_geometry.boundary_trace_max_adjacent_distance_m = 0.45F;
+    params.ml.enabled = true;
+    params.ml.maneuver.enabled = true;
     service.Start(params, diagnostics);
 
     ls2k::runtime::RuntimeState state{};
@@ -1425,6 +1434,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must not expose removed local Y boundary settings");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "service config snapshot must not expose removed cross white-ratio settings");
+    Require(Contains(header_json, "\"CROSS_BOUNDARY_EXPANSION_MIN_M\":"),
+            "service config snapshot must expose cross expansion distance");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
             "service config snapshot must expose CircleV2 enablement");
     Require(Contains(header_json, "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":400"),
@@ -1650,6 +1661,8 @@ void TestServicePublishesFromRecentMatchingCapture() {
         state.control_debug_snapshot.steering.frame_id = 41;
         state.control_debug_snapshot.steering.capture_time_ms = 1234;
         state.control_debug_snapshot.steering.ml.enabled = true;
+        state.control_debug_snapshot.steering.ml.maneuver_enabled = false;
+        state.control_debug_snapshot.steering.ml.takeover_selected = false;
         state.control_debug_snapshot.steering.ml.artifact_candidate_id = "candidate-v9";
         state.control_debug_snapshot.steering.ml.template_codes_sha256 = "codes-sha256";
         state.control_debug_snapshot.steering.ml.artifact_prototype_count = 87;

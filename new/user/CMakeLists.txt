@@ -197,9 +197,8 @@ set(NEW_SRCS
     ../code/vision/ml/red_rectangle_detector.cpp
     ../code/vision/ml/roi_sampler.cpp
     ${ML_CLASSIFIER_SOURCES}
+    ../code/vision/ml/ml_observer.cpp
     ../code/vision/ml/ml_path_generator.cpp
-    ../code/vision/ml/ml_reference_adapter.cpp
-    ../code/vision/ml/ml_inertial_path_tracker.cpp
     ../code/vision/ml/ml_scene.cpp
     ../code/vision/bev/bev_projector.cpp
     ../code/vision/bev/bev_image_segment_connectivity.cpp
@@ -210,6 +209,7 @@ set(NEW_SRCS
     ../code/vision/bev/bev_reference_path_builder.cpp
     ../code/vision/bev/bev_simple_perception.cpp
     ../code/vision/elements/cross_exit_element_evidence.cpp
+    ../code/vision/elements/cross_straight_path_planner.cpp
     ../code/vision/elements/visual_element_evidence.cpp
     ../code/vision/elements/visual_element_pipeline.cpp
     ../code/reference/visual_reference_orchestration.cpp

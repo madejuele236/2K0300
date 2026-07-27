@@ -116,6 +116,8 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.yaw_control.heading_term = -0.01;
     snapshot.steering.yaw_control.curvature_term = 0.10;
     snapshot.steering.ml.enabled = true;
+    snapshot.steering.ml.maneuver_enabled = true;
+    snapshot.steering.ml.takeover_selected = true;
     snapshot.steering.ml.artifact_candidate_id = "candidate-v9";
     snapshot.steering.ml.descriptor_config_hash = "descriptor-hash";
     snapshot.steering.ml.template_table_hash = "table-hash";
@@ -147,10 +149,10 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.ml.reason = "tracking";
     snapshot.steering.ml.confirm_count = 4;
     snapshot.steering.ml.active = true;
-    snapshot.steering.ml.pose_delta.valid = true;
-    snapshot.steering.ml.progress_m = 0.42F;
-    snapshot.steering.ml.lateral_error_m = -0.03F;
-    snapshot.steering.ml.heading_error_rad = 0.04F;
+    snapshot.steering.ml.odometry_valid = true;
+    snapshot.steering.ml.odometry_reason = "ok";
+    snapshot.steering.ml.traveled_forward_m = 0.42F;
+    snapshot.steering.ml.elapsed_ms = 1234U;
     snapshot.steering.ml.path_sample_count = 6;
     snapshot.steering.speed_selection_source = "ml_maneuver";
     snapshot.steering.effective_speed_target = 77.0;
@@ -320,7 +322,9 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
            "assistant telemetry must include tracking sample count");
     Expect(Contains(json, "\"yaw_control\":{\"valid\":true,\"reason\":\"ok\",\"turn_output_target\":0.12"),
             "assistant telemetry must include yaw-control object");
-    Expect(Contains(json, "\"ml\":{\"enabled\":true,\"artifact\":"),
+    Expect(Contains(json,
+                    "\"ml\":{\"enabled\":true,\"maneuver_enabled\":true,"
+                    "\"takeover_selected\":true,\"artifact\":"),
            "assistant telemetry must include ML metadata");
     Expect(Contains(json, "\"candidate_id\":\"candidate-v9\""),
            "assistant telemetry must include generated artifact identity");

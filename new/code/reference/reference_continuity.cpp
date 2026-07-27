@@ -6,6 +6,7 @@
 #include <cstddef>
 
 #include "port/perf_counter.hpp"
+#include "port/bev_reference_path_utils.hpp"
 #include "reference/reference_tracking_geometry.hpp"
 #include "reference/reference_usability.hpp"
 
@@ -92,18 +93,13 @@ port::ReferenceContinuityResult BuildReferenceHoldCandidate(
     }
 
     InitializeReferencePath(result.reference_path, params, port::ReferenceMode::kHoldLast);
-    std::size_t copied = 0;
-    for (std::size_t index = 0; index < result.reference_path.sampled_path.size(); ++index) {
-        port::BEVPathSample sample = prior_hold.last_reference[index];
-        if (!sample.present ||
-            !std::isfinite(sample.point.forward_m) ||
-            !std::isfinite(sample.point.lateral_m)) {
-            break;
-        }
+    result.reference_path.sampled_path = prior_hold.last_reference;
+    const std::size_t copied =
+        port::CompactFiniteReferenceSamples(result.reference_path);
+    for (std::size_t index = 0U; index < copied; ++index) {
+        port::BEVPathSample& sample = result.reference_path.sampled_path[index];
         sample.confidence *= 0.75F;
         sample.source = port::BEVPathPointSource::kHold;
-        result.reference_path.sampled_path[index] = sample;
-        ++copied;
     }
     if (copied == 0) {
         result.reference_path = {};

@@ -297,9 +297,9 @@ int main(int argc, char** argv) {
                       "\"CONFIRM_FRAMES\": 5},"
                       "\"CLASS_MAPPING\": {\"CLASS_0_ACTION\": \"straight\","
                       "\"CLASS_1_ACTION\": \"left\",\"CLASS_2_ACTION\": \"right\"},"
-                      "\"MANEUVER\": {\"SPEED_TARGET\": 100,\"MIN_BOUNDARY_SAMPLES\": 3,"
-                      "\"EXIT_FORWARD_M\": 0.5,\"EXIT_MAX_ABS_LATERAL_ERROR_M\": 0.1,"
-                      "\"EXIT_MAX_ABS_HEADING_ERROR_RAD\": 0.2,\"MAX_DURATION_MS\": 1000,"
+                      "\"MANEUVER\": {\"ENABLED\": 1,\"SPEED_TARGET\": 100,\"MIN_BOUNDARY_SAMPLES\": 3,"
+                      "\"PATH_OUTWARD_OFFSET_M\": 0.12,\"EXIT_FORWARD_M\": 0.5,"
+                      "\"MAX_DURATION_MS\": 1000,"
                       "\"MAX_INTEGRATION_GAP_MS\": 30,\"COOLDOWN_MS\": 200}},\n"
                       "  \"BEV_GEOMETRY\": {"
                       "\"NOMINAL_ROAD_HALF_WIDTH_M\": 0.33,"
@@ -317,6 +317,7 @@ int main(int argc, char** argv) {
                       "  \"BEV_ELEMENT\": {"
                       "\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 11,"
                       "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 7,"
+                      "\"CROSS_BOUNDARY_EXPANSION_MIN_M\": 0.071,"
                       "\"CIRCLE_V2_ENABLED\": 1,"
                       "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\": 300,"
                       "\"CIRCLE_V2_EXIT_HOLD_FRAMES\": 4,"
@@ -359,9 +360,9 @@ int main(int argc, char** argv) {
                "prohibit_reverse_pwm=1 should parse true");
         Expect(enabled.drive_pwm_step_limit == 750,
                "drive_pwm_step_limit should parse");
-        Expect(enabled.ml.enabled &&
+        Expect(enabled.ml.enabled && enabled.ml.maneuver.enabled &&
                    std::abs(enabled.motion_odometry.encoder_ticks_to_meter - 0.001) < 1.0e-9,
-               "enabled ML must parse the shared motion-odometry scale");
+               "enabled ML maneuver must parse the shared motion-odometry scale");
         Expect(enabled.ml.v9.min_margin == 2 &&
                    enabled.ml.v9.max_best_distance == 50 &&
                    enabled.ml.v9.confirm_frames == 3,
@@ -378,7 +379,8 @@ int main(int argc, char** argv) {
                    std::abs(enabled.ml.roi.expected_long_edge_m - 0.2) < 1.0e-9 &&
                    std::abs(enabled.ml.roi.crop_long_offset_m + 0.004) < 1.0e-9 &&
                    std::abs(enabled.ml.roi.crop_forward_offset_m + 0.005) < 1.0e-9 &&
-                   std::abs(enabled.ml.maneuver.speed_target - 100.0) < 1.0e-9,
+                   std::abs(enabled.ml.maneuver.speed_target - 100.0) < 1.0e-9 &&
+                   std::abs(enabled.ml.maneuver.path_outward_offset_m - 0.12) < 1.0e-9,
                "ML ROI and maneuver parameters should parse");
         Expect(std::abs(enabled.bev_geometry.nominal_road_half_width_m - 0.33F) <
                    1.0e-6F,
@@ -411,6 +413,9 @@ int main(int argc, char** argv) {
                "CROSS_MIN_SAMPLEABLE_PER_ROW should parse");
         Expect(enabled.bev_element.cross_connectivity_sample_index == 7,
                "CROSS_CONNECTIVITY_SAMPLE_INDEX should parse");
+        Expect(std::abs(enabled.bev_element.cross_boundary_expansion_min_m - 0.071F) <
+                   1.0e-6F,
+               "CROSS_BOUNDARY_EXPANSION_MIN_M should parse");
         Expect(enabled.bev_element.circle_v2_enabled,
                "CIRCLE_V2_ENABLED=1 should parse true");
         Expect(std::abs(enabled.bev_element.circle_v2_exit_yaw_threshold_deg - 300.0F) <
@@ -495,6 +500,11 @@ int main(int argc, char** argv) {
         Expect(absent.bev_element.cross_connectivity_sample_index == 9 &&
                    builtin_defaults.bev_element.cross_connectivity_sample_index == 9,
                "missing BEV_ELEMENT should keep cross connectivity sample index default");
+        Expect(std::abs(absent.bev_element.cross_boundary_expansion_min_m - 0.055F) <
+                   1.0e-6F &&
+                   std::abs(builtin_defaults.bev_element.cross_boundary_expansion_min_m -
+                            0.055F) < 1.0e-6F,
+               "missing BEV_ELEMENT should keep cross expansion distance default");
         Expect(absent.bev_element.circle_v2_enabled ==
                    builtin_defaults.bev_element.circle_v2_enabled,
                "missing BEV_ELEMENT should keep CircleV2 enabled");
@@ -1153,6 +1163,8 @@ int main(int argc, char** argv) {
              "  \"BEV_ELEMENT\": {\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": -1}"},
             {"invalid_cross_connectivity_index_too_large",
              "  \"BEV_ELEMENT\": {\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 24}"},
+            {"invalid_cross_expansion_distance",
+             "  \"BEV_ELEMENT\": {\"CROSS_BOUNDARY_EXPANSION_MIN_M\": 0}"},
             {"invalid_geometry",
              "  \"BEV_GEOMETRY\": {\"NOMINAL_ROAD_HALF_WIDTH_M\": 0}"},
             {"invalid_boundary_trace",

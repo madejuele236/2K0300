@@ -23,6 +23,9 @@ int main() {
     Expect(ls2k::control::SelectPerceptionSpeedTarget(perception, params) == 400.0,
            "ordinary running target must be the inactive default");
     perception.ml.active = true;
+    Expect(ls2k::control::SelectPerceptionSpeedTarget(perception, params) == 400.0,
+           "unselected ML state must not change speed");
+    perception.ml.takeover_selected = true;
     const double ml_default = ls2k::control::SelectPerceptionSpeedTarget(perception, params);
     Expect(ml_default == 180.0, "ML active target must override ordinary running speed");
 

@@ -209,7 +209,7 @@ void TestFailClosed() {
            "forward delta fail reason mismatch");
 }
 
-void TestDoesNotCrossInputReferenceGap() {
+void TestInputReferenceGapOnlyRemovesThatSample() {
     auto path = MakeStraightPath();
     path.sampled_path[1].present = false;
     auto params = EnabledParams();
@@ -221,13 +221,14 @@ void TestDoesNotCrossInputReferenceGap() {
         130,
         MakePoseDelta(0.0, 0.0, 0.0),
         params);
-    Expect(result.facts.valid, "single leading prefix sample should remain alignable");
-    Expect(result.facts.aligned_sample_count == 1,
-           "alignment must not compact samples across an input reference gap");
+    Expect(result.facts.valid, "remaining finite samples should remain alignable");
+    Expect(result.facts.aligned_sample_count == 3,
+           "alignment must exclude only the missing input sample");
     Expect(result.reference_path.sampled_path[0].present,
            "leading observed prefix sample must remain present");
-    Expect(!result.reference_path.sampled_path[1].present,
-           "gap-after sample must not be compacted into output index 1");
+    Expect(result.reference_path.sampled_path[1].present &&
+               std::abs(result.reference_path.sampled_path[1].point.forward_m - 0.60F) < 1.0e-6F,
+           "the sample after a gap must be compacted with its geometry preserved");
 }
 
 }  // namespace
@@ -240,7 +241,7 @@ int main() {
         TestLateralShift();
         TestFutureEffectiveTimeFacts();
         TestFailClosed();
-        TestDoesNotCrossInputReferenceGap();
+        TestInputReferenceGapOnlyRemovesThatSample();
     } catch (const std::exception& error) {
         std::cerr << "reference_time_alignment_test failed: " << error.what() << "\n";
         return 1;

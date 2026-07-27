@@ -1,10 +1,9 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <string>
 
-#include "vision/ml/ml_inertial_path_tracker.hpp"
 #include "vision/ml/ml_path_generator.hpp"
-#include "vision/ml/ml_reference_adapter.hpp"
 #include "vision/ml/ml_scene.hpp"
 
 namespace {
@@ -16,182 +15,216 @@ void Expect(bool value, const char* message) {
     }
 }
 
-ls2k::port::MlLockedManeuver MakeLocked() {
-    ls2k::port::MlOrientedRectangle rectangle{};
-    rectangle.valid = true;
-    rectangle.center = {0.0F, 0.0F};
-    rectangle.long_axis_forward = 0.0F;
-    rectangle.long_axis_lateral = -1.0F;  // short normal resolves to +vehicle-forward
-    ls2k::port::BEVReferencePath boundary{};
-    boundary.mode = ls2k::port::ReferenceMode::kMlObservedBoundary;
-    for (std::size_t i = 0; i < 6U; ++i) {
-        boundary.sampled_path[i].present = true;
-        boundary.sampled_path[i].point = {0.2F + 0.2F * static_cast<float>(i), 0.1F};
-        boundary.sampled_path[i].source =
-            ls2k::port::BEVPathPointSource::kMlObservedBoundary;
+void ExpectNear(float actual, float expected, const char* message) {
+    if (std::fabs(actual - expected) > 1.0e-5F) {
+        std::cerr << "FAIL: " << message << " actual=" << actual
+                  << " expected=" << expected << '\n';
+        std::exit(1);
     }
-    return ls2k::vision::ml::LockObservedBoundaryToMarker(
-        ls2k::port::MlAction::kLeft, 100U, rectangle, boundary);
-}
-
-ls2k::port::MotionHistory MakeHistory(bool encoder_valid = true) {
-    ls2k::port::MotionHistory history{};
-    history.Push({100U, true, 0.0F, encoder_valid, 0, 0});
-    history.Push({120U, true, 0.0F, encoder_valid, 10, 10});
-    history.Push({140U, true, 0.0F, encoder_valid, 10, 10});
-    return history;
 }
 
 ls2k::port::RuntimeParameters MakeParams() {
     ls2k::port::RuntimeParameters params{};
     params.ml.enabled = true;
+    params.ml.maneuver.enabled = true;
+    params.ml.v9.confirm_frames = 1;
     params.motion_odometry.encoder_ticks_to_meter = 0.01;
     params.ml.maneuver.min_boundary_samples = 3;
-    params.ml.maneuver.exit_forward_m = 0.15;
-    params.ml.maneuver.exit_max_abs_lateral_error_m = 0.01;
-    params.ml.maneuver.exit_max_abs_heading_error_rad = 0.01;
+    params.ml.maneuver.path_outward_offset_m = 0.1;
+    params.ml.maneuver.exit_forward_m = 0.5;
     params.ml.maneuver.max_duration_ms = 1000;
     params.ml.maneuver.max_integration_gap_ms = 30;
     params.ml.maneuver.cooldown_ms = 200;
     return params;
 }
 
-void TestMarkerLockAndTracking() {
-    const auto locked = MakeLocked();
-    Expect(locked.valid, "literal boundary did not lock");
-    Expect(std::fabs(locked.marker_forward_axis_forward - 1.0F) < 1.0e-6F,
-           "short-axis normal was not made vehicle-forward positive");
-    auto state = ls2k::port::MlInertialTrackerState{};
-    ls2k::vision::ml::MlInertialPathTracker::Start(locked, state);
-    const auto tracked = ls2k::vision::ml::MlInertialPathTracker::Step(
-        locked, MakeHistory(), 120U, MakeParams().motion_odometry,
-        MakeParams().ml.maneuver, state);
-    Expect(tracked.valid, "valid IMU/encoder interval rejected");
-    Expect(std::fabs(tracked.pose_delta.forward_m - 0.1F) < 1.0e-5F,
-           "encoder mean was not scaled into forward progress");
-    Expect(tracked.reference_path.mode == ls2k::port::ReferenceMode::kMlObservedBoundary,
-           "tracked path lost ML observed-boundary mode");
-}
-
-void TestObservedBoundaryGeneratorIsLiteralAndReplaceable() {
+ls2k::vision::BEVRoadPathFacts MakeFacts(float left_lateral = -0.2F,
+                                         float right_lateral = 0.2F,
+                                         std::size_t count = 4U) {
     ls2k::vision::BEVRoadPathFacts facts{};
-    for (std::size_t index = 0; index < 3U; ++index) {
-        facts.center[index].present = true;
-        facts.center[index].point = {0.2F * static_cast<float>(index + 1U), 0.0F};
-        facts.actual_left_boundary[index].present = true;
-        facts.actual_left_boundary[index].point = {
-            facts.center[index].point.forward_m, -0.17F - 0.01F * static_cast<float>(index)};
+    for (std::size_t index = 0U; index < count; ++index) {
+        const float forward = 0.2F * static_cast<float>(index + 1U);
+        facts.actual_left_boundary[index] = {true, {forward, left_lateral}, 1.0F};
+        facts.actual_right_boundary[index] = {true, {forward, right_lateral}, 1.0F};
     }
-    const ls2k::vision::ml::ObservedBoundaryMlPathGenerator generator{};
-    const auto left = generator.Generate({ls2k::port::MlAction::kLeft, &facts, 3U});
-    Expect(left.mode == ls2k::port::ReferenceMode::kMlObservedBoundary &&
-               left.sampled_path[0].point.lateral_m == -0.17F,
-           "v1 generator must preserve the literal actual-left coordinate");
-    const auto right = generator.Generate({ls2k::port::MlAction::kRight, &facts, 3U});
-    Expect(right.mode == ls2k::port::ReferenceMode::kNone,
-           "v1 generator must not synthesize a missing requested side");
+    return facts;
 }
 
-void TestInvalidEncoderExitsTracker() {
-    const auto locked = MakeLocked();
-    auto state = ls2k::port::MlInertialTrackerState{};
-    ls2k::vision::ml::MlInertialPathTracker::Start(locked, state);
-    const auto tracked = ls2k::vision::ml::MlInertialPathTracker::Step(
-        locked, MakeHistory(false), 120U, MakeParams().motion_odometry,
-        MakeParams().ml.maneuver, state);
-    Expect(!tracked.valid && std::string(tracked.reason) == "encoder_invalid",
-           "invalid encoder did not remain visible at tracker owner");
+ls2k::vision::ml::MlObservation MakeObservation(ls2k::port::MlAction action) {
+    ls2k::vision::ml::MlObservation observation{};
+    observation.accepted = true;
+    observation.reason = "accepted";
+    observation.mapped_action = action;
+    observation.classification.backend = ls2k::port::MlClassifierBackend::kV9Hamming;
+    return observation;
 }
 
-void TestActiveCompletionEmitsNoCandidate() {
-    auto memory = ls2k::port::MlSceneMemory{};
+ls2k::port::MotionHistory MakeHistory(bool encoder_valid = true) {
+    ls2k::port::MotionHistory history{};
+    history.Push({100U, true, 0.0F, true, 0, 0});
+    history.Push({120U, true, 0.0F, encoder_valid, 8, 12});
+    history.Push({140U, true, 0.0F, encoder_valid, 8, 12});
+    return history;
+}
+
+ls2k::port::MlSceneMemory MakeActive(ls2k::port::MlAction action =
+                                         ls2k::port::MlAction::kRight) {
+    ls2k::port::MlSceneMemory memory{};
     memory.phase = ls2k::port::MlScenePhase::kActive;
-    memory.locked = MakeLocked();
-    ls2k::vision::ml::MlInertialPathTracker::Start(memory.locked, memory.tracker);
+    memory.locked_action = action;
+    memory.maneuver_start_ms = 100U;
+    memory.distance_cursor_ms = 100U;
+    return memory;
+}
+
+void TestBoundaryOffsetDirectionAndSource() {
+    const auto facts = MakeFacts();
+    const auto left = ls2k::vision::ml::BuildMlBoundaryOffsetPath(
+        ls2k::port::MlAction::kLeft, facts, 3U, 0.1F);
+    const auto right = ls2k::vision::ml::BuildMlBoundaryOffsetPath(
+        ls2k::port::MlAction::kRight, facts, 3U, 0.1F);
+    Expect(left.mode == ls2k::port::ReferenceMode::kMlBoundaryOffset &&
+               right.mode == ls2k::port::ReferenceMode::kMlBoundaryOffset,
+           "ML boundary offset mode missing");
+    ExpectNear(left.sampled_path[0].point.lateral_m, -0.3F,
+               "left boundary must offset toward negative lateral");
+    ExpectNear(right.sampled_path[0].point.lateral_m, 0.3F,
+               "right boundary must offset toward positive lateral");
+    Expect(left.sampled_path[0].source ==
+               ls2k::port::BEVPathPointSource::kMlBoundaryOffset,
+           "offset path must publish its own point source");
+}
+
+void TestLockPublishesOffsetPathWithoutConnectivityGate() {
+    const auto params = MakeParams();
+    const auto facts = MakeFacts();
+    const auto observation = MakeObservation(ls2k::port::MlAction::kRight);
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.observation = &observation;
+    input.road_path_facts = &facts;
+    input.capture_time_ms = 100U;
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, params, {});
+    Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kActive &&
+               result.next_memory.locked_action == ls2k::port::MlAction::kRight,
+           "confirmed right action did not lock");
+    Expect(result.candidate.present && result.telemetry.active,
+           "lock frame did not publish active ML candidate");
+    ExpectNear(result.candidate.reference_path.sampled_path[0].point.lateral_m, 0.3F,
+               "lock frame did not publish configured outward offset");
+}
+
+void TestActiveRebuildsFromCurrentBoundary() {
+    const auto params = MakeParams();
+    const auto current_facts = MakeFacts(-0.4F, 0.35F);
     const auto history = MakeHistory();
-    ls2k::vision::ml::MlSceneInput input{};
+    auto memory = MakeActive();
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.road_path_facts = &current_facts;
     input.motion_history = &history;
     input.capture_time_ms = 120U;
-    auto first = ls2k::vision::ml::StepMlScene(input, MakeParams(), memory);
-    Expect(first.candidate.present && first.suppress_other_scene_candidates,
-           "active scene did not exclusively emit ML candidate");
-    input.capture_time_ms = 140U;
-    auto completed = ls2k::vision::ml::StepMlScene(input, MakeParams(), first.next_memory);
-    Expect(completed.next_memory.phase == ls2k::port::MlScenePhase::kCooldown,
-           "progress/error completion did not enter cooldown");
-    Expect(!completed.candidate.present && completed.suppress_other_scene_candidates,
-           "exit frame must release ML while limiting takeover to line/hold");
-    Expect(std::string(completed.telemetry.reason) == "maneuver_complete",
-           "completion reason mismatch");
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, params, memory);
+    Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kActive &&
+               result.candidate.present,
+           "valid current boundary did not keep active candidate");
+    ExpectNear(result.candidate.reference_path.sampled_path[0].point.lateral_m, 0.45F,
+               "active path was frozen instead of using current boundary");
+    ExpectNear(result.next_memory.traveled_forward_m, 0.1F,
+               "scalar encoder mean was not integrated");
 }
 
-void TestSceneOwnsMappedActionConfirmation() {
+void TestMissingCurrentPathHoldsOwnership() {
+    const auto params = MakeParams();
+    const auto insufficient = MakeFacts(-0.2F, 0.2F, 2U);
+    const auto invalid_history = MakeHistory(false);
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.road_path_facts = &insufficient;
+    input.motion_history = &invalid_history;
+    input.capture_time_ms = 120U;
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, params, MakeActive());
+    Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kActive &&
+               result.telemetry.active && !result.candidate.present,
+           "single-frame boundary loss must preserve ML ownership without a candidate");
+    Expect(std::string(result.telemetry.reason) == "active_path_unavailable" &&
+               !result.telemetry.odometry_valid &&
+               std::string(result.telemetry.odometry_reason) == "encoder_invalid",
+           "boundary and odometry facts were not independently observable");
+}
+
+void TestDistanceCompletion() {
+    auto params = MakeParams();
+    params.ml.maneuver.exit_forward_m = 0.1;
+    const auto facts = MakeFacts();
+    const auto history = MakeHistory();
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.road_path_facts = &facts;
+    input.motion_history = &history;
+    input.capture_time_ms = 120U;
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, params, MakeActive());
+    Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kCooldown &&
+               !result.candidate.present &&
+               std::string(result.telemetry.reason) == "distance_complete",
+           "distance completion did not release ML ownership");
+}
+
+void TestTimeoutCompletesWithoutOdometry() {
+    auto params = MakeParams();
+    params.ml.maneuver.max_duration_ms = 50;
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.capture_time_ms = 150U;
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, params, MakeActive());
+    Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kCooldown &&
+               std::string(result.telemetry.reason) == "timeout",
+           "timeout must remain an independent completion condition");
+}
+
+void TestCooldownRetainsCompletionReason() {
+    auto prior = ls2k::port::MlSceneMemory{};
+    prior.phase = ls2k::port::MlScenePhase::kCooldown;
+    prior.cooldown_start_ms = 100U;
+    prior.cooldown_reason = "distance_complete";
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.capture_time_ms = 150U;
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, MakeParams(), prior);
+    Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kCooldown &&
+               std::string(result.telemetry.reason) == "distance_complete",
+           "cooldown did not retain the completion reason");
+}
+
+void TestConfirmationAndObserveOnly() {
     ls2k::port::MlConfirmationState state{};
     Expect(!ls2k::vision::ml::StepMlConfirmation(
-               ls2k::port::MlAction::kLeft, true, 2, state) &&
-               state.consecutive_frames == 1,
-           "first valid left action must enter confirmation");
-    Expect(!ls2k::vision::ml::StepMlConfirmation(
-               ls2k::port::MlAction::kStraight, true, 2, state) &&
-               state.consecutive_frames == 0,
-           "mapped straight action must clear non-straight confirmation");
-    Expect(!ls2k::vision::ml::StepMlConfirmation(
                ls2k::port::MlAction::kLeft, true, 2, state),
-           "left confirmation should restart after straight");
+           "first confirmation frame must not lock");
+    Expect(ls2k::vision::ml::StepMlConfirmation(
+               ls2k::port::MlAction::kLeft, true, 2, state),
+           "second identical frame must lock");
     Expect(!ls2k::vision::ml::StepMlConfirmation(
                ls2k::port::MlAction::kLeft, false, 2, state) &&
                state.consecutive_frames == 0,
-           "missing literal requested boundary must clear confirmation");
-    Expect(!ls2k::vision::ml::StepMlConfirmation(
-               ls2k::port::MlAction::kLeft, true, 2, state),
-           "left confirmation should restart after missing boundary");
-    Expect(!ls2k::vision::ml::StepMlConfirmation(
-               ls2k::port::MlAction::kRight, true, 2, state) &&
-               state.pending_action == ls2k::port::MlAction::kRight &&
-               state.consecutive_frames == 1,
-           "mapped action change must restart the count");
-    Expect(ls2k::vision::ml::StepMlConfirmation(
-               ls2k::port::MlAction::kRight, true, 2, state),
-           "same mapped right action must confirm on the configured frame");
-}
+           "unavailable requested boundary must reset pre-lock confirmation");
 
-void TestScenePolicyIsBackendSpecific() {
     auto params = MakeParams();
-    params.ml.v9.max_best_distance = 126;
-    params.ml.v9.confirm_frames = 2;
-    params.ml.tflite_identity.max_best_distance = 2076;
-    params.ml.tflite_identity.confirm_frames = 3;
-    const auto v9 = ls2k::vision::ml::SelectMlClassificationPolicy(
-        ls2k::port::MlClassifierBackend::kV9Hamming, params.ml);
-    const auto tflite = ls2k::vision::ml::SelectMlClassificationPolicy(
-        ls2k::port::MlClassifierBackend::kTfliteInt8, params.ml);
-    Expect(v9.max_best_distance == 126 && v9.confirm_frames == 2 &&
-               tflite.max_best_distance == 2076 && tflite.confirm_frames == 3,
-           "scene policy must select acceptance and confirmation by backend");
-}
-
-void TestDisabledSceneDoesNoWork() {
-    auto params = MakeParams();
-    params.ml.enabled = false;
-    ls2k::vision::ml::MlSceneInput input{};
-    ls2k::port::MlSceneMemory prior{};
-    prior.phase = ls2k::port::MlScenePhase::kActive;
-    const auto result = ls2k::vision::ml::StepMlScene(input, params, prior);
+    params.ml.maneuver.enabled = false;
+    const auto observation = MakeObservation(ls2k::port::MlAction::kLeft);
+    ls2k::vision::ml::MlManeuverInput input{};
+    input.observation = &observation;
+    const auto result = ls2k::vision::ml::StepMlManeuver(input, params, MakeActive());
     Expect(result.next_memory.phase == ls2k::port::MlScenePhase::kDisabled &&
-               !result.candidate.present && !result.telemetry.detector_valid &&
-               result.telemetry.total_us == 0U,
-           "disabled ML must reset without scheduling detector or inference work");
+               !result.candidate.present &&
+               std::string(result.telemetry.reason) == "observe_only",
+           "observe-only must not retain maneuver ownership");
 }
 
 }  // namespace
 
 int main() {
-    TestMarkerLockAndTracking();
-    TestObservedBoundaryGeneratorIsLiteralAndReplaceable();
-    TestInvalidEncoderExitsTracker();
-    TestActiveCompletionEmitsNoCandidate();
-    TestSceneOwnsMappedActionConfirmation();
-    TestScenePolicyIsBackendSpecific();
-    TestDisabledSceneDoesNoWork();
-    std::cout << "ml scene/inertial tests passed\n";
+    TestBoundaryOffsetDirectionAndSource();
+    TestLockPublishesOffsetPathWithoutConnectivityGate();
+    TestActiveRebuildsFromCurrentBoundary();
+    TestMissingCurrentPathHoldsOwnership();
+    TestDistanceCompletion();
+    TestTimeoutCompletesWithoutOdometry();
+    TestCooldownRetainsCompletionReason();
+    TestConfirmationAndObserveOnly();
+    std::cout << "ml scene distance/timeout tests passed\n";
 }

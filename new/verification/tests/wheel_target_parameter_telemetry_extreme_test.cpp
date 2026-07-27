@@ -86,7 +86,13 @@ std::string BuildConfig(const std::string& template_json,
         json, "wheel_turn_accel_delta_scale", JsonNumber(accel_scale));
     json = ReplaceJsonNumber(
         json, "wheel_turn_decel_delta_scale", JsonNumber(decel_scale));
-    return ReplaceJsonNumber(json, "SPEED_TARGET", JsonNumber(ml_speed));
+    json = ReplaceJsonNumber(json, "SPEED_TARGET", JsonNumber(ml_speed));
+    const std::size_t ml_position = json.find("\"ML\"");
+    Require(ml_position != std::string::npos, "ML block not found");
+    json = ReplaceJsonNumber(json, "ENABLED", "0", ml_position);
+    const std::size_t maneuver_position = json.find("\"MANEUVER\"", ml_position);
+    Require(maneuver_position != std::string::npos, "ML.MANEUVER block not found");
+    return ReplaceJsonNumber(json, "ENABLED", "0", maneuver_position);
 }
 
 std::string BuildEnabledMlConfig(const std::string& template_json,
@@ -95,6 +101,9 @@ std::string BuildEnabledMlConfig(const std::string& template_json,
     const std::size_t ml_position = json.find("\"ML\"");
     Require(ml_position != std::string::npos, "ML block not found");
     json = ReplaceJsonNumber(json, "ENABLED", "1", ml_position);
+    const std::size_t maneuver_position = json.find("\"MANEUVER\"", ml_position);
+    Require(maneuver_position != std::string::npos, "ML.MANEUVER block not found");
+    json = ReplaceJsonNumber(json, "ENABLED", "1", maneuver_position);
     json = ReplaceJsonNumber(json, "ENCODER_TICKS_TO_METER", "0.001");
     json = ReplaceJsonNumber(json, "EXIT_FORWARD_M", "0.5", ml_position);
     json = ReplaceJsonNumber(json, "MAX_DURATION_MS", "1000", ml_position);

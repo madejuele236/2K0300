@@ -84,8 +84,11 @@ void TestDisabledAndEnabledValidation() {
     roi.long_edge_tolerance_m = 0.05; roi.short_edge_tolerance_m = 0.03;
     roi.max_long_edge_to_lateral_rad = 0.3; roi.min_component_cells = 4;
     roi.min_rectangularity = 0.5; roi.min_red_fill_ratio = 0.5;
+    Expect(ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),
+           "observe-only ML must not require maneuver calibration");
     params.motion_odometry.encoder_ticks_to_meter = 0.001;
     auto& maneuver = params.ml.maneuver;
+    maneuver.enabled = true;
     maneuver.speed_target = 100; maneuver.exit_forward_m = 0.5;
     maneuver.max_duration_ms = 1000; maneuver.max_integration_gap_ms = 20;
     Expect(ls2k::port::ValidateMlParameters(params.ml, params.motion_odometry),

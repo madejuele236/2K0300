@@ -8,7 +8,10 @@
 #include <vector>
 
 #include "platform/bootstrap.hpp"
+#include "vision/bev/bev_image_segment_connectivity.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
+#include "vision/elements/cross_exit_element_evidence.hpp"
+#include "vision/elements/cross_straight_path_planner.hpp"
 #include "vision/image/otsu_threshold.hpp"
 
 namespace {
@@ -100,15 +103,75 @@ int main(int argc, char** argv) {
         ls2k::vision::BEVSampleProjectionLut lut{};
         const ls2k::vision::BEVSimplePerceptionResult result =
             ls2k::vision::RunBEVSimplePerception(frame, state, params, projector, &lut);
+        const auto cross = ls2k::vision::DetectCrossExitEvidence(
+            result.rows,
+            result.origin_to_cross_sample_midpoint_connectivity,
+            params);
+        const ls2k::vision::BEVImageSegmentConnectivity connectivity(frame,
+                                                                      projector,
+                                                                      state);
+        const auto cross_candidate = ls2k::vision::BuildCrossStraightPathCandidate(
+            result.rows, cross, params, connectivity);
 
         std::cout << std::fixed << std::setprecision(6)
                   << "otsu=" << threshold.threshold
+                  << " cross=" << cross.present
+                  << " cross_path=" << cross_candidate.present
+                  << " cross_reason=" << cross_candidate.reason
                   << " selected_points=";
         std::size_t selected_count = 0U;
         for (const auto& selected : result.road_path_facts.center) {
             selected_count += selected.present ? 1U : 0U;
         }
         std::cout << selected_count << '\n';
+        std::cout << "cross_samples=";
+        ls2k::port::BEVPoint previous{};
+        bool first_cross_sample = true;
+        for (const auto& sample : cross_candidate.reference_path.sampled_path) {
+            if (!sample.present) {
+                break;
+            }
+            const auto segment = connectivity.Evaluate(
+                previous,
+                sample.point,
+                first_cross_sample
+                    ? ls2k::vision::BEVSegmentVisibilityPolicy::kAllowFromEndpointClip
+                    : ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
+            std::cout << '[' << sample.point.forward_m << ',' << sample.point.lateral_m
+                      << ",status=" << static_cast<int>(segment.status) << ']';
+            previous = sample.point;
+            first_cross_sample = false;
+        }
+        std::cout << '\n';
+
+        std::cout << "zero_axis_segments=";
+        ls2k::port::BEVPoint previous_zero{};
+        bool have_previous_zero = false;
+        for (const auto& row : result.rows) {
+            bool contains_zero = false;
+            for (const auto& run : row.white_runs) {
+                if (run.left_m <= 0.0F && run.right_m >= 0.0F) {
+                    contains_zero = true;
+                    break;
+                }
+            }
+            if (!contains_zero) {
+                have_previous_zero = false;
+                continue;
+            }
+            const ls2k::port::BEVPoint current_zero{row.forward_m, 0.0F};
+            if (have_previous_zero) {
+                const auto segment = connectivity.Evaluate(
+                    previous_zero,
+                    current_zero,
+                    ls2k::vision::BEVSegmentVisibilityPolicy::kRequireFullSegment);
+                std::cout << '[' << previous_zero.forward_m << "->" << row.forward_m
+                          << ",status=" << static_cast<int>(segment.status) << ']';
+            }
+            previous_zero = current_zero;
+            have_previous_zero = true;
+        }
+        std::cout << '\n';
 
         for (std::size_t row_index = 0; row_index < result.rows.size(); ++row_index) {
             const auto& row = result.rows[row_index];

@@ -1,5 +1,7 @@
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 
+#include "port/bev_reference_path_utils.hpp"
+
 namespace ls2k::vision {
 namespace {
 
@@ -20,7 +22,7 @@ std::optional<port::VisualReferenceCandidate> AdaptCircleV2ReferencePlan(
     if (!plan.has_value() || plan->dir == CircleDir::kNone ||
         (plan->role != CircleV2ReferenceRole::kInnerTrace &&
          plan->role != CircleV2ReferenceRole::kExitTrace) ||
-        !plan->reference_path.sampled_path[0].present) {
+        port::CountFiniteReferenceSamples(plan->reference_path) == 0U) {
         return std::nullopt;
     }
     port::VisualReferenceCandidate candidate{};

@@ -1,6 +1,8 @@
 #ifndef LS2K_VISION_ML_RED_RECTANGLE_DETECTOR_HPP
 #define LS2K_VISION_ML_RED_RECTANGLE_DETECTOR_HPP
 
+#include <array>
+#include <cstddef>
 #include <vector>
 
 #include "port/camera_frame_types.hpp"
@@ -15,6 +17,11 @@ struct MlRedRectangleProjectionEntry {
     float lateral_m = 0.0F;
     port::ImagePoint image{};
     bool sampleable = false;
+    std::array<std::size_t, 4> y_offsets{};
+    std::array<std::size_t, 4> u_offsets{};
+    std::array<std::size_t, 4> v_offsets{};
+    float row_fraction = 0.0F;
+    float col_fraction = 0.0F;
 };
 
 struct MlRedRectangleProjectionLut {
@@ -22,6 +29,7 @@ struct MlRedRectangleProjectionLut {
     port::BEVProjectorCalibration calibration{};
     int frame_width = 0;
     int frame_height = 0;
+    int frame_stride = 0;
     int rows = 0;
     int cols = 0;
     double search_forward_min_m = 0.0;

@@ -158,6 +158,7 @@ function checkSteeringMedia(configPath, imagePath) {
   expectValue(config, "param_snapshot.pwm_floor", 237);
   expectValue(config, "param_snapshot.prohibit_reverse_pwm", false);
   expectValue(config, "param_snapshot.drive_pwm_step_limit", 654);
+  expectValue(config, "param_snapshot.ML.MANEUVER.ENABLED", true);
   const expectedPid = {
     left_wheel_pid: {p: 81.5, i: 2.75, d: 0.625, integral_limit: 321, measurement_filter_alpha: 0.35},
     right_wheel_pid: {p: 97.5, i: 1.875, d: 0.125, integral_limit: 456, measurement_filter_alpha: 0.65},

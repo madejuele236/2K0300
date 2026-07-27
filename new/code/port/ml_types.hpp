@@ -136,61 +136,23 @@ struct MlConfirmationState {
     int consecutive_frames = 0;
 };
 
-struct MlPoseDelta {
-    bool valid = false;
-    float forward_m = 0.0F;
-    float lateral_m = 0.0F;
-    float yaw_rad = 0.0F;
-};
-
-/// A point expressed in the rectangle marker frame. Marker +forward is the
-/// rectangle short-axis normal whose vehicle-forward component is positive.
-struct MlMarkerPath {
-    bool valid = false;
-    std::array<BEVPathSample, kBevReferenceSampleCount> samples{};
-    std::size_t sample_count = 0;
-};
-
-struct MlLockedManeuver {
-    bool valid = false;
-    MlAction action = MlAction::kUnmapped;
-    uint64_t lock_time_ms = 0;
-    BEVPoint anchor{};
-    float marker_forward_axis_forward = 1.0F;
-    float marker_forward_axis_lateral = 0.0F;
-    MlMarkerPath marker_path{};
-};
-
-struct MlInertialTrackerState {
-    bool active = false;
-    uint64_t cursor_time_ms = 0;
-    MlPoseDelta pose_delta{};
-};
-
-struct MlInertialTrackerResult {
-    bool valid = false;
-    const char* reason = "inactive";
-    BEVReferencePath reference_path{};
-    MlPoseDelta pose_delta{};
-    float progress_m = 0.0F;
-    float lateral_error_m = 0.0F;
-    float heading_error_rad = 0.0F;
-    std::size_t path_sample_count = 0;
-    std::size_t remaining_sample_count = 0;
-};
-
 struct MlSceneMemory {
     MlScenePhase phase = MlScenePhase::kIdle;
     MlConfirmationState confirmation{};
-    MlLockedManeuver locked{};
-    MlInertialTrackerState tracker{};
+    MlAction locked_action = MlAction::kUnmapped;
+    uint64_t maneuver_start_ms = 0;
+    uint64_t distance_cursor_ms = 0;
+    double traveled_forward_m = 0.0;
     uint64_t cooldown_start_ms = 0;
+    const char* cooldown_reason = "none";
 };
 
 /// Per-frame transport facts. The ROI payload is meaningful only when
 /// roi.valid is true and is retained for later media/debug serialization.
 struct MlTelemetrySnapshot {
     bool enabled = false;
+    bool maneuver_enabled = false;
+    bool takeover_selected = false;
     bool detector_valid = false;
     MlOrientedRectangle detector{};
     MlGrayRoi32 roi{};
@@ -203,11 +165,10 @@ struct MlTelemetrySnapshot {
     const char* reason = "disabled";
     int confirm_count = 0;
     bool active = false;
-    BEVPoint anchor{};
-    MlPoseDelta pose_delta{};
-    float progress_m = 0.0F;
-    float lateral_error_m = 0.0F;
-    float heading_error_rad = 0.0F;
+    bool odometry_valid = false;
+    const char* odometry_reason = "not_run";
+    float traveled_forward_m = 0.0F;
+    uint64_t elapsed_ms = 0;
     std::size_t path_sample_count = 0;
     const char* artifact_candidate_id = "unavailable";
     const char* descriptor_config_hash = "unavailable";

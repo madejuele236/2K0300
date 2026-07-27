@@ -11,10 +11,13 @@
 #include "reference/reference_lateral_error.hpp"
 #include "reference/reference_tracking_geometry.hpp"
 #include "reference/reference_usability.hpp"
+#include "port/bev_reference_path_utils.hpp"
 #include "vision/elements/visual_element_pipeline.hpp"
 #include "reference/visual_reference_orchestration.hpp"
 #include "port/perf_counter.hpp"
 #include "runtime/runtime_state.hpp"
+#include "vision/bev/bev_image_segment_connectivity.hpp"
+#include "vision/bev/bev_reference_connectivity_filter.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
@@ -95,20 +98,23 @@ port::PerceptionResult BuildPerceptionResult(
 }
 
 bool HasLeadingCenterPath(const port::BEVReferencePath& path) {
-    if (path.mode == port::ReferenceMode::kNone || !path.sampled_path[0].present) {
-        return false;
+    return path.mode != port::ReferenceMode::kNone &&
+           port::FirstFiniteReferenceSample(path) != nullptr;
+}
+
+void FilterCircleCandidateConnectivity(
+    port::VisualReferenceCandidate& candidate,
+    const vision::BEVSegmentConnectivityQuery& connectivity) {
+    if (!candidate.present ||
+        (candidate.kind != port::VisualReferenceCandidateKind::kCircleLeft &&
+         candidate.kind != port::VisualReferenceCandidateKind::kCircleRight)) {
+        return;
     }
-    for (const port::BEVPathSample& sample : path.sampled_path) {
-        if (!sample.present) {
-            break;
-        }
-        if (!std::isfinite(sample.point.forward_m) ||
-            !std::isfinite(sample.point.lateral_m)) {
-            return false;
-        }
-        return true;
+    if (vision::KeepConnectedReferenceSamples(candidate.reference_path,
+                                              connectivity) == 0U) {
+        candidate.present = false;
+        candidate.reason = "candidate_connectivity_absent";
     }
-    return false;
 }
 
 std::optional<OrdinaryRoadModel> BuildOrdinaryRoadModel(
@@ -331,21 +337,35 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                                &sample_lut_);
         }
         port::VisualReferenceCandidate line_candidate{};
-        line_candidate =
-            reference::MakeLineVisualReferenceCandidate(current_facts.reference_path,
-                                                        current_facts.reference_source);
+        {
+            LS2K_PERF_SCOPE(port::PerfStage::kVisualLineCandidate);
+            line_candidate =
+                reference::MakeLineVisualReferenceCandidate(current_facts.reference_path,
+                                                            current_facts.reference_source);
+        }
+        const vision::BEVImageSegmentConnectivity segment_connectivity(
+            capture.pixel_view,
+            projector_,
+            current_facts.otsu);
 
         vision::VisualElementPipelineResult element_result{};
-        vision::ml::MlSceneInput ml_input{};
-        ml_input.frame = &capture.pixel_view;
-        ml_input.projector = &projector_;
-        ml_input.road_path_facts = &current_facts.road_path_facts;
-        ml_input.motion_history = &motion_history;
-        ml_input.rectangle_projection_lut = &ml_rectangle_lut_;
-        ml_input.classifier = ml_classifier_ready_ ? &ml_classifier_ : nullptr;
-        ml_input.capture_time_ms = capture.capture_time_ms;
-        const vision::ml::MlSceneResult ml_result =
-            vision::ml::StepMlScene(ml_input, params, prior_memory.ml_scene);
+        vision::ml::MlObserverInput ml_observer_input{};
+        ml_observer_input.frame = &capture.pixel_view;
+        ml_observer_input.projector = &projector_;
+        ml_observer_input.rectangle_projection_lut = &ml_rectangle_lut_;
+        ml_observer_input.classifier = ml_classifier_ready_ ? &ml_classifier_ : nullptr;
+        const vision::ml::MlObservation ml_observation =
+            vision::ml::RunMlObserver(ml_observer_input, params.ml);
+
+        vision::ml::MlManeuverInput ml_maneuver_input{};
+        ml_maneuver_input.observation = &ml_observation;
+        ml_maneuver_input.road_path_facts = &current_facts.road_path_facts;
+        ml_maneuver_input.motion_history = &motion_history;
+        ml_maneuver_input.capture_time_ms = capture.capture_time_ms;
+        vision::ml::MlManeuverResult ml_result =
+            vision::ml::StepMlManeuver(ml_maneuver_input,
+                                       params,
+                                       prior_memory.ml_scene);
         perception_memory_.ml_scene = ml_result.next_memory;
         ml_snapshot = ml_result.telemetry;
 
@@ -353,7 +373,11 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         element_input.sparse_rows = &current_facts.rows;
         element_input.origin_to_cross_sample_midpoint_connectivity =
             current_facts.origin_to_cross_sample_midpoint_connectivity;
-        element_result = vision::RunVisualElementPipeline(element_input, params);
+        element_input.segment_connectivity = &segment_connectivity;
+        {
+            LS2K_PERF_SCOPE(port::PerfStage::kVisualElementPipeline);
+            element_result = vision::RunVisualElementPipeline(element_input, params);
+        }
         element_evidence = element_result.evidence;
 
         std::optional<port::VisualReferenceCandidate> circle_candidate{};
@@ -371,10 +395,13 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                        params.bev_geometry.nominal_road_half_width_m);
             scene_frame.motion_arc = MotionArcView(&motion_query, QueryMotionArcYawDelta);
             scene_frame.stamp.capture_time_ms = capture.capture_time_ms;
-            const CircleV2StepResult circle_result =
-                CircleV2Scene{}.Step(scene_frame,
-                                      prior_memory.circle_v2,
-                                      BuildCircleV2Params(params));
+            CircleV2StepResult circle_result{};
+            {
+                LS2K_PERF_SCOPE(port::PerfStage::kCircleV2Scene);
+                circle_result = CircleV2Scene{}.Step(scene_frame,
+                                                     prior_memory.circle_v2,
+                                                     BuildCircleV2Params(params));
+            }
             perception_memory_.circle_v2 = circle_result.next_memory;
             circle_v2_snapshot =
                 BuildCircleV2TelemetrySnapshot(true, circle_result.telemetry);
@@ -394,14 +421,25 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                        port::kVisualReferenceCandidatePathCapacity>
                 candidates{};
             std::size_t candidate_count = 0;
-            candidates[candidate_count++] = line_candidate;
-            if (!ml_result.suppress_other_scene_candidates) {
-                if (circle_candidate.has_value() && candidate_count < candidates.size()) {
+            if (circle_candidate.has_value()) {
+                FilterCircleCandidateConnectivity(*circle_candidate,
+                                                  segment_connectivity);
+            }
+            const bool cross_present = element_evidence.cross_exit.present;
+            if (ml_snapshot.active) {
+                if (ml_result.candidate.present) {
+                    candidates[candidate_count++] = ml_result.candidate;
+                }
+            } else if (cross_present) {
+                if (element_result.cross_candidate.present) {
+                    candidates[candidate_count++] = element_result.cross_candidate;
+                }
+            } else {
+                candidates[candidate_count++] = line_candidate;
+                if (circle_candidate.has_value() &&
+                    candidate_count < candidates.size()) {
                     candidates[candidate_count++] = *circle_candidate;
                 }
-            }
-            if (ml_result.candidate.present && candidate_count < candidates.size()) {
-                candidates[candidate_count++] = ml_result.candidate;
             }
             for (std::size_t index = 0; index < candidate_count; ++index) {
                 const port::VisualReferenceCandidate& candidate = candidates[index];
@@ -409,8 +447,12 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                     port::AppendVisualReferenceCandidatePath(candidate_paths, candidate);
                 }
             }
-            visual_selection = reference::SelectVisualReference(candidates.data(),
-                                                                candidate_count);
+            {
+                LS2K_PERF_SCOPE(port::PerfStage::kVisualReferenceSelect);
+                visual_selection = reference::SelectVisualReference(candidates.data(),
+                                                                    candidate_count);
+            }
+            ml_snapshot.takeover_selected = ml_snapshot.active;
         }
         const reference::ReferenceContinuitySelection reference_selection =
             reference::ResolveReferenceContinuity(visual_selection.reference_path,
@@ -421,12 +463,19 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         continuity = reference_selection.continuity;
         selected_usability = reference_selection.usability;
         reference_tracking_geometry = reference_selection.tracking_geometry;
-        lateral_error = reference::ComputeReferenceLateralError(continuity.reference_path,
-                                                                selected_usability,
-                                                                params);
-        reference_control = reference::EvaluateReferenceControlReadiness(selected_usability,
-                                                                         reference_tracking_geometry,
-                                                                         continuity.hold_selected);
+        {
+            LS2K_PERF_SCOPE(port::PerfStage::kReferenceLateralError);
+            lateral_error = reference::ComputeReferenceLateralError(continuity.reference_path,
+                                                                    selected_usability,
+                                                                    params);
+        }
+        {
+            LS2K_PERF_SCOPE(port::PerfStage::kReferenceControlReadiness);
+            reference_control =
+                reference::EvaluateReferenceControlReadiness(selected_usability,
+                                                             reference_tracking_geometry,
+                                                             continuity.hold_selected);
+        }
         perception_memory_.reference_hold = continuity.next_hold_state;
     }
 

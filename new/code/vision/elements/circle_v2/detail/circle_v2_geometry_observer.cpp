@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "port/bev_reference_path_utils.hpp"
+
 namespace ls2k::vision::detail {
 namespace {
 
@@ -48,11 +50,6 @@ bool RealBoundaryForSide(const BEVWhiteRun& run,
     return false;
 }
 
-bool IsFiniteSample(const port::BEVPathSample& sample) {
-    return sample.present && std::isfinite(sample.point.forward_m) &&
-           std::isfinite(sample.point.lateral_m);
-}
-
 std::size_t BuildLeadingRealBoundaryPath(const SceneFrameView& frame,
                                          CircleDir side,
                                          float forward_min_m,
@@ -75,11 +72,11 @@ std::size_t BuildLeadingRealBoundaryPath(const SceneFrameView& frame,
         const bool observable = run != nullptr && RealBoundaryForSide(*run, side, lateral_m);
         const bool adjacent = !segment_started ||
                               row.forward_m - previous_forward_m <= max_adjacent_distance_m;
-        if (!observable || !adjacent) {
-            if (segment_started) {
-                break;
-            }
+        if (!observable) {
             continue;
+        }
+        if (!adjacent) {
+            break;
         }
         if (point_count >= edge_path.sampled_path.size()) {
             break;
@@ -101,20 +98,25 @@ std::size_t BuildLeadingRealBoundaryPath(const SceneFrameView& frame,
 bool IsStraightEnough(const port::BEVReferencePath& edge_path,
                       std::size_t point_count,
                       float max_lateral_span_m) {
-    if (point_count < kMinimumLinePointCount) {
-        return false;
-    }
-    float min_lateral = edge_path.sampled_path[0].point.lateral_m;
-    float max_lateral = min_lateral;
+    float min_lateral = 0.0F;
+    float max_lateral = 0.0F;
+    std::size_t used_count = 0U;
     for (std::size_t index = 0; index < point_count; ++index) {
         const port::BEVPathSample& sample = edge_path.sampled_path[index];
-        if (!IsFiniteSample(sample)) {
-            return false;
+        if (!port::IsFiniteReferenceSample(sample)) {
+            continue;
         }
-        min_lateral = std::min(min_lateral, sample.point.lateral_m);
-        max_lateral = std::max(max_lateral, sample.point.lateral_m);
+        if (used_count == 0U) {
+            min_lateral = sample.point.lateral_m;
+            max_lateral = min_lateral;
+        } else {
+            min_lateral = std::min(min_lateral, sample.point.lateral_m);
+            max_lateral = std::max(max_lateral, sample.point.lateral_m);
+        }
+        ++used_count;
     }
-    return max_lateral - min_lateral <= max_lateral_span_m;
+    return used_count >= kMinimumLinePointCount &&
+           max_lateral - min_lateral <= max_lateral_span_m;
 }
 
 float ExitTraceOffset(CircleDir dir, float road_half_width_m) {

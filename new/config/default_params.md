@@ -302,7 +302,7 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 
 调 `BEV_ELEMENT` 前先定位第一处错误事实，不要用后续状态参数补偿上游误判：
 
-- Cross 的 open row 指该行可采样支持充足，且满足以下任一事实：整行没有 jump/span；或恰有一个与原点连通的白区延伸到 FOV 边缘。同一行的其他不连通边界不否决开口，多个原点连通白区则视为歧义。Cross evidence 还要求至少 **3 个连续** open row，并要求 origin 到 `CROSS_CONNECTIVITY_SAMPLE_INDEX` 指定的 BEV 前向采样点中点的 supercover 连通性为 `connected`。连续 3 行是当前源码常量，不是 JSON 参数。
+- Cross 的当前帧 opening 有两种来源：唯一 origin-connected 白区连续至少 3 行同时到达左右 FOV；或一侧真实边界相对此前连续同侧边界基线向外扩张，且对侧为真实 FOV。外扩使用米制有向垂距，不使用道路宽度、跨帧状态或额外持续计数。多个 origin-connected 白区视为歧义，内部不可观察缺口不等于 FOV。Cross evidence 还要求 origin 到 `CROSS_CONNECTIVITY_SAMPLE_INDEX` 指定的 BEV 前向采样点中点的 supercover 连通性为 `connected`。
 - Circle opening 只使用 opening ROI 内唯一一个 origin-connected white run。基线只由此前连续、真实可见的同侧边界组成；候选必须满足同侧有向垂距、连续前向确认长度和真实对侧直线三项条件。左右同时成立时不判方向。
 - FOV 边缘只可作为 Circle opening 的保守距离下界；它不进入基线、Inner/Exit geometry、普通边界或控制参考。
 - Circle opening/geometry 的相邻行最大距离来自 `BEV_GEOMETRY.BOUNDARY_TRACE_MAX_ADJACENT_DISTANCE_M`，不在 `BEV_ELEMENT` 内。对侧直线拟合的固定最大漂移目前约为 `0.0662m`，也不是运行参数。
@@ -314,6 +314,7 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 | --- | ---: | --- | --- | --- | --- |
 | `BEV_ELEMENT.CROSS_MIN_SAMPLEABLE_PER_ROW` | `8` | open row 可参与 Cross 连续游程前所需的最少可采样点数；合法值 `>=1`。它不改变固定的连续 3 行门槛。 | 行观测要求更严格，远端/FOV 较窄行更易变成 `insufficient_sampleable_support`，漏检增加。 | 允许观测支撑更少的行进入开口判定，灵敏度提高，但局部不可观测更易被当成开口。 | 保持 `8`，直到 aligned evidence 能给出误判/漏判行的逐行 `sampleable_count`。若误判行长期只有少量样本，逐级试 `10/12`；若真实十字因支撑不足被拒，逐级试 `6`，不要同时改 Otsu 或连通性。 |
 | `BEV_ELEMENT.CROSS_CONNECTIVITY_SAMPLE_INDEX` | `9` | Cross 连通性 owner 从固定 24 个 `BEV_GEOMETRY.forward_samples_m` 中选择第 N 点，并检验 `(0,0)` 到 `(forward_samples_m[N],0)` 的 supercover 连通性。合法值 `0..23`，且不受 `SPARSE_ROW_COUNT` 的启用前缀影响。该参数只定义 Cross 判定的前向连通性护栏。 | 护栏更深入路口，车辆存在航向偏差时更容易离开入口走廊而被阻断。 | 护栏过近时只能证明较短的入口走廊。 | 当前使用 `9`（约 `0.287m`），验证入口连通性而不把固定车体中轴延伸到路口深处。 |
+| `BEV_ELEMENT.CROSS_BOUNDARY_EXPANSION_MIN_M` | `0.055` | 单侧真实边界相对此前连续同侧边界拟合直线的最小向外垂距；合法值 `(0,2]m`。至少需要两个前序真实边界点，且另一侧端点必须为真实 FOV。 | 更严格，弱外扩漏检增加。 | 更灵敏，边界抖动和渐弯更容易触发。 | 保持 `0.055m`，调参前先查看 `present_left_boundary_expansion` / `present_right_boundary_expansion` 对齐帧。 |
 
 ### 13.3 Circle opening 与 Entry 参数
 
@@ -393,9 +394,12 @@ full BEV element raster 不属于 active `default_params.json` 运行时合同�
 
 `MOTION_ODOMETRY.ENCODER_TICKS_TO_METER` is the single startup scale used by
 both reference time alignment and the ML maneuver odometry path.
-`ML.ENABLED` defaults to `0`; in that state no ML
-work is scheduled and zero-valued ROI calibration, odometry, and maneuver
-fields are intentionally valid.
+`ML.ENABLED` owns recognition scheduling. `ML.MANEUVER.ENABLED` independently
+owns whether accepted recognition facts may produce a path candidate and ML
+speed selection. `ML.ENABLED=1` with `ML.MANEUVER.ENABLED=0` is observe-only:
+detector, ROI, classifier, mapping, timing, and artifact facts are published,
+while maneuver memory is reset and no ML path or speed override is produced.
+`ML.MANEUVER.ENABLED=1` with `ML.ENABLED=0` is invalid.
 
 <!-- contract:ml-enabled-speed-target range=(0,5000] -->
 
@@ -404,10 +408,16 @@ forward/lateral grid steps, expected rectangle edges and their tolerances must b
 positive. YUV intervals must be ordered inside `[0,255]`; orientation must be
 in `(0, pi/2]`; component count must be at least one; rectangularity and red
 fill thresholds must be in `(0,1]`; score weights must be finite and
-nonnegative with a positive sum. `ML.MANEUVER.SPEED_TARGET` must be in `(0,5000]`, while
-`MOTION_ODOMETRY.ENCODER_TICKS_TO_METER` and `ML.MANEUVER.EXIT_FORWARD_M` must be positive.
-The duration and integration-gap limits must be at least 1 ms. Exit tolerances
-and cooldown may be zero.
+nonnegative with a positive sum. Only when `ML.MANEUVER.ENABLED=1`,
+`ML.MANEUVER.SPEED_TARGET` must be in `(0,5000]`,
+`MOTION_ODOMETRY.ENCODER_TICKS_TO_METER` and `ML.MANEUVER.EXIT_FORWARD_M` must
+be positive, and the duration and integration-gap limits must be at least 1 ms.
+`ML.MANEUVER.PATH_OUTWARD_OFFSET_M` is the metric offset from the selected
+observed boundary toward the road exterior (left is negative lateral, right is
+positive lateral) and must be in `[0,2]`. Cooldown may be zero. While a maneuver
+is active, missing current boundary samples leaves ML ownership active so the
+global reference-continuity policy can HOLD the last ML path; it does not end
+the maneuver. Completion is distance or time, whichever occurs first.
 
 `ML.V9` accepts `MIN_MARGIN>=0`, `MAX_BEST_DISTANCE` in `[0,126]`, and
 `CONFIRM_FRAMES>=1`. `ML.CLASS_MAPPING` is separate from acceptance. Each class
@@ -431,15 +441,18 @@ frame 3 before later isolated class-2 noise; the scene already stops inference
 after this lock, so this is the intended confirmation contract rather than a
 post-classification remap.
 
-The current disabled-by-default ML ROI calibration consumes the corrected BEV
+The current ML ROI calibration consumes the corrected BEV
 metric directly. Its marker truth is `EXPECTED_LONG_EDGE_M=0.120` and
 `EXPECTED_SHORT_EDGE_M=0.050`; its search window was transformed with the same
 projector scale about vehicle origin `(0,0)` to
 `forward=[0.1304402844,0.2739245972]m` and
 `lateral=+-0.1433745920m`. The old isotropic fictitious `GRID_STEP_M=0.003`
 was removed because one value cannot represent two different axis scales;
-the corrected contract is `GRID_FORWARD_STEP_M=0.0039132085` and
-`GRID_LATERAL_STEP_M=0.0033086444`. No ML-only scale compensation exists.
+the axes remain independently metric. The active detector uses a 1.2x coarser
+sampling lattice, `GRID_FORWARD_STEP_M=0.0046958502` and
+`GRID_LATERAL_STEP_M=0.0039703733`, to reduce per-frame work while retaining
+roughly 26 by 13 samples across the calibrated 120mm by 50mm marker. These are
+sampling intervals, not ML-only scale compensation.
 The calibrated red interval is `Y=[45,230]`, `U=[70,135]`, and `V=[140,220]`.
 It covers the measured illuminated marker envelope (`Y=[61,222]`,
 `U=[75,126]`, `V=[145,210]`) while retaining chroma bounds that reject the

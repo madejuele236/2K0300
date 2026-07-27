@@ -4,47 +4,25 @@
 #include <cmath>
 
 #include "port/perf_counter.hpp"
+#include "port/bev_reference_path_utils.hpp"
 
 namespace ls2k::reference {
 namespace {
 
-std::size_t CountPresentSamples(const port::BEVReferencePath& path) {
-    std::size_t count = 0;
-    for (const port::BEVPathSample& sample : path.sampled_path) {
-        if (sample.present) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-std::size_t LeadingObservedReferencePrefixLength(const port::BEVReferencePath& path) {
-    std::size_t length = 0;
-    for (const port::BEVPathSample& sample : path.sampled_path) {
-        if (!sample.present ||
-            !std::isfinite(sample.point.forward_m) ||
-            !std::isfinite(sample.point.lateral_m)) {
-            break;
-        }
-        ++length;
-    }
-    return length;
-}
-
-port::BEVReferencePath TransformReferencePrefixSE2(const port::BEVReferencePath& input,
-                                                   std::size_t prefix_length,
-                                                   double delta_forward_m,
-                                                   double delta_lateral_m,
-                                                   double delta_yaw_rad,
-                                                   std::size_t& aligned_count) {
+port::BEVReferencePath TransformReferenceSamplesSE2(const port::BEVReferencePath& input,
+                                                    double delta_forward_m,
+                                                    double delta_lateral_m,
+                                                    double delta_yaw_rad,
+                                                    std::size_t& aligned_count) {
     port::BEVReferencePath output{};
     output.mode = input.mode;
     const double c = std::cos(-delta_yaw_rad);
     const double s = std::sin(-delta_yaw_rad);
     std::size_t out_index = 0;
-    const std::size_t sample_count = std::min(prefix_length, input.sampled_path.size());
-    for (std::size_t index = 0; index < sample_count; ++index) {
-        const port::BEVPathSample& sample = input.sampled_path[index];
+    for (const port::BEVPathSample& sample : input.sampled_path) {
+        if (!port::IsFiniteReferenceSample(sample)) {
+            continue;
+        }
         const double x = static_cast<double>(sample.point.forward_m) - delta_forward_m;
         const double y = static_cast<double>(sample.point.lateral_m) - delta_lateral_m;
         const double forward = c * x - s * y;
@@ -84,7 +62,7 @@ ReferenceTimeAlignmentResult AlignReferencePathToVehiclePoseDelta(
     facts.reference_capture_time_ms = reference_capture_time_ms;
     facts.control_time_ms = control_time_ms;
     facts.control_effective_time_ms = control_effective_time_ms;
-    facts.input_sample_count = CountPresentSamples(reference_path);
+    facts.input_sample_count = port::CountFiniteReferenceSamples(reference_path);
     if (!params.reference_time_alignment.enabled) {
         facts.valid = true;
         facts.reason = "disabled";
@@ -141,14 +119,11 @@ ReferenceTimeAlignmentResult AlignReferencePathToVehiclePoseDelta(
         return result;
     }
 
-    const std::size_t observed_prefix_length =
-        LeadingObservedReferencePrefixLength(reference_path);
-    result.reference_path = TransformReferencePrefixSE2(reference_path,
-                                                       observed_prefix_length,
-                                                       facts.delta_forward_m,
-                                                       facts.delta_lateral_m,
-                                                       facts.delta_yaw_rad,
-                                                       facts.aligned_sample_count);
+    result.reference_path = TransformReferenceSamplesSE2(reference_path,
+                                                         facts.delta_forward_m,
+                                                         facts.delta_lateral_m,
+                                                         facts.delta_yaw_rad,
+                                                         facts.aligned_sample_count);
     if (facts.aligned_sample_count <
         static_cast<std::size_t>(std::max(1, params.reference_time_alignment.min_aligned_samples))) {
         facts.reason = "aligned_samples_insufficient";

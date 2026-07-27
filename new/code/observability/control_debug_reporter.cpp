@@ -114,6 +114,10 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
                      << " boundary_span_count=" << snapshot.steering.boundary_span_count
                      << " ml.enabled=" << BoolToken(snapshot.steering.ml.enabled)
+                     << " ml.maneuver_enabled="
+                     << BoolToken(snapshot.steering.ml.maneuver_enabled)
+                     << " ml.takeover_selected="
+                     << BoolToken(snapshot.steering.ml.takeover_selected)
                      << " ml.detector_valid=" << BoolToken(snapshot.steering.ml.detector_valid)
                      << " ml.detector.frame_id=" << snapshot.steering.ml.detector.frame_id
                      << " ml.detector.center_forward_m="

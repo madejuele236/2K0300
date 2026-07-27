@@ -63,7 +63,9 @@ void TestValidLineCandidateIsSelected() {
         ls2k::reference::MakeLineVisualReferenceCandidate(line_path, "simple_interval_center");
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line});
-    Expect(selection.present, "valid line candidate must be selected");
+    Expect(selection.present && selection.kind_valid &&
+               selection.kind == ls2k::port::VisualReferenceCandidateKind::kLine,
+           "valid line candidate must retain typed ownership");
     Expect(selection.source == "simple_interval_center",
            "line selection must preserve factual reference source");
     Expect(selection.reason == "line_candidate_selected",
@@ -73,17 +75,19 @@ void TestValidLineCandidateIsSelected() {
     Expect(selection.candidate_count == 1, "one valid candidate must be counted");
 }
 
-void TestMissingIndexZeroRejectsCandidate() {
+void TestMissingIndexZeroOnlyRemovesThatSample() {
     ls2k::port::VisualReferenceCandidate line =
         Candidate(ls2k::port::VisualReferenceCandidateKind::kLine, 3, "line");
     line.reference_path.sampled_path[0].present = false;
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({line});
-    Expect(!selection.present, "candidate without index zero must be rejected");
-    Expect(selection.reason == "no_valid_visual_reference_candidate",
-           "rejected-only set must expose no-valid reason");
-    Expect(selection.rejected_candidate_reason == "missing_leading_reference_sample",
-           "missing index zero must be the rejection reason");
+    Expect(selection.present, "a missing index zero must not reject later valid samples");
+    Expect(selection.reference_path.sampled_path[0].present,
+           "the first remaining finite sample must be compacted to index zero");
+    Expect(std::abs(selection.reference_path.sampled_path[0].point.forward_m - 0.10F) < 1.0e-6F,
+           "compaction must preserve the first remaining sample geometry");
+    Expect(!selection.reference_path.sampled_path[2].present,
+           "only the two remaining finite samples may be published");
 }
 
 void TestNoneModeRejectsCandidate() {
@@ -125,8 +129,9 @@ void TestMlObservedBoundaryCandidateIsCurrentVisualReference() {
     }
     const ls2k::port::VisualReferenceSelection selection =
         ls2k::reference::SelectVisualReference({candidate});
-    Expect(selection.present,
-           "ML observed-boundary mode must be accepted as current visual evidence");
+    Expect(selection.present && selection.kind_valid &&
+               selection.kind == ls2k::port::VisualReferenceCandidateKind::kMlGrounded,
+           "ML observed-boundary candidate must retain typed ownership");
     Expect(selection.source == "ml_observed_boundary",
            "ML observed-boundary candidate must preserve its factual source");
     Expect(selection.reference_path.mode ==
@@ -205,7 +210,7 @@ int main() {
     try {
         TestNoCandidatesSelectsNone();
         TestValidLineCandidateIsSelected();
-        TestMissingIndexZeroRejectsCandidate();
+        TestMissingIndexZeroOnlyRemovesThatSample();
         TestNoneModeRejectsCandidate();
         TestHoldModeRejectsCandidate();
         TestMlObservedBoundaryCandidateIsCurrentVisualReference();

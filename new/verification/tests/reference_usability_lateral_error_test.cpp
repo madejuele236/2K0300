@@ -110,7 +110,7 @@ void TestConfiguredMinimumLeadingReferenceSamplesCanChange() {
            "configured minimum above sample capacity must clamp to the capacity");
 }
 
-void TestFirstUsableSegmentContinuityIsRequired() {
+void TestSingleMissingSampleDoesNotHideLaterSamples() {
     const ls2k::port::RuntimeParameters params{};
     ls2k::port::BEVReferencePath path = MakePath(params, 6, 0.05F);
     path.sampled_path[0].present = false;
@@ -121,12 +121,15 @@ void TestFirstUsableSegmentContinuityIsRequired() {
                ls2k::reference::EvaluateReferenceUsability(path, params),
                params)
                .computed,
-           "lateral error must use the first continuous real segment");
+           "lateral error must use all remaining finite samples");
 
     path = MakePath(params, 6, 0.05F);
     path.sampled_path[1].present = false;
-    Expect(!ls2k::reference::EvaluateReferenceUsability(path, params).usable,
-           "usability must not scan past a gap after the first real segment starts");
+    const auto usability = ls2k::reference::EvaluateReferenceUsability(path, params);
+    Expect(usability.usable,
+           "one missing interior sample must not hide later finite samples");
+    Expect(usability.leading_usable_samples == 5U,
+           "only the missing interior sample must be excluded");
 }
 
 void TestSourceDoesNotAffectUsabilityOrLateralError() {
@@ -177,7 +180,7 @@ void TestNearSamplesHaveMoreWeightThanFarSamples() {
            "weighted result must remain inside the observed lateral range");
 }
 
-void TestGapStopsWeightedSamples() {
+void TestGapOnlyRemovesThatWeightedSample() {
     ls2k::port::RuntimeParameters params{};
     params.bev_control_model.min_leading_reference_samples = 4;
     ls2k::port::BEVReferencePath path = MakePath(params, 8, 0.10F);
@@ -187,9 +190,12 @@ void TestGapStopsWeightedSamples() {
     }
 
     const auto output = ComputeLateralError(path, params);
-    Expect(output.computed, "leading segment before gap must be usable");
-    Expect(output.weighted_sample_count == 4, "lateral error must not use samples beyond the first gap");
-    ExpectNear(output.weighted_lateral_error_m, 0.10F, 1.0e-6F, "far samples after a gap must not affect output");
+    Expect(output.computed, "remaining samples around a gap must be usable");
+    Expect(output.weighted_sample_count == 7,
+           "lateral error must exclude only the missing sample");
+    Expect(output.weighted_lateral_error_m > 0.10F &&
+               output.weighted_lateral_error_m < 0.60F,
+           "finite samples after a gap must continue to affect the estimate");
 }
 
 void TestLegacyLateralErrorUsesFixedDebugWeight() {
@@ -407,12 +413,12 @@ int main() {
     try {
         TestUsabilityRequiresConfiguredMinimumLeadingReferenceSamples();
         TestConfiguredMinimumLeadingReferenceSamplesCanChange();
-        TestFirstUsableSegmentContinuityIsRequired();
+        TestSingleMissingSampleDoesNotHideLaterSamples();
         TestSourceDoesNotAffectUsabilityOrLateralError();
         TestStraightReferenceProducesZeroLateralError();
         TestConstantOffsetReferencePreservesOffset();
         TestNearSamplesHaveMoreWeightThanFarSamples();
-        TestGapStopsWeightedSamples();
+        TestGapOnlyRemovesThatWeightedSample();
         TestLegacyLateralErrorUsesFixedDebugWeight();
         TestTurnOutputTargetUsesReferenceTrackingGeometryTermsAndRawTargetLimit();
         TestGyroTurnUsesGateApprovedGyroValueOnly();

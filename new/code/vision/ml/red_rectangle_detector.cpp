@@ -6,14 +6,10 @@
 #include <limits>
 #include <vector>
 
-#include "vision/image/color_sampler.hpp"
-
 namespace ls2k::vision::ml {
 namespace {
 
 struct Cell {
-    float forward = 0.0F;
-    float lateral = 0.0F;
     bool red = false;
     bool visited = false;
 };
@@ -73,6 +69,41 @@ bool InRange(std::uint8_t value, int minimum, int maximum) {
     return value >= minimum && value <= maximum;
 }
 
+std::uint8_t BilinearChannel(const port::CameraPixelFrameView& frame,
+                             const std::array<std::size_t, 4>& offsets,
+                             float row_fraction,
+                             float col_fraction) {
+    const float top = frame.data[offsets[0]] * (1.0F - col_fraction) +
+                      frame.data[offsets[1]] * col_fraction;
+    const float bottom = frame.data[offsets[2]] * (1.0F - col_fraction) +
+                         frame.data[offsets[3]] * col_fraction;
+    return static_cast<std::uint8_t>(std::clamp(
+        static_cast<int>(top * (1.0F - row_fraction) +
+                         bottom * row_fraction + 0.5F), 0, 255));
+}
+
+void PopulateSampleOffsets(MlRedRectangleProjectionEntry& entry,
+                           const port::CameraPixelFrameView& frame) {
+    const int row0 = static_cast<int>(entry.image.row_px);
+    const int col0 = static_cast<int>(entry.image.col_px);
+    const int rows[2] = {row0, std::min(row0 + 1, frame.height - 1)};
+    const int cols[2] = {col0, std::min(col0 + 1, frame.width - 1)};
+    entry.row_fraction = entry.image.row_px - static_cast<float>(row0);
+    entry.col_fraction = entry.image.col_px - static_cast<float>(col0);
+    std::size_t corner = 0U;
+    for (int row_index = 0; row_index < 2; ++row_index) {
+        for (int col_index = 0; col_index < 2; ++col_index) {
+            const int col = cols[col_index];
+            const std::size_t base = static_cast<std::size_t>(rows[row_index]) * frame.stride +
+                static_cast<std::size_t>(col & ~1) * 2U;
+            entry.y_offsets[corner] = base + static_cast<std::size_t>((col & 1) * 2);
+            entry.u_offsets[corner] = base + 1U;
+            entry.v_offsets[corner] = base + 3U;
+            ++corner;
+        }
+    }
+}
+
 float UnitScore(float error, float tolerance) {
     return std::clamp(1.0F - error / tolerance, 0.0F, 1.0F);
 }
@@ -97,7 +128,8 @@ bool EnsureProjectionLut(MlRedRectangleProjectionLut& lut,
                          int rows,
                          int cols) {
     const bool matches = lut.valid && lut.frame_width == frame.width &&
-        lut.frame_height == frame.height && lut.rows == rows && lut.cols == cols &&
+        lut.frame_height == frame.height && lut.frame_stride == frame.stride &&
+        lut.rows == rows && lut.cols == cols &&
         lut.search_forward_min_m == params.search_forward_min_m &&
         lut.search_forward_max_m == params.search_forward_max_m &&
         lut.search_lateral_limit_m == params.search_lateral_limit_m &&
@@ -111,6 +143,7 @@ bool EnsureProjectionLut(MlRedRectangleProjectionLut& lut,
     rebuilt.calibration = projector.Calibration();
     rebuilt.frame_width = frame.width;
     rebuilt.frame_height = frame.height;
+    rebuilt.frame_stride = frame.stride;
     rebuilt.rows = rows;
     rebuilt.cols = cols;
     rebuilt.search_forward_min_m = params.search_forward_min_m;
@@ -130,6 +163,9 @@ bool EnsureProjectionLut(MlRedRectangleProjectionLut& lut,
                 {entry.forward_m, entry.lateral_m}, entry.image) &&
                 entry.image.row_px >= 0.0F && entry.image.col_px >= 0.0F &&
                 entry.image.row_px <= frame.height - 1 && entry.image.col_px <= frame.width - 1;
+            if (entry.sampleable) {
+                PopulateSampleOffsets(entry, frame);
+            }
         }
     }
     lut = std::move(rebuilt);
@@ -137,22 +173,42 @@ bool EnsureProjectionLut(MlRedRectangleProjectionLut& lut,
 }
 
 port::MlOrientedRectangle MeasureComponent(const std::vector<int>& indexes,
-                                            const std::vector<Cell>& grid,
+                                            const MlRedRectangleProjectionLut& lut,
                                             float forward_step,
                                             float lateral_step,
                                             const port::MlRoiParameters& params) {
     port::MlOrientedRectangle out{};
     if (indexes.size() < static_cast<std::size_t>(params.min_component_cells)) return out;
+    std::vector<int> row_min_col(static_cast<std::size_t>(lut.rows), lut.cols);
+    std::vector<int> row_max_col(static_cast<std::size_t>(lut.rows), -1);
+    for (int index : indexes) {
+        const int row = index / lut.cols;
+        const int col = index % lut.cols;
+        row_min_col[static_cast<std::size_t>(row)] =
+            std::min(row_min_col[static_cast<std::size_t>(row)], col);
+        row_max_col[static_cast<std::size_t>(row)] =
+            std::max(row_max_col[static_cast<std::size_t>(row)], col);
+    }
     std::vector<Point> cell_corners;
-    cell_corners.reserve(indexes.size() * 4U);
+    cell_corners.reserve(static_cast<std::size_t>(lut.rows) * 8U);
     const float half_forward_step = forward_step * 0.5F;
     const float half_lateral_step = lateral_step * 0.5F;
-    for (int index : indexes) {
-        const Cell& cell = grid[static_cast<std::size_t>(index)];
-        cell_corners.push_back({cell.forward - half_forward_step, cell.lateral - half_lateral_step});
-        cell_corners.push_back({cell.forward - half_forward_step, cell.lateral + half_lateral_step});
-        cell_corners.push_back({cell.forward + half_forward_step, cell.lateral - half_lateral_step});
-        cell_corners.push_back({cell.forward + half_forward_step, cell.lateral + half_lateral_step});
+    for (int row = 0; row < lut.rows; ++row) {
+        const int min_col = row_min_col[static_cast<std::size_t>(row)];
+        const int max_col = row_max_col[static_cast<std::size_t>(row)];
+        if (max_col < 0) {
+            continue;
+        }
+        const int choice_count = min_col == max_col ? 1 : 2;
+        for (int choice = 0; choice < choice_count; ++choice) {
+            const int col = choice == 0 ? min_col : max_col;
+            const MlRedRectangleProjectionEntry& cell =
+                lut.entries[static_cast<std::size_t>(row * lut.cols + col)];
+            cell_corners.push_back({cell.forward_m - half_forward_step, cell.lateral_m - half_lateral_step});
+            cell_corners.push_back({cell.forward_m - half_forward_step, cell.lateral_m + half_lateral_step});
+            cell_corners.push_back({cell.forward_m + half_forward_step, cell.lateral_m - half_lateral_step});
+            cell_corners.push_back({cell.forward_m + half_forward_step, cell.lateral_m + half_lateral_step});
+        }
     }
     const std::vector<Point> hull = ConvexHull(std::move(cell_corners));
     if (hull.size() < 3U) return out;
@@ -275,14 +331,25 @@ port::MlOrientedRectangle DetectRedRectangle(const port::CameraPixelFrameView& f
         for (int col = 0; col < cols; ++col) {
             Cell& cell = grid[static_cast<std::size_t>(row * cols + col)];
             const auto& projection = lut.entries[static_cast<std::size_t>(row * cols + col)];
-            cell.forward = projection.forward_m;
-            cell.lateral = projection.lateral_m;
-            CameraColorSample color{};
-            cell.red = projection.sampleable &&
-                       SampleColorAt(frame, projection.image.row_px, projection.image.col_px, color) &&
-                       InRange(color.y, params.red_y_min, params.red_y_max) &&
-                       InRange(color.u, params.red_u_min, params.red_u_max) &&
-                       InRange(color.v, params.red_v_min, params.red_v_max);
+            if (!projection.sampleable) {
+                continue;
+            }
+            const std::uint8_t u = BilinearChannel(
+                frame, projection.u_offsets,
+                projection.row_fraction, projection.col_fraction);
+            if (!InRange(u, params.red_u_min, params.red_u_max)) {
+                continue;
+            }
+            const std::uint8_t v = BilinearChannel(
+                frame, projection.v_offsets,
+                projection.row_fraction, projection.col_fraction);
+            if (!InRange(v, params.red_v_min, params.red_v_max)) {
+                continue;
+            }
+            const std::uint8_t y = BilinearChannel(
+                frame, projection.y_offsets,
+                projection.row_fraction, projection.col_fraction);
+            cell.red = InRange(y, params.red_y_min, params.red_y_max);
         }
     }
     const int dr[4] = {-1, 0, 0, 1};
@@ -304,7 +371,7 @@ port::MlOrientedRectangle DetectRedRectangle(const port::CameraPixelFrameView& f
         }
         port::MlOrientedRectangle candidate = MeasureComponent(
             queue,
-            grid,
+            lut,
             static_cast<float>(params.grid_forward_step_m),
             static_cast<float>(params.grid_lateral_step_m),
             params);

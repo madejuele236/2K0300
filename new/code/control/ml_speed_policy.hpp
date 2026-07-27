@@ -8,8 +8,8 @@ namespace ls2k::control {
 
 inline double SelectPerceptionSpeedTarget(const port::PerceptionResult& perception,
                                           const port::RuntimeParameters& params) {
-    return perception.ml.active ? params.ml.maneuver.speed_target
-                                : params.running_speed_target;
+    return perception.ml.takeover_selected ? params.ml.maneuver.speed_target
+                                           : params.running_speed_target;
 }
 
 }  // namespace ls2k::control

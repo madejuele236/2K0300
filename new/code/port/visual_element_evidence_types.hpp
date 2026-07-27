@@ -44,7 +44,7 @@ struct CrossExitElementEvidence {
     std::size_t sampleable_count = 0;      ///< 可采样的栅格单元数
     std::size_t boundary_jump_count = 0;    ///< 边界跳变事实数量
     std::size_t boundary_span_count = 0;    ///< 同行边界 span 事实数量
-    std::size_t boundary_absent_row_count = 0; ///< 连续开口行数
+    std::size_t boundary_absent_row_count = 0; ///< opening 支撑行数（字段名保留协议兼容）
     std::string reason = "not_evaluated";  ///< 未评估的原因
 };
 
@@ -110,6 +110,7 @@ struct BEVElementParameters {
     // 十字路口出口检测参数
     int cross_min_sampleable_per_row = 8;       ///< cross 判定每行最少可采样点数
     int cross_connectivity_sample_index = 9;    ///< 原点连通性目标的 BEV 前向采样点索引，[0,23]
+    float cross_boundary_expansion_min_m = 0.055F;  ///< 单侧边界相对前段基线的最小向外垂距
 
     // Circle V2 场景状态机参数
     bool circle_v2_enabled = true;                  ///< 是否注册 CircleV2Scene

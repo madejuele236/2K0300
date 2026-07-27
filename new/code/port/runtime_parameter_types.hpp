@@ -141,11 +141,11 @@ struct MlClassMappingParameters {
 };
 
 struct MlManeuverParameters {
-    double speed_target = 0.0;  ///< ML 启用时为 (0,5000] 的 wheel mixer base；禁用时不可达
+    bool enabled = false;        ///< 是否允许 ML 事实进入路径仲裁和速度策略
+    double speed_target = 0.0;  ///< maneuver 启用时为 (0,5000] 的 wheel mixer base
     int min_boundary_samples = 3;
+    double path_outward_offset_m = 0.0;
     double exit_forward_m = 0.0;
-    double exit_max_abs_lateral_error_m = 0.0;
-    double exit_max_abs_heading_error_rad = 0.0;
     int max_duration_ms = 0;
     int max_integration_gap_ms = 0;
     int cooldown_ms = 0;

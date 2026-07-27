@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT / "new" / "user"))
 
 from steering_media_capture import SteeringMediaListener  # noqa: E402
-from steering_media_live_server import LiveFrameHub, _split_image_payload  # noqa: E402
+from steering_media_live_server import LiveFrameHub, _split_image_payload, _viewer_html  # noqa: E402
 
 
 def image_header(frame_id: int = 7) -> dict[str, object]:
@@ -124,6 +124,26 @@ class SteeringMediaAuxPayloadTest(unittest.TestCase):
         self.assertEqual(payload_len, len(combined))
         self.assertEqual(forwarded_payload, combined)
         self.assertEqual(hub.summary()["auxiliary_image_messages"], 1)
+
+    def test_live_viewer_exposes_board_owned_ml_config_and_telemetry(self) -> None:
+        html = _viewer_html().decode("utf-8")
+        for field_id in (
+            "mlSummary",
+            "mlConfig",
+            "mlV9Gate",
+            "mlMapping",
+            "mlManeuver",
+            "mlDetector",
+            "mlClassification",
+            "mlAction",
+            "mlState",
+            "mlTiming",
+        ):
+            self.assertIn(f'id="{field_id}"', html)
+        self.assertIn("const mlConfig = config?.ML", html)
+        self.assertIn("const ml = steering.ml || {}", html)
+        self.assertIn('nested(ml, ["classification", "margin"])', html)
+        self.assertIn("ml.takeover_selected", html)
 
 
 if __name__ == "__main__":

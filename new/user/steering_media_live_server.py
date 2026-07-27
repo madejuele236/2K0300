@@ -467,7 +467,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
     .legend-right-measured { color: var(--pink); }
     .control-strip {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 1px;
       overflow: hidden;
       background: var(--hairline);
@@ -482,10 +482,14 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
     .control-chip:nth-child(2) { border-left-color: var(--ok); }
     .control-chip:nth-child(3) { border-left-color: var(--warn); }
     .control-chip:nth-child(4) { border-left-color: var(--purple); }
+    .control-chip:nth-child(5) { border-left-color: var(--cyan); }
+    .control-chip:nth-child(6) { border-left-color: var(--pink); }
     .control-chip:nth-child(1) .metric-value { color: var(--blue); }
     .control-chip:nth-child(2) .metric-value { color: var(--ok); }
     .control-chip:nth-child(3) .metric-value { color: var(--warn); }
     .control-chip:nth-child(4) .metric-value { color: var(--purple); }
+    .control-chip:nth-child(5) .metric-value { color: var(--cyan); }
+    .control-chip:nth-child(6) .metric-value { color: var(--pink); }
     .metric-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -611,6 +615,8 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
     .panel:nth-child(3) h2 { color: var(--blue); }
     .panel:nth-child(4) h2 { color: var(--warn); }
     .panel:nth-child(5) h2 { color: var(--cyan); }
+    .panel.ml-panel::before { background: var(--pink); }
+    .panel.ml-panel h2 { color: var(--pink); }
     .panel h2 {
       display: flex;
       align-items: center;
@@ -749,6 +755,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
       <div class="control-chip"><span class="metric-label">Safety</span><strong class="metric-value" id="safetySummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">Camera</span><strong class="metric-value" id="cameraSummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">Otsu</span><strong class="metric-value" id="otsuSummary">-</strong></div>
+      <div class="control-chip"><span class="metric-label">ML</span><strong class="metric-value" id="mlSummary">-</strong></div>
     </section>
     <section class="viewer-panel">
       <div class="viewer-caption">
@@ -829,6 +836,20 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
         <dt>Circle left</dt><dd id="circleOpeningLeft">-</dd>
         <dt>Circle right</dt><dd id="circleOpeningRight">-</dd>
         <dt>Circle reason</dt><dd id="circleReason">-</dd>
+      </dl>
+    </section>
+    <section class="panel ml-panel">
+      <h2>ML</h2>
+      <dl>
+        <dt>Config</dt><dd id="mlConfig">-</dd>
+        <dt>V9 gate</dt><dd id="mlV9Gate">-</dd>
+        <dt>Mapping</dt><dd id="mlMapping">-</dd>
+        <dt>Maneuver</dt><dd id="mlManeuver">-</dd>
+        <dt>Detector</dt><dd id="mlDetector">-</dd>
+        <dt>Classification</dt><dd id="mlClassification">-</dd>
+        <dt>Action</dt><dd id="mlAction">-</dd>
+        <dt>State</dt><dd id="mlState">-</dd>
+        <dt>Timing</dt><dd id="mlTiming">-</dd>
       </dl>
     </section>
     <section class="panel">
@@ -914,6 +935,7 @@ const fields = {
   safetySummary: document.getElementById("safetySummary"),
   cameraSummary: document.getElementById("cameraSummary"),
   otsuSummary: document.getElementById("otsuSummary"),
+  mlSummary: document.getElementById("mlSummary"),
   displayFps: document.getElementById("displayFps"),
   latency: document.getElementById("latency"),
   frameId: document.getElementById("frameId"),
@@ -930,6 +952,15 @@ const fields = {
   circleOpeningLeft: document.getElementById("circleOpeningLeft"),
   circleOpeningRight: document.getElementById("circleOpeningRight"),
   circleReason: document.getElementById("circleReason"),
+  mlConfig: document.getElementById("mlConfig"),
+  mlV9Gate: document.getElementById("mlV9Gate"),
+  mlMapping: document.getElementById("mlMapping"),
+  mlManeuver: document.getElementById("mlManeuver"),
+  mlDetector: document.getElementById("mlDetector"),
+  mlClassification: document.getElementById("mlClassification"),
+  mlAction: document.getElementById("mlAction"),
+  mlState: document.getElementById("mlState"),
+  mlTiming: document.getElementById("mlTiming"),
   reference: document.getElementById("reference"),
   gate: document.getElementById("gate"),
   referenceControl: document.getElementById("referenceControl"),
@@ -1000,6 +1031,26 @@ function formatInt(value) {
 }
 function formatUs(value) {
   return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)}us` : "-";
+}
+function renderMlConfig(config) {
+  const mlConfig = config?.ML;
+  if (!mlConfig) return;
+  const v9 = mlConfig.V9 || {};
+  const mapping = mlConfig.CLASS_MAPPING || {};
+  const maneuver = mlConfig.MANEUVER || {};
+  fields.mlConfig.textContent =
+    `enabled=${formatBool(mlConfig.ENABLED)} / maneuver=${formatBool(maneuver.ENABLED)}`;
+  fields.mlV9Gate.textContent =
+    `margin>=${v9.MIN_MARGIN ?? "-"} / distance<=${v9.MAX_BEST_DISTANCE ?? "-"} / ` +
+    `confirm=${v9.CONFIRM_FRAMES ?? "-"}`;
+  fields.mlMapping.textContent =
+    `0=${mapping.CLASS_0_ACTION ?? "-"} / 1=${mapping.CLASS_1_ACTION ?? "-"} / ` +
+    `2=${mapping.CLASS_2_ACTION ?? "-"}`;
+  fields.mlManeuver.textContent =
+    `speed=${formatNumber(maneuver.SPEED_TARGET, 0)} / ` +
+    `outward=${formatNumber(maneuver.PATH_OUTWARD_OFFSET_M, 2)}m / ` +
+    `exit=${formatNumber(maneuver.EXIT_FORWARD_M, 2)}m / ` +
+    `timeout=${maneuver.MAX_DURATION_MS ?? "-"}ms`;
 }
 function setGateTone(vetoActive) {
   document.body.dataset.gateTone = vetoActive === true ? "error" : vetoActive === false ? "ok" : "warn";
@@ -1529,6 +1580,7 @@ function handleEnvelope(buffer, transport) {
   if (header.type === "config_snapshot") {
     runtimeConfig = header.param_snapshot || null;
     bevProjection = runtimeConfig ? buildBevProjection(runtimeConfig) : null;
+    renderMlConfig(runtimeConfig);
     fields.status.textContent = transport === "config" ? "configured" : transport;
     fields.transportSummary.textContent =
       `config / interval=${header.media_publish_interval_ms ?? "-"}ms`;
@@ -1554,6 +1606,7 @@ function handleEnvelope(buffer, transport) {
     const cross = nested(steering, ["element_evidence", "cross_exit"], {}) || {};
     const crossCandidate = cross.candidate || {};
     const circle = steering.circle_v2 || {};
+    const ml = steering.ml || {};
     const nowMs = performance.now();
     if (lastRenderMs > 0) {
       const instantFps = 1000 / Math.max(1, nowMs - lastRenderMs);
@@ -1582,6 +1635,9 @@ function handleEnvelope(buffer, transport) {
     fields.otsuSummary.textContent =
       `${otsu.valid === true ? otsu.threshold : "none"} / ` +
       `${otsu.source ?? "none"} / stale=${otsu.stale_frames ?? 0}`;
+    fields.mlSummary.textContent =
+      `${ml.phase ?? "-"} / ${ml.mapped_action ?? "-"} / ` +
+      `takeover=${formatBool(ml.takeover_selected ?? null)}`;
     fields.latency.textContent =
       `pubDelay=${formatInt((header.publish_time_ms ?? 0) - (header.capture_time_ms ?? 0))}ms / ` +
       `cap=${header.capture_time_ms ?? "-"} / host=${header.host_received_monotonic_ms ?? "-"}`;
@@ -1615,6 +1671,27 @@ function handleEnvelope(buffer, transport) {
     fields.circleOpeningLeft.textContent = formatCircleOpening(nested(circle, ["openings", "left"], null));
     fields.circleOpeningRight.textContent = formatCircleOpening(nested(circle, ["openings", "right"], null));
     fields.circleReason.textContent = circle.reason ?? "-";
+    fields.mlDetector.textContent =
+      `${formatBool(ml.detector_valid ?? null)} / ` +
+      `cells=${nested(ml, ["detector", "component_cells"])} / ` +
+      `fill=${formatNumber(nested(ml, ["detector", "red_fill_ratio"], null), 3)} / ` +
+      `score=${formatNumber(nested(ml, ["detector", "score"], null), 3)}`;
+    fields.mlClassification.textContent =
+      `${nested(ml, ["classification", "backend"])} / ` +
+      `class=${nested(ml, ["classification", "class_id"])} / ` +
+      `margin=${nested(ml, ["classification", "margin"])} / ` +
+      `distance=${nested(ml, ["classification", "best_distance"])}`;
+    fields.mlAction.textContent =
+      `${ml.mapped_action ?? "-"} -> ${ml.locked_action ?? "-"}`;
+    fields.mlState.textContent =
+      `${ml.phase ?? "-"} / ${ml.reason ?? "-"} / confirm=${ml.confirm_count ?? "-"} / ` +
+      `active=${formatBool(ml.active ?? null)} / ` +
+      `takeover=${formatBool(ml.takeover_selected ?? null)}`;
+    fields.mlTiming.textContent =
+      `det=${formatUs(nested(ml, ["timing_us", "detector"], null))} / ` +
+      `roi=${formatUs(nested(ml, ["timing_us", "roi"], null))} / ` +
+      `cls=${formatUs(nested(ml, ["timing_us", "classifier"], null))} / ` +
+      `total=${formatUs(nested(ml, ["timing_us", "total"], null))}`;
     fields.reference.textContent = `${nested(steering, ["reference", "mode"])} / ${nested(steering, ["reference", "source"])}`;
     fields.gate.textContent =
       `${formatBool(gateVeto)} / ` +

@@ -113,6 +113,8 @@ const char* ReferenceModeToken(port::ReferenceMode mode) {
             return "interval_center";
         case port::ReferenceMode::kMlObservedBoundary:
             return "ml_observed_boundary";
+        case port::ReferenceMode::kMlBoundaryOffset:
+            return "ml_boundary_offset";
         case port::ReferenceMode::kHoldLast:
             return "hold_last";
     }
@@ -127,6 +129,8 @@ const char* PathPointSourceToken(port::BEVPathPointSource source) {
             return "interval_center";
         case port::BEVPathPointSource::kMlObservedBoundary:
             return "ml_observed_boundary";
+        case port::BEVPathPointSource::kMlBoundaryOffset:
+            return "ml_boundary_offset";
         case port::BEVPathPointSource::kHold:
             return "hold";
     }
@@ -233,6 +237,10 @@ void AppendMlTelemetryJson(std::ostringstream& stream,
                            double effective_speed_target) {
     stream << "{\"enabled\":";
     AppendJsonBool(stream, ml.enabled);
+    stream << ",\"maneuver_enabled\":";
+    AppendJsonBool(stream, ml.maneuver_enabled);
+    stream << ",\"takeover_selected\":";
+    AppendJsonBool(stream, ml.takeover_selected);
     stream << ",\"artifact\":{\"candidate_id\":";
     AppendJsonString(stream, ml.artifact_candidate_id == nullptr
                                  ? "unavailable" : ml.artifact_candidate_id);
@@ -336,24 +344,14 @@ void AppendMlTelemetryJson(std::ostringstream& stream,
     stream << ",\"confirm_count\":" << ml.confirm_count;
     stream << ",\"active\":";
     AppendJsonBool(stream, ml.active);
-    stream << ",\"anchor\":{\"forward_m\":";
-    AppendJsonNumber(stream, ml.anchor.forward_m);
-    stream << ",\"lateral_m\":";
-    AppendJsonNumber(stream, ml.anchor.lateral_m);
-    stream << "},\"pose_delta\":{\"valid\":";
-    AppendJsonBool(stream, ml.pose_delta.valid);
-    stream << ",\"forward_m\":";
-    AppendJsonNumber(stream, ml.pose_delta.forward_m);
-    stream << ",\"lateral_m\":";
-    AppendJsonNumber(stream, ml.pose_delta.lateral_m);
-    stream << ",\"yaw_rad\":";
-    AppendJsonNumber(stream, ml.pose_delta.yaw_rad);
-    stream << "},\"progress_m\":";
-    AppendJsonNumber(stream, ml.progress_m);
-    stream << ",\"lateral_error_m\":";
-    AppendJsonNumber(stream, ml.lateral_error_m);
-    stream << ",\"heading_error_rad\":";
-    AppendJsonNumber(stream, ml.heading_error_rad);
+    stream << ",\"odometry\":{\"valid\":";
+    AppendJsonBool(stream, ml.odometry_valid);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, ml.odometry_reason == nullptr ? "unknown" : ml.odometry_reason);
+    stream << "}";
+    stream << ",\"traveled_forward_m\":";
+    AppendJsonNumber(stream, ml.traveled_forward_m);
+    stream << ",\"elapsed_ms\":" << ml.elapsed_ms;
     stream << ",\"path_sample_count\":" << ml.path_sample_count;
     stream << ",\"speed_selection\":{\"source\":";
     AppendJsonString(stream, speed_selection_source);
@@ -847,6 +845,9 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
            << snapshot.param_snapshot.bev_element.cross_min_sampleable_per_row;
     header << ",\"CROSS_CONNECTIVITY_SAMPLE_INDEX\":"
            << snapshot.param_snapshot.bev_element.cross_connectivity_sample_index;
+    header << ",\"CROSS_BOUNDARY_EXPANSION_MIN_M\":";
+    AppendJsonNumber(header,
+                     snapshot.param_snapshot.bev_element.cross_boundary_expansion_min_m);
     header << ",\"CIRCLE_V2_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.circle_v2_enabled);
     header << ",\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":";
@@ -1002,15 +1003,15 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonString(header, ml.class_mapping.class_1_action);
     header << ",\"CLASS_2_ACTION\":";
     AppendJsonString(header, ml.class_mapping.class_2_action);
-    header << "},\"MANEUVER\":{\"SPEED_TARGET\":";
+    header << "},\"MANEUVER\":{\"ENABLED\":";
+    AppendJsonBool(header, ml.maneuver.enabled);
+    header << ",\"SPEED_TARGET\":";
     AppendJsonNumber(header, ml.maneuver.speed_target);
     header << ",\"MIN_BOUNDARY_SAMPLES\":" << ml.maneuver.min_boundary_samples;
+    header << ",\"PATH_OUTWARD_OFFSET_M\":";
+    AppendJsonNumber(header, ml.maneuver.path_outward_offset_m);
     header << ",\"EXIT_FORWARD_M\":";
     AppendJsonNumber(header, ml.maneuver.exit_forward_m);
-    header << ",\"EXIT_MAX_ABS_LATERAL_ERROR_M\":";
-    AppendJsonNumber(header, ml.maneuver.exit_max_abs_lateral_error_m);
-    header << ",\"EXIT_MAX_ABS_HEADING_ERROR_RAD\":";
-    AppendJsonNumber(header, ml.maneuver.exit_max_abs_heading_error_rad);
     header << ",\"MAX_DURATION_MS\":" << ml.maneuver.max_duration_ms;
     header << ",\"MAX_INTEGRATION_GAP_MS\":" << ml.maneuver.max_integration_gap_ms;
     header << ",\"COOLDOWN_MS\":" << ml.maneuver.cooldown_ms;

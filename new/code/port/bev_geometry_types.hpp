@@ -139,7 +139,7 @@ struct BEVControlModelParameters {
     double lateral_offset_to_wheel_delta_gain = 136.007362;  ///< 横向位置项到轮速差值的增益系数
     double heading_error_to_wheel_delta_gain = 59.136130;  ///< 航向误差项到轮速差值的增益系数
     double curvature_to_wheel_delta_gain = 23.141201;  ///< nominal speed下曲率前馈项到轮速差值的增益系数
-    int min_leading_reference_samples = 3;  ///< 最小前导参考采样点数量
+    int min_leading_reference_samples = 3;  ///< 最小有限有效参考采样点数量（字段名保留兼容）
     int tracking_fit_min_samples = 3;       ///< 跟踪几何拟合最小采样点数量
 };
 

@@ -56,6 +56,8 @@ enum class PerfStage : std::size_t {
     kCirclePhase2RoiScan,   ///< circle Phase2 ROI scan
     kCirclePhase2ReferenceBuild, ///< circle Phase2 reference candidate build
     kVisualElementPipeline, ///< 视觉元素 pipeline
+    kCrossExitDetection,    ///< Cross detection from sparse BEV facts
+    kCrossStraightPlanning, ///< Cross straight-through path planning
     kCircleV2Scene,         ///< Circle V2 场景解释器
     kVisualLineCandidate,   ///< 基础 line candidate 包装
     kVisualReferenceArbitration, ///< 视觉 reference 候选仲裁

@@ -6,6 +6,7 @@
 #include "port/camera_frame_types.hpp"
 #include "port/runtime_parameter_types.hpp"
 #include "port/visual_element_evidence_types.hpp"
+#include "port/visual_reference_orchestration_types.hpp"
 #include "vision/bev/bev_row_facts.hpp"
 #include "vision/bev/bev_segment_connectivity.hpp"
 
@@ -15,15 +16,17 @@ namespace ls2k::vision {
 struct VisualElementPipelineInput {
     const std::vector<BEVSimpleRowScan>* sparse_rows = nullptr;  ///< 稀疏行扫描结果指针（可为nullptr）
     BEVSegmentConnectivityResult origin_to_cross_sample_midpoint_connectivity{};
+    const BEVSegmentConnectivityQuery* segment_connectivity = nullptr;
 };
 
-/// 视觉元素管线输出，只发布元素检测证据。
+/// 视觉元素管线输出：检测证据及由独立 owner 生成的 Cross 参考候选。
 struct VisualElementPipelineResult {
     port::VisualElementEvidenceFrame evidence{};
+    port::VisualReferenceCandidate cross_candidate{};
 };
 
 /// 运行完整的视觉元素管线
-/// 当前只执行 Cross 检测；路径规划由独立 owner 负责。
+/// 执行 Cross 检测，并由独立 planner owner 生成标准视觉参考候选。
 /// @param input 管线输入
 /// @param params 运行时参数
 /// @return 管线结果

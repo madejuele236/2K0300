@@ -115,6 +115,28 @@ void TestCurvedReferenceSeparatesCurvature() {
     ExpectNear(output.curvature_m_inv, expected_curvature, 1.0e-3F, "quadratic coefficient becomes curvature");
 }
 
+void TestSingleMissingSampleDoesNotInvalidateFit() {
+    const ls2k::port::RuntimeParameters params{};
+    constexpr float kA = 0.35F;
+    constexpr float kB = -0.08F;
+    constexpr float kC = 0.02F;
+    ls2k::port::BEVReferencePath path =
+        MakePolynomialPath(params, 8, kA, kB, kC);
+    path.sampled_path[3].present = false;
+
+    const auto output = Compute(path, params);
+    const float expected_curvature =
+        (2.0F * kA) / std::pow(1.0F + kB * kB, 1.5F);
+    Expect(output.computed,
+           "one missing interior sample must not invalidate the remaining fit");
+    Expect(output.sample_count == 7U,
+           "tracking geometry must exclude only the missing sample");
+    ExpectNear(output.curvature_m_inv,
+               expected_curvature,
+               1.0e-3F,
+               "remaining polynomial samples must preserve the fitted curvature");
+}
+
 void TestLeftBendUsesObservedLateralOffsetAndHeading() {
     const ls2k::port::RuntimeParameters params{};
     const ls2k::port::BEVReferencePath path =
@@ -156,6 +178,7 @@ int main() {
         TestStraightReferenceProducesZeroCurvature();
         TestOffsetStraightReferenceUsesFirstObservedLateralAndHeading();
         TestCurvedReferenceSeparatesCurvature();
+        TestSingleMissingSampleDoesNotInvalidateFit();
         TestLeftBendUsesObservedLateralOffsetAndHeading();
         TestInsufficientSamplesFailClosed();
         TestDegenerateFitFailsClosed();

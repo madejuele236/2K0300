@@ -1339,7 +1339,7 @@ void TestInnerTraceIgnoresEntryBottomForwardRoi() {
            "CircleV2 edge path must preserve observed row forward coordinates");
 }
 
-void TestInnerTraceDoesNotBridgeInvalidRows() {
+void TestInnerTraceSkipsOneInvalidRow() {
     std::vector<ls2k::vision::BEVSimpleRowScan> rows{
         Row(0.30F, -0.5F, -0.4F, 0.4F, 0.5F),
         InvalidRow(0.36F),
@@ -1359,8 +1359,14 @@ void TestInnerTraceDoesNotBridgeInvalidRows() {
             FrameWithoutOrdinaryRoad(rows, 0.0F),
             prior,
             params);
-    Expect(!result.reference_plan.has_value(),
-           "CircleV2 edge geometry must not bridge invalid row holes");
+    Expect(result.reference_plan.has_value(),
+           "one invalid CircleV2 row must not erase later observable boundary points");
+    std::size_t sample_count = 0U;
+    for (const auto& sample : result.reference_plan->reference_path.sampled_path) {
+        sample_count += sample.present ? 1U : 0U;
+    }
+    Expect(sample_count == 3U,
+           "CircleV2 geometry must remove only the invalid in-ROI row");
 }
 
 void TestSceneGeometryAndAdapter() {
@@ -1484,7 +1490,7 @@ int main() {
     TestInnerTraceAcceptsSelectedBoundarySpanEdgePath();
     TestInnerTraceRejectsGappedRowGeometry();
     TestInnerTraceIgnoresEntryBottomForwardRoi();
-    TestInnerTraceDoesNotBridgeInvalidRows();
+    TestInnerTraceSkipsOneInvalidRow();
     TestSceneGeometryAndAdapter();
     TestRightInnerTraceInnerEdgePath();
     std::cout << "steering_circle_v2_scene_test passed\n";

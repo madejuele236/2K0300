@@ -5,6 +5,21 @@ runtime contract: one valid `32x32 gray8` ROI enters and one raw parent-class
 result (`0=supplies`, `1=vehicle`, `2=weapon`) leaves. Class-to-maneuver mapping
 remains a separate scene policy.
 
+`RunMlObserver()` owns the per-frame detector -> ROI -> classifier -> acceptance
+-> class-mapping fact chain. It has no road-path or motion-history input and
+cannot publish a reference candidate. `StepMlManeuver()` is the only consumer
+that may turn an accepted observation into confirmation, a locked left/right
+action, scalar encoder distance progress, and an ML reference candidate. While
+active, it rebuilds the path from the current selected-side boundary and shifts
+that boundary outward by `ML.MANEUVER.PATH_OUTWARD_OFFSET_M`; ML deliberately
+does not apply image-connectivity filtering. Missing current boundary facts do
+not end the maneuver: ML retains arbitration ownership and the global reference
+continuity policy decides whether the last ML reference can be held. The action
+is released when either `EXIT_FORWARD_M` or `MAX_DURATION_MS` is reached. With
+`ML.ENABLED=1` and
+`ML.MANEUVER.ENABLED=0`, only the observer runs; maneuver memory is reset and
+ordinary visual-reference arbitration and speed selection remain authoritative.
+
 Exactly one backend is selected at CMake configure time:
 
 ```bash

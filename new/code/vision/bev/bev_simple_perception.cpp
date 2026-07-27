@@ -18,6 +18,8 @@ const char* ToString(port::ReferenceMode mode) {
             return "interval_center";
         case port::ReferenceMode::kMlObservedBoundary:
             return "ml_observed_boundary";
+        case port::ReferenceMode::kMlBoundaryOffset:
+            return "ml_boundary_offset";
         case port::ReferenceMode::kHoldLast:
             return "hold_last";
     }
@@ -32,6 +34,8 @@ const char* ToString(port::BEVPathPointSource source) {
             return "interval_center";
         case port::BEVPathPointSource::kMlObservedBoundary:
             return "ml_observed_boundary";
+        case port::BEVPathPointSource::kMlBoundaryOffset:
+            return "ml_boundary_offset";
         case port::BEVPathPointSource::kHold:
             return "hold";
     }

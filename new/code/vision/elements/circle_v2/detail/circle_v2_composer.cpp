@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "port/bev_reference_path_utils.hpp"
 #include "vision/bev/single_boundary_offset.hpp"
 
 namespace ls2k::vision::detail {
@@ -24,15 +25,18 @@ std::optional<port::BEVReferencePath> ComposeOffsetPath(
     float signed_offset_m) {
     std::vector<port::BEVPoint> boundary_trace;
     std::vector<float> target_forward_samples;
+    std::vector<float> source_confidences;
     boundary_trace.reserve(edge_path.sampled_path.size());
     target_forward_samples.reserve(edge_path.sampled_path.size());
+    source_confidences.reserve(edge_path.sampled_path.size());
 
     for (const port::BEVPathSample& sample : edge_path.sampled_path) {
-        if (!sample.present) {
-            break;
+        if (!port::IsFiniteReferenceSample(sample)) {
+            continue;
         }
         boundary_trace.push_back(sample.point);
         target_forward_samples.push_back(sample.point.forward_m);
+        source_confidences.push_back(sample.confidence);
     }
 
     const std::vector<port::BEVPoint> offset_points =
@@ -51,8 +55,8 @@ std::optional<port::BEVReferencePath> ComposeOffsetPath(
         port::BEVPathSample& sample = reference_path.sampled_path[index];
         sample.present = true;
         sample.point = offset_points[index];
-        sample.confidence = edge_path.sampled_path[index].confidence > 0.0F
-                                ? edge_path.sampled_path[index].confidence
+        sample.confidence = source_confidences[index] > 0.0F
+                                ? source_confidences[index]
                                 : 0.8F;
         sample.source = port::BEVPathPointSource::kIntervalCenter;
     }

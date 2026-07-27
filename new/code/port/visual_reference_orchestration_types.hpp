@@ -73,6 +73,8 @@ inline void AppendVisualReferenceCandidatePath(VisualReferenceCandidatePathSet& 
  */
 struct VisualReferenceSelection {
     bool present = false;                              ///< 是否选中了参考路径
+    bool kind_valid = false;                           ///< kind 是否来自已选候选
+    VisualReferenceCandidateKind kind = VisualReferenceCandidateKind::kLine;
     BEVReferencePath reference_path{};                 ///< 选中的BEV参考路径
     std::string source = "none";                       ///< 选中来源描述
     std::string reason = "no_visual_reference_candidate";  ///< 选择/未选择的原因

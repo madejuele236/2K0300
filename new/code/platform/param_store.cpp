@@ -1028,6 +1028,7 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
            params.cross_connectivity_sample_index >= 0 &&
            params.cross_connectivity_sample_index <
                static_cast<int>(port::kBevReferenceSampleCount) &&
+           IsFiniteInRange(params.cross_boundary_expansion_min_m, 1.0e-6, 2.0) &&
            IsFiniteInRange(params.circle_v2_exit_yaw_threshold_deg, 1.0, 720.0) &&
            params.circle_v2_exit_hold_frames >= 2 &&
            params.circle_v2_inner_trace_stall_timeout_ms >= 1 &&
@@ -1374,11 +1375,11 @@ void ReadMlParams(const cv::FileNode& root,
                 !ReadStringValue(mapping["CLASS_2_ACTION"], parsed.ml.class_mapping.class_2_action)) optional_malformed = true;
         }
         if (!maneuver.empty()) {
+            ReadOptionalBool(maneuver, "ENABLED", parsed.ml.maneuver.enabled, optional_malformed);
             ReadOptionalNumber(maneuver, "SPEED_TARGET", parsed.ml.maneuver.speed_target, optional_malformed);
             ReadOptionalInt(maneuver, "MIN_BOUNDARY_SAMPLES", parsed.ml.maneuver.min_boundary_samples, optional_malformed);
+            ReadOptionalNumber(maneuver, "PATH_OUTWARD_OFFSET_M", parsed.ml.maneuver.path_outward_offset_m, optional_malformed);
             ReadOptionalNumber(maneuver, "EXIT_FORWARD_M", parsed.ml.maneuver.exit_forward_m, optional_malformed);
-            ReadOptionalNumber(maneuver, "EXIT_MAX_ABS_LATERAL_ERROR_M", parsed.ml.maneuver.exit_max_abs_lateral_error_m, optional_malformed);
-            ReadOptionalNumber(maneuver, "EXIT_MAX_ABS_HEADING_ERROR_RAD", parsed.ml.maneuver.exit_max_abs_heading_error_rad, optional_malformed);
             ReadOptionalInt(maneuver, "MAX_DURATION_MS", parsed.ml.maneuver.max_duration_ms, optional_malformed);
             ReadOptionalInt(maneuver, "MAX_INTEGRATION_GAP_MS", parsed.ml.maneuver.max_integration_gap_ms, optional_malformed);
             ReadOptionalInt(maneuver, "COOLDOWN_MS", parsed.ml.maneuver.cooldown_ms, optional_malformed);
@@ -1530,6 +1531,11 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
                           "CROSS_CONNECTIVITY_SAMPLE_INDEX",
                           parsed.bev_element.cross_connectivity_sample_index,
                           optional_malformed);
+    ReadOptionalNestedNumber(root,
+                             "BEV_ELEMENT",
+                             "CROSS_BOUNDARY_EXPANSION_MIN_M",
+                             parsed.bev_element.cross_boundary_expansion_min_m,
+                             optional_malformed);
     ReadOptionalNestedBool(
         root, "BEV_ELEMENT", "CIRCLE_V2_ENABLED", parsed.bev_element.circle_v2_enabled, optional_malformed);
     ReadOptionalNestedNumber(root,
@@ -1757,7 +1763,7 @@ public:
         // RUNNING_SPEED_TARGET by AssistantProtocolDecoder. Validate the exact
         // production worst case before publishing any part of parsed to out.
         double maximum_wheel_base_target = parsed.running_speed_target;
-        if (parsed.ml.enabled) {
+        if (parsed.ml.maneuver.enabled) {
             const bool ml_speed_target_valid =
                 std::isfinite(parsed.ml.maneuver.speed_target) &&
                 parsed.ml.maneuver.speed_target > 0.0 &&

@@ -8,27 +8,13 @@
 
 namespace ls2k::vision::ml {
 
-struct MlPathGenerationInput {
-    port::MlAction action = port::MlAction::kUnmapped;
-    const BEVRoadPathFacts* road_path_facts = nullptr;
-    std::size_t min_boundary_samples = 0;
-};
-
-/// Replaceable path-generation contract. Detector, predictor, class mapping,
-/// scene confirmation, and inertial tracking depend only on this interface.
-class MlPathGenerator {
-public:
-    virtual ~MlPathGenerator() = default;
-    virtual port::BEVReferencePath Generate(const MlPathGenerationInput& input) const = 0;
-};
-
-/// v1 generator: left consumes literal actual-left; right consumes literal
-/// actual-right. It never synthesizes a side, applies an offset, or substitutes
-/// the ordinary center path.
-class ObservedBoundaryMlPathGenerator final : public MlPathGenerator {
-public:
-    port::BEVReferencePath Generate(const MlPathGenerationInput& input) const override;
-};
+/// Builds the current-frame ML path from the selected observed boundary. The
+/// offset is directed away from the road: negative for left, positive for right.
+port::BEVReferencePath BuildMlBoundaryOffsetPath(
+    port::MlAction action,
+    const BEVRoadPathFacts& road_path_facts,
+    std::size_t min_boundary_samples,
+    float outward_offset_m);
 
 }  // namespace ls2k::vision::ml
 

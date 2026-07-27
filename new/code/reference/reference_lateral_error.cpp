@@ -1,17 +1,13 @@
 #include "reference/reference_lateral_error.hpp"
 
 #include <algorithm>
-#include <cmath>
+
+#include "port/bev_reference_path_utils.hpp"
 
 namespace ls2k::reference {
 namespace {
 
 constexpr float kLegacyLateralErrorFarWeight = 0.0F;
-
-/// 检查参考路径采样点是否存在且坐标有限
-bool IsReferencePointPresent(const port::BEVPathSample& sample) {
-    return sample.present && std::isfinite(sample.point.forward_m) && std::isfinite(sample.point.lateral_m);
-}
 
 /// 创建未计算的输出（包含原因说明）
 port::ReferenceLateralErrorEstimate UncomputedOutput(const std::string& reason) {
@@ -30,15 +26,6 @@ float LinearReferenceWeight(std::size_t index, float far_weight) {
     return 1.0F + (far_weight - 1.0F) * static_cast<float>(index) / kDenominator;
 }
 
-std::size_t FirstPresentSegmentStart(const port::BEVReferencePath& reference_path) {
-    for (std::size_t index = 0; index < reference_path.sampled_path.size(); ++index) {
-        if (IsReferencePointPresent(reference_path.sampled_path[index])) {
-            return index;
-        }
-    }
-    return reference_path.sampled_path.size();
-}
-
 }  // namespace
 
 /// ComputeReferenceLateralError 实现
@@ -53,22 +40,20 @@ port::ReferenceLateralErrorEstimate ComputeReferenceLateralError(
         return UncomputedOutput(usability.reason);
     }
 
-    const std::size_t start_index = FirstPresentSegmentStart(reference_path);
-    if (start_index >= reference_path.sampled_path.size()) {
-        return UncomputedOutput("lateral_error_unavailable");
-    }
     const std::size_t bounded_count =
-        std::min(usability.leading_usable_samples,
-                 reference_path.sampled_path.size() - start_index);
+        std::min(usability.leading_usable_samples, reference_path.sampled_path.size());
     float weighted_sum = 0.0F;
     float weight_sum = 0.0F;
     std::size_t used_count = 0;
-    for (std::size_t index = 0; index < bounded_count; ++index) {
-        const port::BEVPathSample& sample = reference_path.sampled_path[start_index + index];
-        if (!IsReferencePointPresent(sample)) {
+    for (const port::BEVPathSample& sample : reference_path.sampled_path) {
+        if (!port::IsFiniteReferenceSample(sample)) {
+            continue;
+        }
+        if (used_count >= bounded_count) {
             break;
         }
-        const float weight = LinearReferenceWeight(index, kLegacyLateralErrorFarWeight);
+        const float weight =
+            LinearReferenceWeight(used_count, kLegacyLateralErrorFarWeight);
         weighted_sum += weight * sample.point.lateral_m;
         weight_sum += weight;
         ++used_count;

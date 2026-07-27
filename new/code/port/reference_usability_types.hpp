@@ -18,14 +18,16 @@ namespace ls2k::port {
  * @struct ReferenceUsability
  * @brief 参考路径可用性评估结果
  *
- * 检查参考路径中第一个连续真实采样段是否足够，
- * 并给出可用范围的最小/最大前向距离。
+ * 检查参考路径中有限有效采样集合是否足够，
+ * 并给出集合的最小/最大前向距离。
  */
 struct ReferenceUsability {
     bool usable = false;                    ///< 参考路径是否可用
-    std::size_t leading_usable_samples = 0; ///< 第一个连续真实采样段的点数
-    float leading_min_forward_m = 0.0F;     ///< 前向有效范围的最小距离（米）
-    float leading_max_forward_m = 0.0F;     ///< 前向有效范围的最大距离（米）
+    // Field names are retained for wire compatibility; values cover all
+    // finite valid samples, not a contiguous prefix.
+    std::size_t leading_usable_samples = 0; ///< 有限有效采样总数
+    float leading_min_forward_m = 0.0F;     ///< 有效集合最小前向距离（米）
+    float leading_max_forward_m = 0.0F;     ///< 有效集合最大前向距离（米）
     std::string reason = "no_reference_facts";  ///< 不可用的原因
 };
 

@@ -399,7 +399,9 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.ml = perception.ml;
     debug_snapshot.steering.speed_selection_source =
         override_active ? "runtime_override"
-                        : (perception.ml.active ? "ml_maneuver" : "running_default");
+                        : (perception.ml.takeover_selected
+                               ? "ml_maneuver"
+                               : "running_default");
     debug_snapshot.steering.effective_speed_target = inputs.final_motion.effective_speed_target;
     debug_snapshot.steering.perception_health.projector_ok = perception.perception_health.projector_ok;
     debug_snapshot.steering.perception_health.reason = perception.perception_health.reason;
