@@ -134,7 +134,7 @@ CircleV2Decision ReduceCircleV2(const CircleV2Memory& prior,
 CircleV2Telemetry BuildCircleV2Telemetry(const CircleV2Decision& decision,
                                          const CircleV2Events& events,
                                          const CircleV2Geometry& geometry,
-                                         const CircleSideExpansionObservation& expansion) {
+                                         const CircleEntryCueObservation& entry_cue) {
     CircleV2Telemetry telemetry{};
     telemetry.frame_phase = decision.frame_phase;
     telemetry.next_phase = decision.next_memory.phase;
@@ -146,7 +146,21 @@ CircleV2Telemetry BuildCircleV2Telemetry(const CircleV2Decision& decision,
     telemetry.geometry_source = geometry.source;
     telemetry.inner_trace_elapsed_ms = events.inner_trace_elapsed_ms;
     telemetry.directed_turn_angle_rad = decision.progress_angle_rad;
-    telemetry.openings = expansion.openings;
+    telemetry.entry_cue.detected_dir = entry_cue.detected_dir;
+    telemetry.entry_cue.bilateral_overlap = entry_cue.bilateral_overlap;
+    telemetry.entry_cue.selected = entry_cue.selected;
+    telemetry.entry_cue.selected_begin_forward_m =
+        entry_cue.selected_opening.fact.begin_forward_m;
+    telemetry.entry_cue.selected_end_forward_m =
+        entry_cue.selected_opening.fact.end_forward_m;
+    telemetry.entry_cue.opposite_observable =
+        entry_cue.selected_opposite_boundary.observable;
+    telemetry.entry_cue.opposite_straight =
+        entry_cue.selected_opposite_boundary.straight;
+    telemetry.entry_cue.opposite_straight_confidence =
+        entry_cue.selected_opposite_boundary.confidence;
+    telemetry.openings.left = entry_cue.left_opening.fact;
+    telemetry.openings.right = entry_cue.right_opening.fact;
     if ((decision.reference.role == CircleV2ReferenceRole::kInnerTrace ||
          decision.reference.role == CircleV2ReferenceRole::kExitTrace) &&
         !geometry.available && telemetry.reason == CircleV2TelemetryReason::kNone) {

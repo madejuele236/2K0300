@@ -214,20 +214,42 @@ void AppendCircleOpeningObservationJson(
     const port::CircleOpeningObservation& opening) {
     stream << "{\"available\":";
     AppendJsonBool(stream, opening.available);
-    stream << ",\"frontier_forward_m\":";
-    AppendOptionalJsonNumber(stream, opening.available, opening.frontier_forward_m);
+    stream << ",\"begin_forward_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.begin_forward_m);
+    stream << ",\"end_forward_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.end_forward_m);
     stream << ",\"effective_lateral_m\":";
     AppendOptionalJsonNumber(stream, opening.available, opening.effective_lateral_m);
     stream << ",\"source\":";
     AppendJsonString(stream, port::CircleOpeningSourceToken(opening.source));
     stream << ",\"outward_distance_m\":";
     AppendOptionalJsonNumber(stream, opening.available, opening.outward_distance_m);
-    stream << ",\"confirmed_forward_span_m\":";
-    AppendOptionalJsonNumber(stream, opening.available, opening.confirmed_forward_span_m);
+    stream << ",\"minimum_white_width_m\":";
+    AppendOptionalJsonNumber(stream, opening.available, opening.minimum_white_width_m);
     stream << ",\"origin_connected\":";
     AppendJsonBool(stream, opening.origin_connected);
+    stream << "}";
+}
+
+void AppendCircleEntryCueObservationJson(
+    std::ostringstream& stream,
+    const port::CircleEntryCueObservation& cue) {
+    stream << "{\"detected_dir\":";
+    AppendJsonString(stream, port::CircleDirToken(cue.detected_dir));
+    stream << ",\"bilateral_overlap\":";
+    AppendJsonBool(stream, cue.bilateral_overlap);
+    stream << ",\"selected\":";
+    AppendJsonBool(stream, cue.selected);
+    stream << ",\"selected_begin_forward_m\":";
+    AppendOptionalJsonNumber(stream, cue.selected, cue.selected_begin_forward_m);
+    stream << ",\"selected_end_forward_m\":";
+    AppendOptionalJsonNumber(stream, cue.selected, cue.selected_end_forward_m);
+    stream << ",\"opposite_observable\":";
+    AppendJsonBool(stream, cue.opposite_observable);
     stream << ",\"opposite_straight\":";
-    AppendJsonBool(stream, opening.opposite_straight);
+    AppendJsonBool(stream, cue.opposite_straight);
+    stream << ",\"opposite_straight_confidence\":"
+           << cue.opposite_straight_confidence;
     stream << "}";
 }
 
@@ -398,11 +420,31 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
            << snapshot.circle_v2.inner_trace_elapsed_ms;
     stream << ",\"directed_turn_angle_rad\":"
            << snapshot.circle_v2.directed_turn_angle_rad;
+    stream << ",\"entry_cue\":";
+    AppendCircleEntryCueObservationJson(stream, snapshot.circle_v2.entry_cue);
     stream << ",\"openings\":{\"left\":";
     AppendCircleOpeningObservationJson(stream, snapshot.circle_v2.openings.left);
     stream << ",\"right\":";
     AppendCircleOpeningObservationJson(stream, snapshot.circle_v2.openings.right);
     stream << "}";
+    stream << "}";
+    stream << ",\"zebra_stop\":";
+    stream << "{\"frame_phase\":";
+    AppendJsonString(stream, snapshot.zebra_stop.frame_phase);
+    stream << ",\"next_phase\":";
+    AppendJsonString(stream, snapshot.zebra_stop.next_phase);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, snapshot.zebra_stop.reason);
+    stream << ",\"motion_session_active\":";
+    AppendJsonBool(stream, snapshot.zebra_stop.motion_session_active);
+    stream << ",\"detected\":";
+    AppendJsonBool(stream, snapshot.zebra_stop.detected);
+    stream << ",\"absence_elapsed_ms\":"
+           << snapshot.zebra_stop.absence_elapsed_ms;
+    stream << ",\"stop_delay_elapsed_ms\":"
+           << snapshot.zebra_stop.stop_delay_elapsed_ms;
+    stream << ",\"controlled_stop_requested\":";
+    AppendJsonBool(stream, snapshot.zebra_stop.controlled_stop_requested);
     stream << "}";
     stream << ",\"ml\":";
     AppendMlTelemetryJson(stream,
@@ -870,6 +912,24 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     header << ",\"CROSS_BOUNDARY_EXPANSION_MIN_M\":";
     AppendJsonNumber(header,
                      snapshot.param_snapshot.bev_element.cross_boundary_expansion_min_m);
+    header << ",\"ZEBRA_FORWARD_MIN_M\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.zebra_forward_min_m);
+    header << ",\"ZEBRA_FORWARD_MAX_M\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.zebra_forward_max_m);
+    header << ",\"ZEBRA_MIN_JUMPS_PER_ROW\":"
+           << snapshot.param_snapshot.bev_element.zebra_min_jumps_per_row;
+    header << ",\"ZEBRA_MAX_ADJACENT_FORWARD_GAP_M\":";
+    AppendJsonNumber(
+        header,
+        snapshot.param_snapshot.bev_element.zebra_max_adjacent_forward_gap_m);
+    header << ",\"ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M\":";
+    AppendJsonNumber(
+        header,
+        snapshot.param_snapshot.bev_element.zebra_min_support_forward_span_m);
+    header << ",\"ZEBRA_REENTRY_ARM_ABSENCE_MS\":"
+           << snapshot.param_snapshot.bev_element.zebra_reentry_arm_absence_ms;
+    header << ",\"ZEBRA_CONTROLLED_STOP_DELAY_MS\":"
+           << snapshot.param_snapshot.bev_element.zebra_controlled_stop_delay_ms;
     header << ",\"CIRCLE_V2_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.circle_v2_enabled);
     header << ",\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\":";

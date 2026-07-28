@@ -22,6 +22,7 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     telemetry.speed_selection_source = snapshot.steering.speed_selection_source;
     telemetry.element_evidence = snapshot.steering.element_evidence;
     telemetry.circle_v2 = snapshot.steering.circle_v2;
+    telemetry.zebra_stop = snapshot.steering.zebra_stop;
     telemetry.visual_reference.present = snapshot.steering.visual_reference.present;
     telemetry.visual_reference.source = snapshot.steering.visual_reference.source;
     telemetry.visual_reference.reason = snapshot.steering.visual_reference.reason;

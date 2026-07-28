@@ -30,7 +30,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/reference/reference_continuity.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/circle_v2_scene.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_event_observer.cpp" \
-  "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_expansion_observer.cpp" \
+  "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_entry_cue_observer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_reducer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_composer.cpp" \

@@ -178,6 +178,7 @@ struct SteeringDebugSnapshot {
     PerceptionHealthDebugView perception_health{};           ///< 感知健康状态
     port::VisualElementEvidenceFrame element_evidence{};     ///< 视觉元素证据帧
     port::CircleV2TelemetrySnapshot circle_v2{};              ///< CircleV2 场景状态
+    port::ZebraStopTelemetry zebra_stop{};                    ///< Zebra 再遇受控停车状态
     VisualReferenceDebugView visual_reference{};             ///< 视觉参考选择
     ReferenceDebugView reference{};                          ///< 参考路径信息
     ReferenceEligibilityDebugView eligibility{};             ///< 参考可用性

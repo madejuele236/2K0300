@@ -16,11 +16,13 @@ fi
 # shellcheck disable=SC2046
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread \
   -DLS2K_ML_CLASSIFIER_BACKEND=1 \
+  -DLS2K_PERF_ENABLED=1 \
   -I"${REPO_ROOT}/new/code" \
   -I"${GENERATED_DIR}" \
   $(pkg-config --cflags opencv4) \
   "${SCRIPT_DIR}/current_pipeline_path_replay.cpp" \
   "${REPO_ROOT}/new/code/platform/param_store.cpp" \
+  "${REPO_ROOT}/new/code/port/perf_counter.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
   "${REPO_ROOT}/new/code/vision/image/illumination_binary_model.cpp" \
   "${REPO_ROOT}/new/code/vision/image/color_sampler.cpp" \
@@ -45,12 +47,14 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/vision/bev/bev_simple_perception.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/cross_exit_element_evidence.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/cross_straight_path_planner.cpp" \
+  "${REPO_ROOT}/new/code/vision/elements/zebra_element_evidence.cpp" \
+  "${REPO_ROOT}/new/code/vision/elements/zebra_stop_scene.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/visual_element_evidence.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/visual_element_pipeline.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/circle_v2_scene.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/circle_v2_reference_adapter.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_event_observer.cpp" \
-  "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_expansion_observer.cpp" \
+  "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_entry_cue_observer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_reducer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_composer.cpp" \

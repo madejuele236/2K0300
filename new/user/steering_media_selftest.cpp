@@ -281,15 +281,28 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.circle_v2.reason = "observed_outer_boundary";
     snapshot.steering.circle_v2.geometry_available = true;
     snapshot.steering.circle_v2.geometry_source = "observed_boundary";
+    snapshot.steering.circle_v2.entry_cue.detected_dir =
+        ls2k::port::CircleDir::kLeft;
+    snapshot.steering.circle_v2.entry_cue.selected = true;
+    snapshot.steering.circle_v2.entry_cue.selected_begin_forward_m = 0.5F;
+    snapshot.steering.circle_v2.entry_cue.selected_end_forward_m = 0.62F;
+    snapshot.steering.circle_v2.entry_cue.opposite_observable = true;
+    snapshot.steering.circle_v2.entry_cue.opposite_straight = true;
+    snapshot.steering.circle_v2.entry_cue.opposite_straight_confidence = 0.9F;
     snapshot.steering.circle_v2.openings.left.available = true;
-    snapshot.steering.circle_v2.openings.left.frontier_forward_m = 0.5F;
+    snapshot.steering.circle_v2.openings.left.begin_forward_m = 0.5F;
+    snapshot.steering.circle_v2.openings.left.end_forward_m = 0.62F;
     snapshot.steering.circle_v2.openings.left.effective_lateral_m = -0.25F;
     snapshot.steering.circle_v2.openings.left.source =
         ls2k::port::CircleOpeningSource::kObservedBoundary;
     snapshot.steering.circle_v2.openings.left.outward_distance_m = 0.08F;
-    snapshot.steering.circle_v2.openings.left.confirmed_forward_span_m = 0.12F;
+    snapshot.steering.circle_v2.openings.left.minimum_white_width_m = 0.46F;
     snapshot.steering.circle_v2.openings.left.origin_connected = true;
-    snapshot.steering.circle_v2.openings.left.opposite_straight = true;
+    snapshot.steering.zebra_stop.frame_phase = "armed_for_reentry";
+    snapshot.steering.zebra_stop.next_phase = "stop_delay";
+    snapshot.steering.zebra_stop.reason = "reentry_detected";
+    snapshot.steering.zebra_stop.motion_session_active = true;
+    snapshot.steering.zebra_stop.detected = true;
     ls2k::port::VisualElementEvidenceRecord record{};
     record.id = "synthetic_marker";
     record.present = true;
@@ -476,10 +489,14 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose CircleV2 geometry source");
     Require(Contains(message, "circle_v2.openings.left.available=true"),
             "steering snapshot must expose CircleV2 left opening availability");
-    Require(Contains(message, "circle_v2.openings.left.frontier_forward_m=0.5"),
+    Require(Contains(message, "circle_v2.openings.left.begin_forward_m=0.5"),
             "steering snapshot must expose CircleV2 left opening frontier");
     Require(Contains(message, "circle_v2.openings.left.source=observed_boundary"),
             "steering snapshot must expose CircleV2 opening source");
+    Require(Contains(message, "zebra_stop.frame_phase=armed_for_reentry") &&
+                Contains(message, "zebra_stop.next_phase=stop_delay") &&
+                Contains(message, "zebra_stop.reason=reentry_detected"),
+            "steering snapshot must expose Zebra stop state");
     Require(Contains(message, "element_evidence.records[0].id=synthetic_marker"),
             "steering snapshot must expose generic evidence record id");
     Require(Contains(message, "element_evidence.records[0].support.boundary_span_count=7"),
@@ -610,6 +627,13 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_element.cross_min_sampleable_per_row = 9;
     config.param_snapshot.bev_element.cross_connectivity_sample_index = 6;
     config.param_snapshot.bev_element.cross_boundary_expansion_min_m = 0.071F;
+    config.param_snapshot.bev_element.zebra_forward_min_m = 0.06F;
+    config.param_snapshot.bev_element.zebra_forward_max_m = 0.55F;
+    config.param_snapshot.bev_element.zebra_min_jumps_per_row = 7;
+    config.param_snapshot.bev_element.zebra_max_adjacent_forward_gap_m = 0.13F;
+    config.param_snapshot.bev_element.zebra_min_support_forward_span_m = 0.045F;
+    config.param_snapshot.bev_element.zebra_reentry_arm_absence_ms = 650;
+    config.param_snapshot.bev_element.zebra_controlled_stop_delay_ms = 750;
     config.param_snapshot.reference_time_alignment.enabled = true;
     config.param_snapshot.reference_time_alignment.max_age_ms = 120;
     config.param_snapshot.reference_time_alignment.effective_delay_ms = 25;
@@ -734,6 +758,16 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include cross connectivity sample index");
     Require(Contains(header_json, "\"CROSS_BOUNDARY_EXPANSION_MIN_M\":0.0710000023246"),
             "config snapshot must include cross expansion distance");
+    Require(Contains(header_json, "\"ZEBRA_FORWARD_MIN_M\":0.0599999986589") &&
+                Contains(header_json, "\"ZEBRA_FORWARD_MAX_M\":0.550000011921") &&
+                Contains(header_json, "\"ZEBRA_MIN_JUMPS_PER_ROW\":7") &&
+                Contains(header_json,
+                         "\"ZEBRA_MAX_ADJACENT_FORWARD_GAP_M\":0.129999995232") &&
+                Contains(header_json,
+                         "\"ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M\":0.0450000017881") &&
+                Contains(header_json, "\"ZEBRA_REENTRY_ARM_ABSENCE_MS\":650") &&
+                Contains(header_json, "\"ZEBRA_CONTROLLED_STOP_DELAY_MS\":750"),
+            "config snapshot must include all Zebra thresholds");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "config snapshot must not include removed cross white-ratio threshold");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
@@ -1298,16 +1332,34 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.circle_v2.reason = "none";
         state.control_debug_snapshot.steering.circle_v2.geometry_available = true;
         state.control_debug_snapshot.steering.circle_v2.geometry_source = "observed_boundary";
+        auto& entry_cue =
+            state.control_debug_snapshot.steering.circle_v2.entry_cue;
+        entry_cue.detected_dir = ls2k::port::CircleDir::kLeft;
+        entry_cue.selected = true;
+        entry_cue.selected_begin_forward_m = 0.5F;
+        entry_cue.selected_end_forward_m = 0.62F;
+        entry_cue.opposite_observable = true;
+        entry_cue.opposite_straight = true;
+        entry_cue.opposite_straight_confidence = 0.9F;
         auto& left_opening =
             state.control_debug_snapshot.steering.circle_v2.openings.left;
         left_opening.available = true;
-        left_opening.frontier_forward_m = 0.5F;
+        left_opening.begin_forward_m = 0.5F;
+        left_opening.end_forward_m = 0.62F;
         left_opening.effective_lateral_m = -0.25F;
         left_opening.source = ls2k::port::CircleOpeningSource::kFovEdgeLowerBound;
         left_opening.outward_distance_m = 0.08F;
-        left_opening.confirmed_forward_span_m = 0.12F;
+        left_opening.minimum_white_width_m = 0.46F;
         left_opening.origin_connected = true;
-        left_opening.opposite_straight = true;
+        state.control_debug_snapshot.steering.zebra_stop.frame_phase =
+            "armed_for_reentry";
+        state.control_debug_snapshot.steering.zebra_stop.next_phase =
+            "stop_delay";
+        state.control_debug_snapshot.steering.zebra_stop.reason =
+            "reentry_detected";
+        state.control_debug_snapshot.steering.zebra_stop.motion_session_active =
+            true;
+        state.control_debug_snapshot.steering.zebra_stop.detected = true;
         ls2k::port::VisualElementEvidenceRecord record{};
         record.id = "synthetic_marker";
         record.present = true;
@@ -1457,6 +1509,12 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must not expose removed cross white-ratio settings");
     Require(Contains(header_json, "\"CROSS_BOUNDARY_EXPANSION_MIN_M\":"),
             "service config snapshot must expose cross expansion distance");
+    Require(Contains(header_json, "\"ZEBRA_FORWARD_MIN_M\":") &&
+                Contains(header_json, "\"ZEBRA_FORWARD_MAX_M\":") &&
+                Contains(header_json, "\"ZEBRA_MIN_JUMPS_PER_ROW\":") &&
+                Contains(header_json, "\"ZEBRA_MAX_ADJACENT_FORWARD_GAP_M\":") &&
+                Contains(header_json, "\"ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M\":"),
+            "service config snapshot must expose all Zebra thresholds");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
             "service config snapshot must expose CircleV2 enablement");
     Require(Contains(header_json, "\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\":90") &&
@@ -1538,10 +1596,18 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must expose CircleV2 geometry availability");
     Require(Contains(header_json, "\"geometry_source\":\"observed_boundary\""),
             "image frame must expose CircleV2 geometry source");
-    Require(Contains(header_json, "\"openings\":{\"left\":{\"available\":true,\"frontier_forward_m\":0.5,\"effective_lateral_m\":-0.25,\"source\":\"fov_edge_lower_bound\""),
+    Require(Contains(header_json, "\"entry_cue\":{\"detected_dir\":\"left\",\"bilateral_overlap\":false,\"selected\":true"),
+            "image frame must expose the selected CircleV2 entry cue");
+    Require(Contains(header_json, "\"openings\":{\"left\":{\"available\":true,\"begin_forward_m\":0.5") &&
+                Contains(header_json, "\"effective_lateral_m\":-0.25,\"source\":\"fov_edge_lower_bound\"") &&
+                Contains(header_json, "\"minimum_white_width_m\":"),
             "image frame must expose CircleV2 left opening facts");
-    Require(Contains(header_json, "\"right\":{\"available\":false,\"frontier_forward_m\":null,\"effective_lateral_m\":null,\"source\":\"none\""),
+    Require(Contains(header_json, "\"right\":{\"available\":false,\"begin_forward_m\":null,\"end_forward_m\":null,\"effective_lateral_m\":null,\"source\":\"none\""),
             "image frame must expose absent CircleV2 right opening with null metrics");
+    Require(Contains(header_json,
+                     "\"zebra_stop\":{\"frame_phase\":\"armed_for_reentry\","
+                     "\"next_phase\":\"stop_delay\",\"reason\":\"reentry_detected\""),
+            "image frame must expose Zebra stop telemetry");
     Require(!Contains(header_json, "\"circle_entry"),
             "image frame must not expose legacy circle entry diagnostics");
     Require(Contains(header_json, "\"records\":[{\"id\":\"synthetic_marker\""),

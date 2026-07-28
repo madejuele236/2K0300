@@ -3,6 +3,7 @@
 #include "port/perf_counter.hpp"
 #include "vision/elements/cross_exit_element_evidence.hpp"
 #include "vision/elements/cross_straight_path_planner.hpp"
+#include "vision/elements/zebra_element_evidence.hpp"
 
 namespace ls2k::vision {
 
@@ -19,6 +20,10 @@ VisualElementPipelineResult RunVisualElementPipeline(const VisualElementPipeline
             DetectCrossExitEvidence(rows,
                                     input.origin_to_cross_sample_midpoint_connectivity,
                                     params);
+    }
+    {
+        LS2K_PERF_SCOPE(port::PerfStage::kZebraDetection);
+        result.evidence.records.push_back(DetectZebraEvidence(rows, params));
     }
     if (input.segment_connectivity != nullptr) {
         LS2K_PERF_SCOPE(port::PerfStage::kCrossStraightPlanning);

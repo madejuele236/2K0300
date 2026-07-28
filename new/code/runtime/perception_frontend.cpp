@@ -128,12 +128,19 @@ bool PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) 
     }
 
     port::MotionHistory motion_history{};
+    bool motion_session_active = false;
     {
         std::lock_guard<std::mutex> lock(state_.shared_mutex);
         motion_history = state_.motion_history;
+        motion_session_active =
+            state_.motion_state.phase == control::MotionPhase::kSpinup ||
+            state_.motion_state.phase == control::MotionPhase::kRunning;
     }
     port::PerceptionResult perception =
-        frame_pipeline_.ProcessFrame(capture, params, motion_history);
+        frame_pipeline_.ProcessFrame(capture,
+                                     params,
+                                     motion_history,
+                                     motion_session_active);
 
     {
         std::lock_guard<std::mutex> lock(state_.shared_mutex);

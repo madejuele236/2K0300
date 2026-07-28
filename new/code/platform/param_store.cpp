@@ -1029,6 +1029,17 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
            params.cross_connectivity_sample_index <
                static_cast<int>(port::kBevReferenceSampleCount) &&
            IsFiniteInRange(params.cross_boundary_expansion_min_m, 1.0e-6, 2.0) &&
+           IsFiniteInRange(params.zebra_forward_min_m, 0.0, 2.0) &&
+           IsFiniteInRange(params.zebra_forward_max_m, 0.0, 2.0) &&
+           params.zebra_forward_max_m >= params.zebra_forward_min_m &&
+           params.zebra_min_jumps_per_row >= 2 &&
+           params.zebra_min_jumps_per_row <= 256 &&
+           IsFiniteInRange(params.zebra_max_adjacent_forward_gap_m, 1.0e-6, 2.0) &&
+           IsFiniteInRange(params.zebra_min_support_forward_span_m, 1.0e-6, 2.0) &&
+           params.zebra_reentry_arm_absence_ms >= 0 &&
+           params.zebra_reentry_arm_absence_ms <= port::kMaximumRuntimeIntervalMs &&
+           params.zebra_controlled_stop_delay_ms >= 0 &&
+           params.zebra_controlled_stop_delay_ms <= port::kMaximumRuntimeIntervalMs &&
            IsFiniteInRange(params.circle_v2_normal_trace_start_yaw_deg, 1.0, 720.0) &&
            IsFiniteInRange(params.circle_v2_exit_trace_start_yaw_deg, 1.0, 720.0) &&
            IsFiniteInRange(params.circle_v2_calm_fallback_yaw_deg, 1.0, 720.0) &&
@@ -1544,6 +1555,41 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
                              "CROSS_BOUNDARY_EXPANSION_MIN_M",
                              parsed.bev_element.cross_boundary_expansion_min_m,
                              optional_malformed);
+    ReadOptionalNestedNumber(root,
+                             "BEV_ELEMENT",
+                             "ZEBRA_FORWARD_MIN_M",
+                             parsed.bev_element.zebra_forward_min_m,
+                             optional_malformed);
+    ReadOptionalNestedNumber(root,
+                             "BEV_ELEMENT",
+                             "ZEBRA_FORWARD_MAX_M",
+                             parsed.bev_element.zebra_forward_max_m,
+                             optional_malformed);
+    ReadOptionalNestedInt(root,
+                          "BEV_ELEMENT",
+                          "ZEBRA_MIN_JUMPS_PER_ROW",
+                          parsed.bev_element.zebra_min_jumps_per_row,
+                          optional_malformed);
+    ReadOptionalNestedNumber(root,
+                             "BEV_ELEMENT",
+                             "ZEBRA_MAX_ADJACENT_FORWARD_GAP_M",
+                             parsed.bev_element.zebra_max_adjacent_forward_gap_m,
+                             optional_malformed);
+    ReadOptionalNestedNumber(root,
+                             "BEV_ELEMENT",
+                             "ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M",
+                             parsed.bev_element.zebra_min_support_forward_span_m,
+                             optional_malformed);
+    ReadOptionalNestedInt(root,
+                          "BEV_ELEMENT",
+                          "ZEBRA_REENTRY_ARM_ABSENCE_MS",
+                          parsed.bev_element.zebra_reentry_arm_absence_ms,
+                          optional_malformed);
+    ReadOptionalNestedInt(root,
+                          "BEV_ELEMENT",
+                          "ZEBRA_CONTROLLED_STOP_DELAY_MS",
+                          parsed.bev_element.zebra_controlled_stop_delay_ms,
+                          optional_malformed);
     ReadOptionalNestedBool(
         root, "BEV_ELEMENT", "CIRCLE_V2_ENABLED", parsed.bev_element.circle_v2_enabled, optional_malformed);
     ReadOptionalNestedNumber(root,

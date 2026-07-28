@@ -22,6 +22,7 @@
 #include "port/reference_usability_types.hpp"
 #include "port/visual_element_evidence_types.hpp"
 #include "port/visual_reference_orchestration_types.hpp"
+#include "port/zebra_types.hpp"
 
 namespace ls2k::port {
 
@@ -48,6 +49,7 @@ struct CircleV2TelemetrySnapshot {
     std::string geometry_source = "none";     ///< observed_boundary / fov_tangent / none
     uint64_t inner_trace_elapsed_ms = 0;       ///< InnerTrace 已持续时间
     float directed_turn_angle_rad = 0.0F;      ///< 按锁存方向归一化后的 yaw 积分
+    CircleEntryCueObservation entry_cue{};     ///< 本帧 Circle 入口线索
     CircleOpeningPairObservation openings{};  ///< 本帧左右开口观测
 };
 
@@ -80,6 +82,7 @@ struct PerceptionResult {
     PerceptionHealth perception_health{};                         ///< 感知系统健康状态
     VisualElementEvidenceFrame element_evidence{};                 ///< 视觉元素证据帧
     CircleV2TelemetrySnapshot circle_v2{};                         ///< CircleV2 场景状态
+    ZebraStopTelemetry zebra_stop{};                               ///< Zebra 再遇受控停车状态
     MlTelemetrySnapshot ml{};                                      ///< ML scene/tracker facts
     VisualReferenceCandidatePathSet visual_reference_candidate_paths{};  ///< 本帧构建的视觉参考候选路径
     VisualReferenceSelection visual_reference_selection{};         ///< 视觉参考路径选择结果

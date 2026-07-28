@@ -831,8 +831,12 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
         <dt>Cross range</dt><dd id="crossRange">-</dd>
         <dt>Cross candidate</dt><dd id="crossCandidate">-</dd>
         <dt>Cross reason</dt><dd id="crossReason">-</dd>
+        <dt>Zebra</dt><dd id="zebraState">-</dd>
+        <dt>Zebra range</dt><dd id="zebraRange">-</dd>
+        <dt>Zebra stop</dt><dd id="zebraStop">-</dd>
         <dt>Circle</dt><dd id="circleFsm">-</dd>
         <dt>Circle geom</dt><dd id="circleGeometry">-</dd>
+        <dt>Circle cue</dt><dd id="circleEntryCue">-</dd>
         <dt>Circle left</dt><dd id="circleOpeningLeft">-</dd>
         <dt>Circle right</dt><dd id="circleOpeningRight">-</dd>
         <dt>Circle reason</dt><dd id="circleReason">-</dd>
@@ -947,8 +951,12 @@ const fields = {
   crossRange: document.getElementById("crossRange"),
   crossCandidate: document.getElementById("crossCandidate"),
   crossReason: document.getElementById("crossReason"),
+  zebraState: document.getElementById("zebraState"),
+  zebraRange: document.getElementById("zebraRange"),
+  zebraStop: document.getElementById("zebraStop"),
   circleFsm: document.getElementById("circleFsm"),
   circleGeometry: document.getElementById("circleGeometry"),
+  circleEntryCue: document.getElementById("circleEntryCue"),
   circleOpeningLeft: document.getElementById("circleOpeningLeft"),
   circleOpeningRight: document.getElementById("circleOpeningRight"),
   circleReason: document.getElementById("circleReason"),
@@ -1020,11 +1028,22 @@ function formatNumber(value, digits = 3) {
 
 function formatCircleOpening(opening) {
   if (!opening || opening.available !== true) return "unavailable";
-  return `f=${formatNumber(opening.frontier_forward_m, 3)}m / ` +
+  return `f=[${formatNumber(opening.begin_forward_m, 3)}, ` +
+    `${formatNumber(opening.end_forward_m, 3)}]m / ` +
     `l=${formatNumber(opening.effective_lateral_m, 3)}m / ` +
     `d=${formatNumber(opening.outward_distance_m, 3)}m / ` +
-    `span=${formatNumber(opening.confirmed_forward_span_m, 3)}m / ` +
-    `${opening.source ?? "none"} / opp=${formatBool(opening.opposite_straight ?? null)}`;
+    `width>=${formatNumber(opening.minimum_white_width_m, 3)}m / ` +
+    `${opening.source ?? "none"}`;
+}
+function formatCircleEntryCue(cue) {
+  if (!cue) return "unavailable";
+  return `${cue.detected_dir ?? "none"} / selected=${formatBool(cue.selected ?? null)} / ` +
+    `overlap=${formatBool(cue.bilateral_overlap ?? null)} / ` +
+    `f=[${formatNumber(cue.selected_begin_forward_m, 3)}, ` +
+    `${formatNumber(cue.selected_end_forward_m, 3)}]m / ` +
+    `opp=${formatBool(cue.opposite_observable ?? null)}/` +
+    `${formatBool(cue.opposite_straight ?? null)} ` +
+    `(${formatNumber(cue.opposite_straight_confidence, 2)})`;
 }
 function formatInt(value) {
   return typeof value === "number" && Number.isFinite(value) ? String(Math.round(value)) : "-";
@@ -1637,6 +1656,10 @@ function handleEnvelope(buffer, transport) {
     const camera = header.camera_frame || {};
     const cross = nested(steering, ["element_evidence", "cross_exit"], {}) || {};
     const crossCandidate = cross.candidate || {};
+    const elementRecords =
+      nested(steering, ["element_evidence", "records"], []) || [];
+    const zebra = elementRecords.find(record => record && record.id === "zebra") || {};
+    const zebraStop = steering.zebra_stop || {};
     const circle = steering.circle_v2 || {};
     const ml = steering.ml || {};
     const nowMs = performance.now();
@@ -1700,11 +1723,24 @@ function handleEnvelope(buffer, transport) {
       `arbitration=${formatBool(crossCandidate.included_in_arbitration ?? null)}`;
     fields.crossReason.textContent =
       `${cross.reason ?? "-"} / candidate=${crossCandidate.reason ?? "-"}`;
+    fields.zebraState.textContent =
+      `${zebra.present === true ? "present" : zebra.present === false ? "absent" : "-"} / ` +
+      `${zebra.reason ?? "-"}`;
+    fields.zebraRange.textContent =
+      `f=[${formatNumber(nested(zebra, ["bounds", "forward_min_m"], null), 3)}, ` +
+      `${formatNumber(nested(zebra, ["bounds", "forward_max_m"], null), 3)}]m / ` +
+      `jumps=${nested(zebra, ["support", "boundary_jump_count"], "-")}`;
+    fields.zebraStop.textContent =
+      `${zebraStop.frame_phase ?? "-"} -> ${zebraStop.next_phase ?? "-"} / ` +
+      `${zebraStop.reason ?? "-"} / absent=${zebraStop.absence_elapsed_ms ?? "-"}ms / ` +
+      `delay=${zebraStop.stop_delay_elapsed_ms ?? "-"}ms / ` +
+      `stop=${formatBool(zebraStop.controlled_stop_requested ?? null)}`;
     fields.circleFsm.textContent =
       `${circle.enabled === false ? "off" : circle.frame_phase ?? "-"} -> ${circle.next_phase ?? "-"}` +
       ` / ${circle.dir ?? "-"} / ${circle.reference_role ?? "-"}`;
     fields.circleGeometry.textContent =
       `${formatBool(circle.geometry_available ?? null)} / ${circle.geometry_source ?? "none"}`;
+    fields.circleEntryCue.textContent = formatCircleEntryCue(circle.entry_cue || null);
     fields.circleOpeningLeft.textContent = formatCircleOpening(nested(circle, ["openings", "left"], null));
     fields.circleOpeningRight.textContent = formatCircleOpening(nested(circle, ["openings", "right"], null));
     fields.circleReason.textContent = circle.reason ?? "-";

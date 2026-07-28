@@ -318,6 +318,13 @@ int main(int argc, char** argv) {
                       "\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 11,"
                       "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 7,"
                       "\"CROSS_BOUNDARY_EXPANSION_MIN_M\": 0.071,"
+                      "\"ZEBRA_FORWARD_MIN_M\": 0.06,"
+                      "\"ZEBRA_FORWARD_MAX_M\": 0.55,"
+                      "\"ZEBRA_MIN_JUMPS_PER_ROW\": 7,"
+                      "\"ZEBRA_MAX_ADJACENT_FORWARD_GAP_M\": 0.13,"
+                      "\"ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M\": 0.045,"
+                      "\"ZEBRA_REENTRY_ARM_ABSENCE_MS\": 650,"
+                      "\"ZEBRA_CONTROLLED_STOP_DELAY_MS\": 750,"
                       "\"CIRCLE_V2_ENABLED\": 1,"
                       "\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\": 95,"
                       "\"CIRCLE_V2_EXIT_TRACE_START_YAW_DEG\": 260,"
@@ -420,6 +427,19 @@ int main(int argc, char** argv) {
         Expect(std::abs(enabled.bev_element.cross_boundary_expansion_min_m - 0.071F) <
                    1.0e-6F,
                "CROSS_BOUNDARY_EXPANSION_MIN_M should parse");
+        Expect(std::abs(enabled.bev_element.zebra_forward_min_m - 0.06F) < 1.0e-6F &&
+                   std::abs(enabled.bev_element.zebra_forward_max_m - 0.55F) < 1.0e-6F,
+               "Zebra forward ROI should parse");
+        Expect(enabled.bev_element.zebra_min_jumps_per_row == 7,
+               "ZEBRA_MIN_JUMPS_PER_ROW should parse");
+        Expect(std::abs(enabled.bev_element.zebra_max_adjacent_forward_gap_m - 0.13F) <
+                       1.0e-6F &&
+                   std::abs(enabled.bev_element.zebra_min_support_forward_span_m - 0.045F) <
+                       1.0e-6F,
+               "Zebra metric support thresholds should parse");
+        Expect(enabled.bev_element.zebra_reentry_arm_absence_ms == 650 &&
+                   enabled.bev_element.zebra_controlled_stop_delay_ms == 750,
+               "Zebra stop timing parameters should parse");
         Expect(enabled.bev_element.circle_v2_enabled,
                "CIRCLE_V2_ENABLED=1 should parse true");
         Expect(std::abs(enabled.bev_element.circle_v2_normal_trace_start_yaw_deg - 95.0F) <
@@ -517,6 +537,16 @@ int main(int argc, char** argv) {
                    std::abs(builtin_defaults.bev_element.cross_boundary_expansion_min_m -
                             0.055F) < 1.0e-6F,
                "missing BEV_ELEMENT should keep cross expansion distance default");
+        Expect(std::abs(absent.bev_element.zebra_forward_min_m - 0.05F) < 1.0e-6F &&
+                   std::abs(absent.bev_element.zebra_forward_max_m - 0.50F) < 1.0e-6F &&
+                   absent.bev_element.zebra_min_jumps_per_row == 6 &&
+                   std::abs(absent.bev_element.zebra_max_adjacent_forward_gap_m - 0.12F) <
+                       1.0e-6F &&
+                   std::abs(absent.bev_element.zebra_min_support_forward_span_m - 0.04F) <
+                       1.0e-6F &&
+                   absent.bev_element.zebra_reentry_arm_absence_ms == 500 &&
+                   absent.bev_element.zebra_controlled_stop_delay_ms == 500,
+               "missing BEV_ELEMENT should keep Zebra defaults");
         Expect(absent.bev_element.circle_v2_enabled ==
                    builtin_defaults.bev_element.circle_v2_enabled,
                "missing BEV_ELEMENT should keep CircleV2 enabled");
@@ -1183,6 +1213,19 @@ int main(int argc, char** argv) {
              "  \"BEV_ELEMENT\": {\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 24}"},
             {"invalid_cross_expansion_distance",
              "  \"BEV_ELEMENT\": {\"CROSS_BOUNDARY_EXPANSION_MIN_M\": 0}"},
+            {"invalid_zebra_roi",
+             "  \"BEV_ELEMENT\": {\"ZEBRA_FORWARD_MIN_M\": 0.6,"
+             "\"ZEBRA_FORWARD_MAX_M\": 0.5}"},
+            {"invalid_zebra_jump_count",
+             "  \"BEV_ELEMENT\": {\"ZEBRA_MIN_JUMPS_PER_ROW\": 1}"},
+            {"invalid_zebra_adjacent_gap",
+             "  \"BEV_ELEMENT\": {\"ZEBRA_MAX_ADJACENT_FORWARD_GAP_M\": 0}"},
+            {"invalid_zebra_support_span",
+             "  \"BEV_ELEMENT\": {\"ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M\": 0}"},
+            {"invalid_zebra_absence_ms",
+             "  \"BEV_ELEMENT\": {\"ZEBRA_REENTRY_ARM_ABSENCE_MS\": -1}"},
+            {"invalid_zebra_stop_delay_ms",
+             "  \"BEV_ELEMENT\": {\"ZEBRA_CONTROLLED_STOP_DELAY_MS\": 86400001}"},
             {"invalid_geometry",
              "  \"BEV_GEOMETRY\": {\"NOMINAL_ROAD_HALF_WIDTH_M\": 0}"},
             {"invalid_boundary_trace",

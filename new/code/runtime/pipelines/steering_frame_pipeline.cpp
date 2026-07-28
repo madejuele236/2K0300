@@ -21,6 +21,7 @@
 #include "vision/bev/bev_simple_perception.hpp"
 #include "vision/elements/circle_v2/circle_v2_reference_adapter.hpp"
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
+#include "vision/elements/zebra_stop_scene.hpp"
 #include "vision/ml/ml_scene.hpp"
 
 namespace ls2k::runtime {
@@ -60,6 +61,7 @@ port::PerceptionResult BuildPerceptionResult(
     const port::PerceptionHealth& health,
     const port::VisualElementEvidenceFrame& element_evidence,
     const port::CircleV2TelemetrySnapshot& circle_v2,
+    const port::ZebraStopTelemetry& zebra_stop,
     const port::MlTelemetrySnapshot& ml,
     const port::VisualReferenceCandidatePathSet& candidate_paths,
     const port::VisualReferenceSelection& visual_selection,
@@ -87,6 +89,7 @@ port::PerceptionResult BuildPerceptionResult(
     perception.perception_health = health;
     perception.element_evidence = element_evidence;
     perception.circle_v2 = circle_v2;
+    perception.zebra_stop = zebra_stop;
     perception.ml = ml;
     perception.visual_reference_candidate_paths = candidate_paths;
     perception.visual_reference_selection = visual_selection;
@@ -100,6 +103,15 @@ port::PerceptionResult BuildPerceptionResult(
 bool HasLeadingCenterPath(const port::BEVReferencePath& path) {
     return path.mode != port::ReferenceMode::kNone &&
            port::FirstFiniteReferenceSample(path) != nullptr;
+}
+
+bool ZebraDetected(const port::VisualElementEvidenceFrame& evidence) {
+    for (const port::VisualElementEvidenceRecord& record : evidence.records) {
+        if (record.id == "zebra") {
+            return record.present;
+        }
+    }
+    return false;
 }
 
 void FilterCircleCandidateConnectivity(
@@ -215,6 +227,8 @@ CircleV2Params BuildCircleV2Params(const port::RuntimeParameters& params) {
         params.bev_element.circle_v2_opposite_straight_confidence_min;
     circle_params.max_adjacent_distance_m =
         params.bev_geometry.boundary_trace_max_adjacent_distance_m;
+    circle_params.nominal_road_width_m =
+        2.0F * params.bev_geometry.nominal_road_half_width_m;
     circle_params.min_sampleable_width_m = params.bev_element.circle_v2_min_sampleable_width_m;
     circle_params.opening_forward_min_m = params.bev_element.circle_v2_opening_forward_min_m;
     circle_params.opening_forward_max_m = params.bev_element.circle_v2_opening_forward_max_m;
@@ -252,6 +266,7 @@ port::CircleV2TelemetrySnapshot BuildCircleV2TelemetrySnapshot(bool enabled,
     snapshot.geometry_source = port::CircleV2GeometrySourceToken(telemetry.geometry_source);
     snapshot.inner_trace_elapsed_ms = telemetry.inner_trace_elapsed_ms;
     snapshot.directed_turn_angle_rad = telemetry.directed_turn_angle_rad;
+    snapshot.entry_cue = telemetry.entry_cue;
     snapshot.openings = telemetry.openings;
     return snapshot;
 }
@@ -295,10 +310,11 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
     return projector_configured_ && ml_classifier_ready_;
 }
 
-/// 重置帧源相关的 reference/ML 记忆，不触碰 CircleV2 场景状态
+/// 重置帧源相关的 reference/ML/Zebra 记忆，不触碰 CircleV2 场景状态
 void SteeringFramePipeline::ResetReferenceMemory() {
     ResetSteeringReferenceHoldMemory(perception_memory_);
     vision::ml::ResetMlSceneMemory(perception_memory_.ml_scene);
+    perception_memory_.zebra_stop = {};
     binary_model_tracker_.Reset();
 }
 
@@ -310,7 +326,8 @@ void SteeringFramePipeline::ResetReferenceMemory() {
 port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     const port::CameraCapture& capture,
     const port::RuntimeParameters& params,
-    const port::MotionHistory& motion_history) {
+    const port::MotionHistory& motion_history,
+    bool motion_session_active) {
     port::ReferenceContinuityResult continuity{};
     port::ReferenceUsability selected_usability{};
     port::ReferenceLateralErrorEstimate lateral_error{};
@@ -319,6 +336,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     port::PerceptionHealth health{};
     port::VisualElementEvidenceFrame element_evidence{};
     port::CircleV2TelemetrySnapshot circle_v2_snapshot{};
+    port::ZebraStopTelemetry zebra_stop_snapshot{};
     port::MlTelemetrySnapshot ml_snapshot{};
     port::VisualReferenceCandidatePathSet candidate_paths{};
     port::VisualReferenceSelection visual_selection{};
@@ -386,6 +404,17 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             element_result = vision::RunVisualElementPipeline(element_input, params);
         }
         element_evidence = element_result.evidence;
+        {
+            const vision::ZebraStopSceneResult zebra_stop =
+                vision::StepZebraStopScene(
+                    {motion_session_active,
+                     ZebraDetected(element_evidence),
+                     capture.capture_time_ms},
+                    params.bev_element,
+                    prior_memory.zebra_stop);
+            perception_memory_.zebra_stop = zebra_stop.next_memory;
+            zebra_stop_snapshot = zebra_stop.telemetry;
+        }
 
         std::optional<port::VisualReferenceCandidate> circle_candidate{};
         const bool circle_v2_should_step = params.bev_element.circle_v2_enabled;
@@ -432,8 +461,11 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                 FilterCircleCandidateConnectivity(*circle_candidate,
                                                   segment_connectivity);
             }
+            const bool zebra_present = ZebraDetected(element_evidence);
             const bool cross_present = element_evidence.cross_exit.present;
-            if (ml_snapshot.active) {
+            if (zebra_present) {
+                candidates[candidate_count++] = line_candidate;
+            } else if (ml_snapshot.active) {
                 if (ml_result.candidate.present) {
                     candidates[candidate_count++] = ml_result.candidate;
                 }
@@ -459,7 +491,11 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                 visual_selection = reference::SelectVisualReference(candidates.data(),
                                                                     candidate_count);
             }
-            ml_snapshot.takeover_selected = ml_snapshot.active;
+            ml_snapshot.takeover_selected =
+                visual_selection.present &&
+                visual_selection.kind_valid &&
+                visual_selection.kind ==
+                    port::VisualReferenceCandidateKind::kMlGrounded;
         }
         const reference::ReferenceContinuitySelection reference_selection =
             reference::ResolveReferenceContinuity(visual_selection.reference_path,
@@ -491,6 +527,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
                                  health,
                                  element_evidence,
                                  circle_v2_snapshot,
+                                 zebra_stop_snapshot,
                                  ml_snapshot,
                                  candidate_paths,
                                  visual_selection,

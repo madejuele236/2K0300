@@ -57,15 +57,30 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     snapshot.steering.circle_v2.frame_phase = "approach";
     snapshot.steering.circle_v2.next_phase = "inner_trace";
     snapshot.steering.circle_v2.dir = "left";
+    snapshot.steering.circle_v2.entry_cue.detected_dir =
+        ls2k::port::CircleDir::kLeft;
+    snapshot.steering.circle_v2.entry_cue.selected = true;
+    snapshot.steering.circle_v2.entry_cue.selected_begin_forward_m = 0.24F;
+    snapshot.steering.circle_v2.entry_cue.selected_end_forward_m = 0.36F;
+    snapshot.steering.circle_v2.entry_cue.opposite_observable = true;
+    snapshot.steering.circle_v2.entry_cue.opposite_straight = true;
+    snapshot.steering.circle_v2.entry_cue.opposite_straight_confidence = 0.91F;
     snapshot.steering.circle_v2.openings.left.available = true;
-    snapshot.steering.circle_v2.openings.left.frontier_forward_m = 0.24F;
+    snapshot.steering.circle_v2.openings.left.begin_forward_m = 0.24F;
+    snapshot.steering.circle_v2.openings.left.end_forward_m = 0.36F;
     snapshot.steering.circle_v2.openings.left.effective_lateral_m = -0.36F;
     snapshot.steering.circle_v2.openings.left.source =
         ls2k::port::CircleOpeningSource::kFovEdgeLowerBound;
     snapshot.steering.circle_v2.openings.left.outward_distance_m = 0.16F;
-    snapshot.steering.circle_v2.openings.left.confirmed_forward_span_m = 0.12F;
+    snapshot.steering.circle_v2.openings.left.minimum_white_width_m = 0.47F;
     snapshot.steering.circle_v2.openings.left.origin_connected = true;
-    snapshot.steering.circle_v2.openings.left.opposite_straight = true;
+    snapshot.steering.zebra_stop.frame_phase = "stop_delay";
+    snapshot.steering.zebra_stop.next_phase = "stop_requested";
+    snapshot.steering.zebra_stop.reason = "stop_delay_complete";
+    snapshot.steering.zebra_stop.motion_session_active = true;
+    snapshot.steering.zebra_stop.detected = false;
+    snapshot.steering.zebra_stop.stop_delay_elapsed_ms = 500;
+    snapshot.steering.zebra_stop.controlled_stop_requested = true;
     ls2k::port::VisualElementEvidenceRecord record{};
     record.id = "synthetic_marker";
     record.present = true;
@@ -216,6 +231,9 @@ void TestSnapshotFactsMapToAssistantView() {
                telemetry.circle_v2.openings.left.source ==
                    ls2k::port::CircleOpeningSource::kFovEdgeLowerBound,
            "CircleV2 opening facts must be copied to assistant telemetry");
+    Expect(telemetry.zebra_stop.next_phase == "stop_requested" &&
+               telemetry.zebra_stop.controlled_stop_requested,
+           "Zebra stop facts must be copied to assistant telemetry");
     Expect(telemetry.visual_reference.present,
            "visual reference presence must be copied");
     Expect(telemetry.visual_reference.source == "roadblock_bypass",
@@ -298,7 +316,15 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
                     "\"circle_v2\":{\"enabled\":true,\"frame_phase\":\"approach\",\"next_phase\":\"inner_trace\""),
            "assistant telemetry must serialize CircleV2 state");
     Expect(Contains(json,
-                    "\"openings\":{\"left\":{\"available\":true,\"frontier_forward_m\":0.239999"),
+                    "\"zebra_stop\":{\"frame_phase\":\"stop_delay\","
+                    "\"next_phase\":\"stop_requested\",\"reason\":\"stop_delay_complete\""),
+           "assistant telemetry must serialize Zebra stop state");
+    Expect(Contains(json,
+                    "\"entry_cue\":{\"detected_dir\":\"left\",\"bilateral_overlap\":false,"
+                    "\"selected\":true,\"selected_begin_forward_m\":0.239999"),
+           "assistant telemetry must serialize the selected CircleV2 entry cue");
+    Expect(Contains(json,
+                    "\"openings\":{\"left\":{\"available\":true,\"begin_forward_m\":0.239999"),
            "assistant telemetry must serialize CircleV2 opening metrics");
     Expect(Contains(json, "\"source\":\"fov_edge_lower_bound\""),
            "assistant telemetry must serialize CircleV2 opening source");

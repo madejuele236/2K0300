@@ -3,7 +3,7 @@
  * @brief 视觉元素证据类型定义
  *
  * 定义BEV（鸟瞰视角）下的视觉元素检测证据类型。
- * 包含十字路口出口检测、圆形元素（转弯）检测的证据结构，
+ * 包含十字路口出口、Zebra 和圆形元素检测的证据结构，
  * 以及元素候选摘要、边界框、统计支持和运行时参数。
  */
 
@@ -104,13 +104,22 @@ struct VisualElementEvidenceFrame {
  * @struct BEVElementParameters
  * @brief BEV元素检测的运行参数
  *
- * 控制十字路口出口检测和 Circle V2 场景注册/退出门限。
+ * 控制 Cross、Zebra 检测和 Circle V2 场景注册/退出门限。
  */
 struct BEVElementParameters {
     // 十字路口出口检测参数
     int cross_min_sampleable_per_row = 8;       ///< cross 判定每行最少可采样点数
     int cross_connectivity_sample_index = 9;    ///< 原点连通性目标的 BEV 前向采样点索引，[0,23]
     float cross_boundary_expansion_min_m = 0.055F;  ///< 单侧边界相对前段基线的最小向外垂距
+
+    // Zebra 检测参数
+    float zebra_forward_min_m = 0.05F;          ///< Zebra 检测前向 ROI 下界
+    float zebra_forward_max_m = 0.50F;          ///< Zebra 检测前向 ROI 上界
+    int zebra_min_jumps_per_row = 6;             ///< 单行道路宽窗口内的最少交替跳变数
+    float zebra_max_adjacent_forward_gap_m = 0.12F; ///< Zebra 支撑行最大相邻前向距离
+    float zebra_min_support_forward_span_m = 0.04F; ///< Zebra 跳变带最小前向持续长度
+    int zebra_reentry_arm_absence_ms = 500;      ///< 首次识别后连续无 Zebra 多久才允许再遇触发
+    int zebra_controlled_stop_delay_ms = 500;    ///< 再次识别 Zebra 后延迟多久请求受控停车
 
     // Circle V2 场景状态机参数
     bool circle_v2_enabled = true;                  ///< 是否注册 CircleV2Scene

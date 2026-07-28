@@ -159,6 +159,7 @@ transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     view.perception_health.reason = snapshot.perception_health.reason;
     view.element_evidence = snapshot.element_evidence;
     view.circle_v2 = snapshot.circle_v2;
+    view.zebra_stop = snapshot.zebra_stop;
     view.visual_reference.present = snapshot.visual_reference.present;
     view.visual_reference.source = snapshot.visual_reference.source;
     view.visual_reference.reason = snapshot.visual_reference.reason;

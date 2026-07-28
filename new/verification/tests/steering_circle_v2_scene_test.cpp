@@ -151,6 +151,27 @@ std::vector<ls2k::vision::BEVSimpleRowScan> OpeningRows(
     return rows;
 }
 
+std::vector<ls2k::vision::BEVSimpleRowScan> TwoSideOpeningRows(
+    std::size_t left_begin,
+    std::size_t left_end,
+    std::size_t right_begin,
+    std::size_t right_end,
+    std::size_t count = 16U) {
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows;
+    rows.reserve(count);
+    for (std::size_t index = 0U; index < count; ++index) {
+        const float left_m =
+            index >= left_begin && index <= left_end ? -0.36F : -0.20F;
+        const float right_m =
+            index >= right_begin && index <= right_end ? 0.38F : 0.22F;
+        rows.push_back(
+            WhiteRunOnlyRow(0.05F + 0.03F * static_cast<float>(index),
+                            left_m,
+                            right_m));
+    }
+    return rows;
+}
+
 void SetSampleableSpan(ls2k::vision::BEVSimpleRowScan& row,
                        float left_m,
                        float right_m) {
@@ -392,8 +413,8 @@ ls2k::vision::detail::CircleV2Events EventsFor(
     const ls2k::vision::SceneFrameView& frame,
     const ls2k::vision::CircleV2Memory& prior,
     const ls2k::vision::CircleV2Params& params) {
-    const ls2k::vision::detail::CircleSideExpansionObservation expansion =
-        ls2k::vision::detail::ObserveCircleSideExpansion(frame, params);
+    const ls2k::vision::detail::CircleEntryCueObservation expansion =
+        ls2k::vision::detail::ObserveCircleEntryCue(frame, params);
     const ls2k::vision::detail::CircleV2GeometryObservation geometry =
         ls2k::vision::detail::ObserveCircleV2Geometry(frame, prior.dir, params);
     return ls2k::vision::detail::ObserveCircleV2Events(
@@ -409,26 +430,100 @@ void TestMetricOpeningOwnerFacts() {
 
     std::vector<ls2k::vision::BEVSimpleRowScan> left_rows =
         OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
-    const auto left = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto left = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(left_rows, 0.0F), params);
     Expect(left.detected_dir == ls2k::vision::CircleDir::kLeft &&
-               left.openings.left.available,
+               left.left_opening.fact.available,
            "visible left outward deviation must publish a left opening");
-    Expect(left.openings.left.source ==
+    Expect(left.left_opening.fact.source ==
                ls2k::vision::CircleOpeningSource::kObservedBoundary,
            "visible opening must report observed-boundary source");
-    Expect(left.openings.left.outward_distance_m >= params.opening_distance_min_m &&
-               left.openings.left.confirmed_forward_span_m >=
+    Expect(left.left_opening.fact.outward_distance_m >= params.opening_distance_min_m &&
+               left.left_opening.fact.end_forward_m -
+                       left.left_opening.fact.begin_forward_m >=
                    params.opening_confirm_forward_span_m,
            "opening must satisfy metric distance and confirmation span");
 
     std::vector<ls2k::vision::BEVSimpleRowScan> right_rows =
         OpeningRows(forward, ls2k::vision::CircleDir::kRight);
-    const auto right = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto right = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(right_rows, 0.0F), params);
     Expect(right.detected_dir == ls2k::vision::CircleDir::kRight &&
-               right.openings.right.available,
+               right.right_opening.fact.available,
            "visible right outward deviation must publish a right opening");
+}
+
+void TestOpeningWidthAndNearestIntervalContracts() {
+    const std::vector<float> forward{
+        0.05F, 0.08F, 0.11F, 0.14F, 0.17F, 0.20F, 0.23F, 0.26F,
+    };
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows =
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
+
+    ls2k::vision::CircleV2Params params{};
+    params.nominal_road_width_m =
+        rows[3].white_runs.front().right_m -
+        rows[3].white_runs.front().left_m;
+    const auto equal_width =
+        ls2k::vision::detail::ObserveCircleEntryCue(Frame(rows, 0.0F), params);
+    Expect(!equal_width.left_opening.fact.available,
+           "white width equal to nominal full width must not be an opening");
+
+    params.nominal_road_width_m =
+        rows[3].white_runs.front().right_m -
+        rows[3].white_runs.front().left_m - 0.01F;
+    const auto wider =
+        ls2k::vision::detail::ObserveCircleEntryCue(Frame(rows, 0.0F), params);
+    Expect(wider.left_opening.fact.available &&
+               wider.left_opening.fact.minimum_white_width_m >
+                   params.nominal_road_width_m,
+           "the complete published interval must be wider than nominal full width");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> two_left =
+        TwoSideOpeningRows(3U, 7U, 16U, 16U);
+    for (std::size_t index = 8U; index <= 10U; ++index) {
+        two_left[index].white_runs.front().left_m = -0.20F;
+    }
+    for (std::size_t index = 11U; index <= 15U; ++index) {
+        two_left[index].white_runs.front().left_m = -0.42F;
+    }
+    params.nominal_road_width_m = 0.40F;
+    const auto nearest =
+        ls2k::vision::detail::ObserveCircleEntryCue(Frame(two_left, 0.0F), params);
+    Expect(nearest.left_opening.fact.available &&
+               std::fabs(nearest.left_opening.fact.begin_forward_m - 0.14F) <
+                   1.0e-5F,
+           "a side detector must return its first fully confirmed opening");
+}
+
+void TestBilateralRangeOrchestration() {
+    ls2k::vision::CircleV2Params params{};
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> overlap_rows =
+        TwoSideOpeningRows(3U, 7U, 3U, 7U);
+    const auto overlap =
+        ls2k::vision::detail::ObserveCircleEntryCue(
+            Frame(overlap_rows, 0.0F), params);
+    Expect(overlap.left_opening.fact.available &&
+               overlap.right_opening.fact.available &&
+               overlap.bilateral_overlap &&
+               !overlap.selected &&
+               overlap.detected_dir == ls2k::vision::CircleDir::kNone,
+           "overlapping left and right opening ranges must remain ambiguous");
+
+    std::vector<ls2k::vision::BEVSimpleRowScan> separated_rows =
+        TwoSideOpeningRows(3U, 7U, 8U, 12U);
+    const auto separated =
+        ls2k::vision::detail::ObserveCircleEntryCue(
+            Frame(separated_rows, 0.0F), params);
+    Expect(separated.left_opening.fact.available &&
+               separated.right_opening.fact.available &&
+               !separated.bilateral_overlap &&
+               separated.selected &&
+               separated.detected_dir == ls2k::vision::CircleDir::kLeft &&
+               std::fabs(separated.selected_opening.fact.begin_forward_m -
+                         separated.left_opening.fact.begin_forward_m) < 1.0e-5F,
+           "disjoint openings must select the nearer begin range");
 }
 
 void TestFovOpeningAndAmbiguityContracts() {
@@ -439,28 +534,31 @@ void TestFovOpeningAndAmbiguityContracts() {
 
     std::vector<ls2k::vision::BEVSimpleRowScan> fov_rows =
         OpeningRows(forward, ls2k::vision::CircleDir::kLeft, true);
-    const auto fov = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto fov = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(fov_rows, 0.0F), params);
-    Expect(fov.openings.left.available &&
-               fov.openings.left.source ==
+    Expect(fov.left_opening.fact.available &&
+               fov.left_opening.fact.source ==
                    ls2k::vision::CircleOpeningSource::kFovEdgeLowerBound,
            "one missing side may use the FOV edge as a Circle-only lower bound");
 
     std::vector<ls2k::vision::BEVSimpleRowScan> insufficient =
-        OpeningRows(forward, ls2k::vision::CircleDir::kLeft, true, 0.24F);
-    const auto small = ls2k::vision::detail::ObserveCircleSideExpansion(
+        OpeningRows(forward, ls2k::vision::CircleDir::kLeft, true);
+    params.nominal_road_width_m = 0.60F;
+    const auto small = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(insufficient, 0.0F), params);
-    Expect(!small.openings.left.available,
-           "FOV lower bound below the opening threshold must be rejected");
+    Expect(!small.left_opening.fact.available,
+           "FOV lower-bound width below nominal full width must be rejected");
+    params.nominal_road_width_m = 0.40F;
 
     std::vector<ls2k::vision::BEVSimpleRowScan> both =
         OpeningRows(forward, ls2k::vision::CircleDir::kLeft, false, 0.26F);
     for (std::size_t index = 3U; index < both.size(); ++index) {
         both[index].white_runs.front().right_m = 0.28F;
     }
-    const auto double_open = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto double_open = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(both, 0.0F), params);
-    Expect(double_open.openings.left.available && double_open.openings.right.available &&
+    Expect(double_open.left_opening.fact.available &&
+               double_open.right_opening.fact.available &&
                double_open.detected_dir == ls2k::vision::CircleDir::kNone,
            "simultaneous left and right openings must not choose a direction");
 
@@ -469,9 +567,9 @@ void TestFovOpeningAndAmbiguityContracts() {
     for (std::size_t index = 3U; index < ambiguous.size(); ++index) {
         AddWhiteRun(ambiguous[index], -0.7F, -0.5F);
     }
-    const auto ambiguous_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto ambiguous_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(ambiguous, 0.0F), params);
-    Expect(!ambiguous_result.openings.left.available,
+    Expect(!ambiguous_result.left_opening.fact.available,
            "multiple origin-connected white runs must make the row ambiguous");
 }
 
@@ -486,18 +584,18 @@ void TestOpeningContinuityRejectsNoiseAndUnobservableRows() {
     for (std::size_t index = 4U; index < noise.size(); ++index) {
         noise[index].white_runs.front().left_m = -0.20F;
     }
-    const auto noise_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto noise_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(noise, 0.0F), params);
-    Expect(!noise_result.openings.left.available,
+    Expect(!noise_result.left_opening.fact.available,
            "one outward sample without 0.10m persistence must be rejected");
 
     std::vector<ls2k::vision::BEVSimpleRowScan> gapped =
         OpeningRows(forward, ls2k::vision::CircleDir::kLeft);
     gapped[5].valid = false;
     gapped[5].white_runs.clear();
-    const auto gap_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto gap_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(gapped, 0.0F), params);
-    Expect(!gap_result.openings.left.available,
+    Expect(!gap_result.left_opening.fact.available,
            "an unobservable row must interrupt metric opening confirmation");
 
     std::vector<ls2k::vision::BEVSimpleRowScan> blocked =
@@ -506,7 +604,7 @@ void TestOpeningContinuityRejectsNoiseAndUnobservableRows() {
         row.white_runs.front().origin_connectivity =
             ls2k::vision::BEVWhiteRunOriginConnectivity::kBlocked;
     }
-    const auto blocked_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto blocked_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(blocked, 0.0F), params);
     Expect(blocked_result.detected_dir == ls2k::vision::CircleDir::kNone,
            "zero origin-connected white runs must not publish an opening direction");
@@ -520,7 +618,7 @@ void TestOpeningContinuityRejectsNoiseAndUnobservableRows() {
             ls2k::vision::BEVWhiteRunEndpointState::kFovEdge,
             ls2k::vision::BEVWhiteRunEndpointState::kFovEdge));
     }
-    const auto all_white_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto all_white_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(all_white, 0.0F), params);
     Expect(all_white_result.detected_dir == ls2k::vision::CircleDir::kNone,
            "an all-white row open at both FOV sides must not choose a direction");
@@ -538,9 +636,9 @@ void TestMetricSamplingInvarianceAndIdleSequence() {
         OpeningRows(uniform, ls2k::vision::CircleDir::kLeft);
     std::vector<ls2k::vision::BEVSimpleRowScan> nonuniform_rows =
         OpeningRows(nonuniform, ls2k::vision::CircleDir::kLeft);
-    const auto uniform_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto uniform_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(uniform_rows, 0.0F), params);
-    const auto nonuniform_result = ls2k::vision::detail::ObserveCircleSideExpansion(
+    const auto nonuniform_result = ls2k::vision::detail::ObserveCircleEntryCue(
         Frame(nonuniform_rows, 0.0F), params);
     Expect(uniform_result.detected_dir == nonuniform_result.detected_dir &&
                uniform_result.detected_dir == ls2k::vision::CircleDir::kLeft,
@@ -586,10 +684,10 @@ void TestFalseRightBendDoesNotPassOppositeStraightGate() {
     ls2k::vision::CircleV2Params params{};
     std::vector<ls2k::vision::BEVSimpleRowScan> rows = FalseRightBendRows();
 
-    const ls2k::vision::detail::CircleSideExpansionObservation expansion =
-        ls2k::vision::detail::ObserveCircleSideExpansion(Frame(rows, 0.0F), params);
-    Expect(!expansion.openings.right.available,
-           "bent opposite boundary must reject the right opening observation");
+    const ls2k::vision::detail::CircleEntryCueObservation expansion =
+        ls2k::vision::detail::ObserveCircleEntryCue(Frame(rows, 0.0F), params);
+    Expect(!expansion.selected,
+           "bent opposite boundary must reject the entry cue");
     Expect(expansion.detected_dir == ls2k::vision::CircleDir::kNone,
            "bent opposite boundary must block right circle Phase1 cue");
 
@@ -605,9 +703,9 @@ void TestStraightSameSideExpansionDoesNotCreateCircleCue() {
     std::vector<ls2k::vision::BEVSimpleRowScan> rows =
         StraightRightExpansionRows();
 
-    const ls2k::vision::detail::CircleSideExpansionObservation expansion =
-        ls2k::vision::detail::ObserveCircleSideExpansion(Frame(rows, 0.0F), params);
-    Expect(!expansion.openings.right.available,
+    const ls2k::vision::detail::CircleEntryCueObservation expansion =
+        ls2k::vision::detail::ObserveCircleEntryCue(Frame(rows, 0.0F), params);
+    Expect(!expansion.right_opening.fact.available,
            "a boundary continuing its prior straight line is not an opening");
     Expect(expansion.detected_dir == ls2k::vision::CircleDir::kNone,
            "same-side straight expansion must not become a right circle Phase1 cue");
@@ -628,9 +726,9 @@ void TestDisconnectedFarSideArtifactDoesNotCreateCircleCue() {
     const ls2k::vision::SceneFrameView frame =
         FrameWithCenterPath(rows, 0.0F, center_path);
 
-    const ls2k::vision::detail::CircleSideExpansionObservation expansion =
-        ls2k::vision::detail::ObserveCircleSideExpansion(frame, params);
-    Expect(!expansion.openings.right.available,
+    const ls2k::vision::detail::CircleEntryCueObservation expansion =
+        ls2k::vision::detail::ObserveCircleEntryCue(frame, params);
+    Expect(!expansion.right_opening.fact.available,
            "disconnected far-side white artifacts must not create right-side Phase1 opening");
 
     const ls2k::vision::detail::CircleV2Events events =
@@ -647,11 +745,11 @@ void TestApproachWaitsForBottomEntryGate() {
     params.entry_forward_max_m = 0.25F;
 
     std::vector<ls2k::vision::BEVSimpleRowScan> phase1_rows = LeftCircleRows();
-    const ls2k::vision::detail::CircleSideExpansionObservation phase1_expansion =
-        ls2k::vision::detail::ObserveCircleSideExpansion(Frame(phase1_rows, 0.0F), params);
-    Expect(phase1_expansion.openings.left.available,
+    const ls2k::vision::detail::CircleEntryCueObservation phase1_expansion =
+        ls2k::vision::detail::ObserveCircleEntryCue(Frame(phase1_rows, 0.0F), params);
+    Expect(phase1_expansion.left_opening.fact.available,
            "left opening fixture must publish one unified opening fact");
-    Expect(phase1_expansion.openings.left.frontier_forward_m >
+    Expect(phase1_expansion.left_opening.fact.begin_forward_m >
                params.entry_forward_max_m,
            "fixture opening frontier must remain outside the configured entry ROI");
 
@@ -1513,6 +1611,8 @@ void TestRightInnerTraceInnerEdgePath() {
 
 int main() {
     TestMetricOpeningOwnerFacts();
+    TestOpeningWidthAndNearestIntervalContracts();
+    TestBilateralRangeOrchestration();
     TestFovOpeningAndAmbiguityContracts();
     TestOpeningContinuityRejectsNoiseAndUnobservableRows();
     TestMetricSamplingInvarianceAndIdleSequence();

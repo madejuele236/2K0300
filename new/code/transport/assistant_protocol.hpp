@@ -176,6 +176,7 @@ struct AssistantTelemetryView {
     AssistantPerceptionHealthView perception_health{};  ///< 感知健康视图
     AssistantElementEvidenceView element_evidence{};    ///< 元素证据帧
     port::CircleV2TelemetrySnapshot circle_v2{};         ///< CircleV2 opening/state facts
+    port::ZebraStopTelemetry zebra_stop{};               ///< Zebra 再遇受控停车状态
     AssistantVisualReferenceView visual_reference{};    ///< 视觉参考视图
     AssistantReferenceView reference{};                 ///< 参考路径视图
     AssistantEligibilityView eligibility{};             ///< 合格性视图

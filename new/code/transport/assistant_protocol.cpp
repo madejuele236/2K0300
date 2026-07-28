@@ -196,9 +196,15 @@ void AppendCircleOpeningJson(std::ostringstream& stream,
                              const port::CircleOpeningObservation& opening) {
     stream << "{\"available\":";
     AppendJsonBool(stream, opening.available);
-    stream << ",\"frontier_forward_m\":";
+    stream << ",\"begin_forward_m\":";
     if (opening.available) {
-        AppendJsonNumber(stream, opening.frontier_forward_m);
+        AppendJsonNumber(stream, opening.begin_forward_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"end_forward_m\":";
+    if (opening.available) {
+        AppendJsonNumber(stream, opening.end_forward_m);
     } else {
         stream << "null";
     }
@@ -216,16 +222,43 @@ void AppendCircleOpeningJson(std::ostringstream& stream,
     } else {
         stream << "null";
     }
-    stream << ",\"confirmed_forward_span_m\":";
+    stream << ",\"minimum_white_width_m\":";
     if (opening.available) {
-        AppendJsonNumber(stream, opening.confirmed_forward_span_m);
+        AppendJsonNumber(stream, opening.minimum_white_width_m);
     } else {
         stream << "null";
     }
     stream << ",\"origin_connected\":";
     AppendJsonBool(stream, opening.origin_connected);
+    stream << "}";
+}
+
+void AppendCircleEntryCueJson(std::ostringstream& stream,
+                              const port::CircleEntryCueObservation& cue) {
+    stream << "{\"detected_dir\":";
+    AppendJsonString(stream, port::CircleDirToken(cue.detected_dir));
+    stream << ",\"bilateral_overlap\":";
+    AppendJsonBool(stream, cue.bilateral_overlap);
+    stream << ",\"selected\":";
+    AppendJsonBool(stream, cue.selected);
+    stream << ",\"selected_begin_forward_m\":";
+    if (cue.selected) {
+        AppendJsonNumber(stream, cue.selected_begin_forward_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"selected_end_forward_m\":";
+    if (cue.selected) {
+        AppendJsonNumber(stream, cue.selected_end_forward_m);
+    } else {
+        stream << "null";
+    }
+    stream << ",\"opposite_observable\":";
+    AppendJsonBool(stream, cue.opposite_observable);
     stream << ",\"opposite_straight\":";
-    AppendJsonBool(stream, opening.opposite_straight);
+    AppendJsonBool(stream, cue.opposite_straight);
+    stream << ",\"opposite_straight_confidence\":";
+    AppendJsonNumber(stream, cue.opposite_straight_confidence);
     stream << "}";
 }
 
@@ -252,6 +285,8 @@ void AppendCircleV2TelemetryJson(std::ostringstream& stream,
     stream << ",\"inner_trace_elapsed_ms\":" << circle.inner_trace_elapsed_ms;
     stream << ",\"directed_turn_angle_rad\":";
     AppendJsonNumber(stream, circle.directed_turn_angle_rad);
+    stream << ",\"entry_cue\":";
+    AppendCircleEntryCueJson(stream, circle.entry_cue);
     stream << ",\"openings\":{\"left\":";
     AppendCircleOpeningJson(stream, circle.openings.left);
     stream << ",\"right\":";
@@ -625,6 +660,24 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     AppendVisualElementEvidenceJson(stream, telemetry.element_evidence);
     stream << ",\"circle_v2\":";
     AppendCircleV2TelemetryJson(stream, telemetry.circle_v2);
+    stream << ",\"zebra_stop\":";
+    stream << "{\"frame_phase\":";
+    AppendJsonString(stream, telemetry.zebra_stop.frame_phase);
+    stream << ",\"next_phase\":";
+    AppendJsonString(stream, telemetry.zebra_stop.next_phase);
+    stream << ",\"reason\":";
+    AppendJsonString(stream, telemetry.zebra_stop.reason);
+    stream << ",\"motion_session_active\":";
+    AppendJsonBool(stream, telemetry.zebra_stop.motion_session_active);
+    stream << ",\"detected\":";
+    AppendJsonBool(stream, telemetry.zebra_stop.detected);
+    stream << ",\"absence_elapsed_ms\":"
+           << telemetry.zebra_stop.absence_elapsed_ms;
+    stream << ",\"stop_delay_elapsed_ms\":"
+           << telemetry.zebra_stop.stop_delay_elapsed_ms;
+    stream << ",\"controlled_stop_requested\":";
+    AppendJsonBool(stream, telemetry.zebra_stop.controlled_stop_requested);
+    stream << "}";
     stream << ",\"visual_reference\":{\"present\":";
     AppendJsonBool(stream, telemetry.visual_reference.present);
     stream << ",\"source\":";

@@ -126,6 +126,8 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "visual.element_pipeline";
         case PerfStage::kCrossExitDetection:
             return "cross.detect";
+        case PerfStage::kZebraDetection:
+            return "zebra.detect";
         case PerfStage::kCrossStraightPlanning:
             return "cross.plan_straight";
         case PerfStage::kCircleV2Scene:

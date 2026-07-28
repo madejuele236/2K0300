@@ -1,6 +1,7 @@
 #ifndef LS2K_RUNTIME_DETAIL_STEERING_CIRCLE_V2_INTERNAL_HPP
 #define LS2K_RUNTIME_DETAIL_STEERING_CIRCLE_V2_INTERNAL_HPP
 
+#include <cstddef>
 #include <optional>
 
 #include "vision/elements/circle_v2/circle_v2_scene.hpp"
@@ -17,9 +18,39 @@ struct CircleV2Events {
     float directed_turn_angle_rad = 0.0F;
 };
 
-struct CircleSideExpansionObservation {
+enum class BoundarySide {
+    kLeft,
+    kRight,
+};
+
+struct ForwardInterval {
+    std::size_t begin_row_index = 0U;
+    std::size_t end_row_index = 0U;
+    float begin_forward_m = 0.0F;
+    float end_forward_m = 0.0F;
+};
+
+struct SideOpeningObservation {
+    CircleOpeningObservation fact{};
+    BoundarySide side = BoundarySide::kLeft;
+    ForwardInterval opening_range{};
+    ForwardInterval baseline_support_range{};
+};
+
+struct BoundaryStraightObservation {
+    bool observable = false;
+    bool straight = false;
+    float confidence = 0.0F;
+};
+
+struct CircleEntryCueObservation {
+    SideOpeningObservation left_opening{};
+    SideOpeningObservation right_opening{};
+    bool bilateral_overlap = false;
     CircleDir detected_dir = CircleDir::kNone;
-    CircleOpeningPairObservation openings{};
+    bool selected = false;
+    SideOpeningObservation selected_opening{};
+    BoundaryStraightObservation selected_opposite_boundary{};
 };
 
 struct CircleV2ReferenceContext {
@@ -48,11 +79,11 @@ struct CircleV2GeometryObservation {
     CircleV2Geometry outer{};
 };
 
-CircleSideExpansionObservation ObserveCircleSideExpansion(const SceneFrameView& frame,
-                                                          const CircleV2Params& params);
+CircleEntryCueObservation ObserveCircleEntryCue(const SceneFrameView& frame,
+                                                const CircleV2Params& params);
 
 CircleV2Events ObserveCircleV2Events(const SceneFrameView& frame,
-                                     const CircleSideExpansionObservation& expansion,
+                                     const CircleEntryCueObservation& entry_cue,
                                      const CircleV2GeometryObservation& geometry,
                                      const CircleV2Memory& prior,
                                      const CircleV2Params& params);
@@ -78,7 +109,7 @@ std::optional<CircleV2ReferencePlan> ComposeCircleV2Reference(
 CircleV2Telemetry BuildCircleV2Telemetry(const CircleV2Decision& decision,
                                          const CircleV2Events& events,
                                          const CircleV2Geometry& geometry,
-                                         const CircleSideExpansionObservation& expansion);
+                                         const CircleEntryCueObservation& entry_cue);
 
 }  // namespace ls2k::vision::detail
 

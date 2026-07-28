@@ -203,10 +203,33 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << snapshot.steering.circle_v2.inner_trace_elapsed_ms
                      << " circle_v2.directed_turn_angle_rad="
                      << snapshot.steering.circle_v2.directed_turn_angle_rad
+                     << " circle_v2.entry_cue.detected_dir="
+                     << port::CircleDirToken(
+                            snapshot.steering.circle_v2.entry_cue.detected_dir)
+                     << " circle_v2.entry_cue.bilateral_overlap="
+                     << BoolToken(
+                            snapshot.steering.circle_v2.entry_cue.bilateral_overlap)
+                     << " circle_v2.entry_cue.selected="
+                     << BoolToken(snapshot.steering.circle_v2.entry_cue.selected)
+                     << " circle_v2.entry_cue.selected_begin_forward_m="
+                     << snapshot.steering.circle_v2.entry_cue.selected_begin_forward_m
+                     << " circle_v2.entry_cue.selected_end_forward_m="
+                     << snapshot.steering.circle_v2.entry_cue.selected_end_forward_m
+                     << " circle_v2.entry_cue.opposite_observable="
+                     << BoolToken(
+                            snapshot.steering.circle_v2.entry_cue.opposite_observable)
+                     << " circle_v2.entry_cue.opposite_straight="
+                     << BoolToken(
+                            snapshot.steering.circle_v2.entry_cue.opposite_straight)
+                     << " circle_v2.entry_cue.opposite_straight_confidence="
+                     << snapshot.steering.circle_v2.entry_cue
+                            .opposite_straight_confidence
                      << " circle_v2.openings.left.available="
                      << BoolToken(snapshot.steering.circle_v2.openings.left.available)
-                     << " circle_v2.openings.left.frontier_forward_m="
-                     << snapshot.steering.circle_v2.openings.left.frontier_forward_m
+                     << " circle_v2.openings.left.begin_forward_m="
+                     << snapshot.steering.circle_v2.openings.left.begin_forward_m
+                     << " circle_v2.openings.left.end_forward_m="
+                     << snapshot.steering.circle_v2.openings.left.end_forward_m
                      << " circle_v2.openings.left.effective_lateral_m="
                      << snapshot.steering.circle_v2.openings.left.effective_lateral_m
                      << " circle_v2.openings.left.source="
@@ -214,16 +237,16 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                             snapshot.steering.circle_v2.openings.left.source)
                      << " circle_v2.openings.left.outward_distance_m="
                      << snapshot.steering.circle_v2.openings.left.outward_distance_m
-                     << " circle_v2.openings.left.confirmed_forward_span_m="
-                     << snapshot.steering.circle_v2.openings.left.confirmed_forward_span_m
+                     << " circle_v2.openings.left.minimum_white_width_m="
+                     << snapshot.steering.circle_v2.openings.left.minimum_white_width_m
                      << " circle_v2.openings.left.origin_connected="
                      << BoolToken(snapshot.steering.circle_v2.openings.left.origin_connected)
-                     << " circle_v2.openings.left.opposite_straight="
-                     << BoolToken(snapshot.steering.circle_v2.openings.left.opposite_straight)
                      << " circle_v2.openings.right.available="
                      << BoolToken(snapshot.steering.circle_v2.openings.right.available)
-                     << " circle_v2.openings.right.frontier_forward_m="
-                     << snapshot.steering.circle_v2.openings.right.frontier_forward_m
+                     << " circle_v2.openings.right.begin_forward_m="
+                     << snapshot.steering.circle_v2.openings.right.begin_forward_m
+                     << " circle_v2.openings.right.end_forward_m="
+                     << snapshot.steering.circle_v2.openings.right.end_forward_m
                      << " circle_v2.openings.right.effective_lateral_m="
                      << snapshot.steering.circle_v2.openings.right.effective_lateral_m
                      << " circle_v2.openings.right.source="
@@ -231,12 +254,27 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                             snapshot.steering.circle_v2.openings.right.source)
                      << " circle_v2.openings.right.outward_distance_m="
                      << snapshot.steering.circle_v2.openings.right.outward_distance_m
-                     << " circle_v2.openings.right.confirmed_forward_span_m="
-                     << snapshot.steering.circle_v2.openings.right.confirmed_forward_span_m
+                     << " circle_v2.openings.right.minimum_white_width_m="
+                     << snapshot.steering.circle_v2.openings.right.minimum_white_width_m
                      << " circle_v2.openings.right.origin_connected="
                      << BoolToken(snapshot.steering.circle_v2.openings.right.origin_connected)
-                     << " circle_v2.openings.right.opposite_straight="
-                     << BoolToken(snapshot.steering.circle_v2.openings.right.opposite_straight);
+                     << " zebra_stop.frame_phase="
+                     << snapshot.steering.zebra_stop.frame_phase
+                     << " zebra_stop.next_phase="
+                     << snapshot.steering.zebra_stop.next_phase
+                     << " zebra_stop.reason="
+                     << snapshot.steering.zebra_stop.reason
+                     << " zebra_stop.motion_session_active="
+                     << BoolToken(snapshot.steering.zebra_stop.motion_session_active)
+                     << " zebra_stop.detected="
+                     << BoolToken(snapshot.steering.zebra_stop.detected)
+                     << " zebra_stop.absence_elapsed_ms="
+                     << snapshot.steering.zebra_stop.absence_elapsed_ms
+                     << " zebra_stop.stop_delay_elapsed_ms="
+                     << snapshot.steering.zebra_stop.stop_delay_elapsed_ms
+                     << " zebra_stop.controlled_stop_requested="
+                     << BoolToken(
+                            snapshot.steering.zebra_stop.controlled_stop_requested);
     for (std::size_t index = 0; index < snapshot.steering.element_evidence.records.size(); ++index) {
         const port::VisualElementEvidenceRecord& record =
             snapshot.steering.element_evidence.records[index];

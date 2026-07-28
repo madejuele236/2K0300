@@ -328,6 +328,8 @@ struct SteeringMediaSnapshotView {
     SteeringMediaElementEvidenceView element_evidence{};
     /** CircleV2 场景状态 */
     port::CircleV2TelemetrySnapshot circle_v2{};
+    /** Zebra 再遇受控停车状态 */
+    port::ZebraStopTelemetry zebra_stop{};
     /** 视觉参考候选状态 */
     SteeringMediaVisualReferenceView visual_reference{};
     /** 参考模式与来源 */

@@ -26,7 +26,7 @@ struct VisualElementPipelineResult {
 };
 
 /// 运行完整的视觉元素管线
-/// 执行 Cross 检测，并由独立 planner owner 生成标准视觉参考候选。
+/// 执行 Cross/Zebra 检测，并仅由 Cross 的独立 planner owner 生成视觉参考候选。
 /// @param input 管线输入
 /// @param params 运行时参数
 /// @return 管线结果

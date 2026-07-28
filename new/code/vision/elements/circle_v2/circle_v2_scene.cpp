@@ -5,15 +5,7 @@
 namespace ls2k::vision {
 
 const char* ToString(CircleDir dir) {
-    switch (dir) {
-        case CircleDir::kNone:
-            return "none";
-        case CircleDir::kLeft:
-            return "left";
-        case CircleDir::kRight:
-            return "right";
-    }
-    return "none";
+    return port::CircleDirToken(dir);
 }
 
 const char* ToString(CircleOpeningSource source) {
@@ -89,13 +81,13 @@ void ResetCircleV2Memory(CircleV2Memory& memory) {
 CircleV2StepResult CircleV2Scene::Step(const SceneFrameView& frame,
                                        const CircleV2Memory& prior,
                                        const CircleV2Params& params) const {
-    const detail::CircleSideExpansionObservation expansion =
-        detail::ObserveCircleSideExpansion(frame, params);
+    const detail::CircleEntryCueObservation entry_cue =
+        detail::ObserveCircleEntryCue(frame, params);
     const detail::CircleV2GeometryObservation geometry_observation =
         detail::ObserveCircleV2Geometry(frame, prior.dir, params);
     const detail::CircleV2Events events =
         detail::ObserveCircleV2Events(frame,
-                                      expansion,
+                                      entry_cue,
                                       geometry_observation,
                                       prior,
                                       params);
@@ -106,7 +98,7 @@ CircleV2StepResult CircleV2Scene::Step(const SceneFrameView& frame,
 
     CircleV2StepResult result{};
     result.next_memory = decision.next_memory;
-    result.telemetry = detail::BuildCircleV2Telemetry(decision, events, geometry, expansion);
+    result.telemetry = detail::BuildCircleV2Telemetry(decision, events, geometry, entry_cue);
     result.reference_plan =
         detail::ComposeCircleV2Reference(decision.reference, geometry, params);
     return result;

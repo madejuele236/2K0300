@@ -16,6 +16,7 @@
 #include <opencv2/imgproc.hpp>
 
 #include "platform/bootstrap.hpp"
+#include "port/perf_counter.hpp"
 #include "runtime/pipelines/steering_frame_pipeline.hpp"
 #include "vision/bev/bev_projector.hpp"
 
@@ -25,7 +26,11 @@ constexpr int kWidth = 320;
 constexpr int kHeight = 240;
 
 struct Diagnostics final : ls2k::port::DiagnosticSink {
-    void Emit(const ls2k::port::DiagnosticEvent&) override {}
+    void Emit(const ls2k::port::DiagnosticEvent& event) override {
+        if (event.code == "perf.window" || event.code == "perf.summary") {
+            std::cout << event.code << ' ' << event.message << '\n';
+        }
+    }
 };
 
 struct FrameStamp {
@@ -250,6 +255,16 @@ void DrawStatus(cv::Mat& canvas,
                 cv::LINE_AA);
 }
 
+bool ElementPresent(const ls2k::port::VisualElementEvidenceFrame& evidence,
+                    const std::string& id) {
+    for (const auto& record : evidence.records) {
+        if (record.id == id) {
+            return record.present;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -279,6 +294,8 @@ int main(int argc, char** argv) {
         ls2k::runtime::SteeringFramePipeline pipeline{};
         Require(pipeline.Configure(params, diagnostics),
                 "current steering frame pipeline configure failed");
+        Require(ls2k::port::InitializePerfCounter(),
+                "host perf counter initialization failed");
         ls2k::vision::BEVProjector projector{};
         Require(projector.Configure(params.bev_projector),
                 "render projector configure failed");
@@ -321,12 +338,13 @@ int main(int argc, char** argv) {
                                std::ios::trunc);
         Require(manifest.is_open(), "cannot create paths.tsv");
         manifest << "frame\tframe_id\tcapture_time_ms\treference_source"
-                 << "\treference_mode\tsample_count\tcross\tcircle_phase"
+                 << "\treference_mode\tsample_count\tcross\tzebra\tcircle_phase"
                  << "\tcircle_next_phase\tml_active\toutput\n";
 
         const ls2k::port::MotionHistory empty_motion_history{};
         std::size_t frames_with_path = 0U;
         std::size_t cross_frames = 0U;
+        std::size_t zebra_frames = 0U;
         std::size_t circle_frames = 0U;
         std::size_t ml_frames = 0U;
         for (const std::filesystem::path& frame_path : frames) {
@@ -337,8 +355,12 @@ int main(int argc, char** argv) {
             const std::vector<std::uint8_t> yuyv = GrayToNeutralYuyv(gray);
             const ls2k::port::CameraCapture capture =
                 MakeCapture(stamp->second, gray, yuyv);
-            const ls2k::port::PerceptionResult perception =
-                pipeline.ProcessFrame(capture, params, empty_motion_history);
+            ls2k::port::PerceptionResult perception{};
+            {
+                LS2K_PERF_SCOPE(ls2k::port::PerfStage::kPerceptionFrame);
+                perception =
+                    pipeline.ProcessFrame(capture, params, empty_motion_history, true);
+            }
 
             cv::Mat gray_image(kHeight,
                                kWidth,
@@ -354,6 +376,28 @@ int main(int argc, char** argv) {
             }
             cross_frames +=
                 perception.element_evidence.cross_exit.present ? 1U : 0U;
+            const bool zebra_present =
+                ElementPresent(perception.element_evidence, "zebra");
+            zebra_frames += zebra_present ? 1U : 0U;
+            if (zebra_present) {
+                Require(!perception.ml.takeover_selected,
+                        "Zebra frame must suppress ML reference takeover");
+                for (std::size_t index = 0;
+                     index < perception.visual_reference_candidate_paths.count;
+                     ++index) {
+                    Require(
+                        perception.visual_reference_candidate_paths.entries[index].kind ==
+                            ls2k::port::VisualReferenceCandidateKind::kLine,
+                        "Zebra frame must expose only the ordinary line candidate");
+                }
+                if (perception.visual_reference_selection.present) {
+                    Require(
+                        perception.visual_reference_selection.kind_valid &&
+                            perception.visual_reference_selection.kind ==
+                                ls2k::port::VisualReferenceCandidateKind::kLine,
+                        "Zebra frame must select the ordinary line reference");
+                }
+            }
             circle_frames += perception.circle_v2.frame_phase != "idle" ? 1U : 0U;
             ml_frames += perception.ml.active ? 1U : 0U;
 
@@ -368,17 +412,20 @@ int main(int argc, char** argv) {
                      << perception.reference_mode << '\t'
                      << sample_count << '\t'
                      << (perception.element_evidence.cross_exit.present ? 1 : 0)
+                     << '\t' << (zebra_present ? 1 : 0)
                      << '\t' << perception.circle_v2.frame_phase
                      << '\t' << perception.circle_v2.next_phase << '\t'
                      << (perception.ml.active ? 1 : 0) << '\t'
                      << output_name << '\n';
         }
         Require(manifest.good(), "failed while writing paths.tsv");
+        ls2k::port::EmitPerfWindowDiagnostics(diagnostics, 1U);
         std::cout << "PASS: current production pipeline image-only replay"
                   << " frames=" << frames.size()
                   << " excluded=" << excluded.size()
                   << " with_path=" << frames_with_path
                   << " cross=" << cross_frames
+                  << " zebra=" << zebra_frames
                   << " circle_non_idle=" << circle_frames
                   << " ml_active=" << ml_frames
                   << " output=" << output_directory << '\n';

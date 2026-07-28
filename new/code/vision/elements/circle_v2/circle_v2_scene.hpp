@@ -11,6 +11,7 @@
 namespace ls2k::vision {
 
 using port::CircleDir;
+using port::CircleEntryCueObservation;
 using port::CircleOpeningObservation;
 using port::CircleOpeningPairObservation;
 using port::CircleOpeningSource;

@@ -11,7 +11,7 @@ compile_test_binary \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/circle_v2_scene.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/circle_v2_reference_adapter.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_event_observer.cpp" \
-  "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_expansion_observer.cpp" \
+  "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_entry_cue_observer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_reducer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_composer.cpp" \

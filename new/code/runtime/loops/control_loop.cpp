@@ -9,6 +9,7 @@
 #include <string>
 
 #include "control/ml_speed_policy.hpp"
+#include "control/zebra_controlled_stop.hpp"
 #include "estimation/vehicle_pose_delta_estimator.hpp"
 #include "reference/reference_control_readiness.hpp"
 #include "reference/reference_lateral_error.hpp"
@@ -407,6 +408,7 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.perception_health.reason = perception.perception_health.reason;
     debug_snapshot.steering.element_evidence = perception.element_evidence;
     debug_snapshot.steering.circle_v2 = perception.circle_v2;
+    debug_snapshot.steering.zebra_stop = perception.zebra_stop;
     debug_snapshot.steering.visual_reference.present = perception.visual_reference_selection.present;
     debug_snapshot.steering.visual_reference.source = perception.visual_reference_selection.source;
     debug_snapshot.steering.visual_reference.reason = perception.visual_reference_selection.reason;
@@ -1055,6 +1057,9 @@ void ControlLoop::Tick() {
                                     encoder.left,
                                     encoder.right});
         perception = state_.perception;
+        control::ApplyZebraControlledStopRequest(perception.zebra_stop,
+                                                state_.motion_state.phase,
+                                                state_.motion_intent);
         motion_history = state_.motion_history;
         command_history = state_.command_history;
         previous_command = state_.last_command;

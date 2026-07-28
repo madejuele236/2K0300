@@ -190,6 +190,7 @@ set(NEW_SRCS
     ../code/control/steering_yaw_controller.cpp
     ../code/control/actuator_command_builder.cpp
     ../code/control/wheel_target_mixer.cpp
+    ../code/control/zebra_controlled_stop.cpp
     ../code/control/wheel_pid.cpp
     ../code/vision/image/luma_sampler.cpp
     ../code/vision/image/illumination_binary_model.cpp
@@ -210,6 +211,8 @@ set(NEW_SRCS
     ../code/vision/bev/bev_simple_perception.cpp
     ../code/vision/elements/cross_exit_element_evidence.cpp
     ../code/vision/elements/cross_straight_path_planner.cpp
+    ../code/vision/elements/zebra_element_evidence.cpp
+    ../code/vision/elements/zebra_stop_scene.cpp
     ../code/vision/elements/visual_element_evidence.cpp
     ../code/vision/elements/visual_element_pipeline.cpp
     ../code/reference/visual_reference_orchestration.cpp
@@ -224,7 +227,7 @@ set(NEW_SRCS
     ../code/vision/elements/circle_v2/circle_v2_scene.cpp
     ../code/vision/elements/circle_v2/circle_v2_reference_adapter.cpp
     ../code/vision/elements/circle_v2/detail/circle_v2_event_observer.cpp
-    ../code/vision/elements/circle_v2/detail/circle_v2_expansion_observer.cpp
+    ../code/vision/elements/circle_v2/detail/circle_v2_entry_cue_observer.cpp
     ../code/vision/elements/circle_v2/detail/circle_v2_reducer.cpp
     ../code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp
     ../code/vision/elements/circle_v2/detail/circle_v2_composer.cpp
@@ -405,12 +408,34 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
     )
 
     add_executable(
+        zebra_element_evidence_test
+        ../verification/tests/zebra_element_evidence_test.cpp
+        ../code/vision/elements/zebra_element_evidence.cpp
+    )
+    target_link_libraries(
+        zebra_element_evidence_test
+        pthread
+        m
+    )
+
+    add_executable(
+        zebra_stop_scene_test
+        ../verification/tests/zebra_stop_scene_test.cpp
+        ../code/vision/elements/zebra_stop_scene.cpp
+    )
+    target_link_libraries(
+        zebra_stop_scene_test
+        pthread
+        m
+    )
+
+    add_executable(
         steering_circle_v2_scene_test
         ../verification/tests/steering_circle_v2_scene_test.cpp
         ../code/vision/elements/circle_v2/circle_v2_scene.cpp
         ../code/vision/elements/circle_v2/circle_v2_reference_adapter.cpp
         ../code/vision/elements/circle_v2/detail/circle_v2_event_observer.cpp
-        ../code/vision/elements/circle_v2/detail/circle_v2_expansion_observer.cpp
+        ../code/vision/elements/circle_v2/detail/circle_v2_entry_cue_observer.cpp
         ../code/vision/elements/circle_v2/detail/circle_v2_reducer.cpp
         ../code/vision/elements/circle_v2/detail/circle_v2_geometry_observer.cpp
         ../code/vision/elements/circle_v2/detail/circle_v2_composer.cpp

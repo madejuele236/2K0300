@@ -6,25 +6,15 @@
 namespace ls2k::vision::detail {
 namespace {
 
-const CircleOpeningObservation* OpeningForDir(
-    const CircleSideExpansionObservation& expansion,
-    CircleDir dir) {
-    if (dir == CircleDir::kLeft) {
-        return &expansion.openings.left;
-    }
-    if (dir == CircleDir::kRight) {
-        return &expansion.openings.right;
-    }
-    return nullptr;
-}
-
-bool EntryGateReached(const CircleSideExpansionObservation& expansion,
+bool EntryGateReached(const CircleEntryCueObservation& entry_cue,
                       CircleDir dir,
                       const CircleV2Params& params) {
-    const CircleOpeningObservation* opening = OpeningForDir(expansion, dir);
-    return opening != nullptr && opening->available &&
-           opening->frontier_forward_m >= params.entry_forward_min_m &&
-           opening->frontier_forward_m <= params.entry_forward_max_m;
+    return entry_cue.selected &&
+           entry_cue.detected_dir == dir &&
+           entry_cue.selected_opening.fact.begin_forward_m >=
+               params.entry_forward_min_m &&
+           entry_cue.selected_opening.fact.begin_forward_m <=
+               params.entry_forward_max_m;
 }
 
 float CircleTurnSign(CircleDir dir) {
@@ -53,17 +43,17 @@ bool StallTimeoutReached(uint64_t elapsed_ms, const CircleV2Params& params) {
 }  // namespace
 
 CircleV2Events ObserveCircleV2Events(const SceneFrameView& frame,
-                                     const CircleSideExpansionObservation& expansion,
+                                     const CircleEntryCueObservation& entry_cue,
                                      const CircleV2GeometryObservation& geometry,
                                      const CircleV2Memory& prior,
                                      const CircleV2Params& params) {
     CircleV2Events events{};
     switch (prior.phase) {
         case CirclePhase::kIdle:
-            events.detected_dir = expansion.detected_dir;
+            events.detected_dir = entry_cue.detected_dir;
             break;
         case CirclePhase::kApproach:
-            events.entry_gate_reached = EntryGateReached(expansion, prior.dir, params);
+            events.entry_gate_reached = EntryGateReached(entry_cue, prior.dir, params);
             break;
         case CirclePhase::kInnerTrace:
         case CirclePhase::kNormalTrace:

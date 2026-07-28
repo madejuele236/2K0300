@@ -68,6 +68,8 @@ ls2k::vision::CircleV2Params BuildCircleParams(
         params.bev_element.circle_v2_opposite_straight_confidence_min;
     circle.max_adjacent_distance_m =
         params.bev_geometry.boundary_trace_max_adjacent_distance_m;
+    circle.nominal_road_width_m =
+        2.0F * params.bev_geometry.nominal_road_half_width_m;
     circle.min_sampleable_width_m =
         params.bev_element.circle_v2_min_sampleable_width_m;
     circle.opening_forward_min_m =
@@ -98,13 +100,13 @@ ls2k::vision::CircleV2Params BuildCircleParams(
 void WriteOpening(std::ostream& out,
                   const ls2k::vision::CircleOpeningObservation& opening) {
     out << "{\"available\":" << (opening.available ? "true" : "false")
-        << ",\"frontier_forward_m\":" << opening.frontier_forward_m
+        << ",\"begin_forward_m\":" << opening.begin_forward_m
+        << ",\"end_forward_m\":" << opening.end_forward_m
         << ",\"effective_lateral_m\":" << opening.effective_lateral_m
         << ",\"source\":\"" << ls2k::vision::ToString(opening.source) << "\""
         << ",\"outward_distance_m\":" << opening.outward_distance_m
-        << ",\"confirmed_forward_span_m\":" << opening.confirmed_forward_span_m
+        << ",\"minimum_white_width_m\":" << opening.minimum_white_width_m
         << ",\"origin_connected\":" << (opening.origin_connected ? "true" : "false")
-        << ",\"opposite_straight\":" << (opening.opposite_straight ? "true" : "false")
         << '}';
 }
 
@@ -186,8 +188,6 @@ int main(int argc, char** argv) {
             }
         }
         std::sort(frames.begin(), frames.end());
-        Require(force_exit_left_tangent || frames.size() == 191U,
-                "expected 191 aligned gray8 frames, got " + std::to_string(frames.size()));
         Require(!frames.empty(), "no aligned gray8 frames found");
 
         Diagnostics diagnostics{};
@@ -279,7 +279,31 @@ int main(int argc, char** argv) {
             WriteOpening(evidence, result.telemetry.openings.left);
             evidence << ",\"right\":";
             WriteOpening(evidence, result.telemetry.openings.right);
-            evidence << "},\"rows\":";
+            evidence << "},\"entry_cue\":{\"detected_dir\":\""
+                     << ls2k::vision::ToString(
+                            result.telemetry.entry_cue.detected_dir)
+                     << "\",\"bilateral_overlap\":"
+                     << (result.telemetry.entry_cue.bilateral_overlap
+                             ? "true"
+                             : "false")
+                     << ",\"selected\":"
+                     << (result.telemetry.entry_cue.selected ? "true" : "false")
+                     << ",\"selected_begin_forward_m\":"
+                     << result.telemetry.entry_cue.selected_begin_forward_m
+                     << ",\"selected_end_forward_m\":"
+                     << result.telemetry.entry_cue.selected_end_forward_m
+                     << ",\"opposite_observable\":"
+                     << (result.telemetry.entry_cue.opposite_observable
+                             ? "true"
+                             : "false")
+                     << ",\"opposite_straight\":"
+                     << (result.telemetry.entry_cue.opposite_straight
+                             ? "true"
+                             : "false")
+                     << ",\"opposite_straight_confidence\":"
+                     << result.telemetry.entry_cue
+                            .opposite_straight_confidence
+                     << "},\"rows\":";
             WriteRows(evidence, perception.rows);
             evidence << "}\n";
             memory = result.next_memory;

@@ -24,7 +24,7 @@ public:
     /// @return             配置是否成功
     bool Configure(const port::RuntimeParameters& params,
                    port::DiagnosticSink& diagnostics);
-    /// 重置参考连续性与 ML scene 记忆（CircleV2 contract 保持不变）
+    /// 重置帧源相关的 reference、ML、Zebra 记忆（CircleV2 contract 保持不变）
     void ResetReferenceMemory();
     /// 处理一帧图像：BEV 边界事实 → 元素检测 → 参考选择 → 横向误差计算
     /// @param capture   相机捕获数据
@@ -33,7 +33,8 @@ public:
     /// @return          处理后的感知结果
     port::PerceptionResult ProcessFrame(const port::CameraCapture& capture,
                                         const port::RuntimeParameters& params,
-                                        const port::MotionHistory& motion_history);
+                                        const port::MotionHistory& motion_history,
+                                        bool motion_session_active);
 
 private:
     vision::BEVProjector projector_{};                          ///< BEV 投影器
