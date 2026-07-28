@@ -147,7 +147,7 @@ transport::SteeringMediaConfigSnapshot SteeringMediaService::BuildConfigSnapshot
 transport::SteeringMediaSnapshotView SteeringMediaService::BuildSnapshotView(
     const SteeringDebugSnapshot& snapshot) const {
     transport::SteeringMediaSnapshotView view{};
-    view.otsu = snapshot.otsu;
+    view.binary_model = snapshot.binary_model;
     view.perception_tag = snapshot.perception_tag;
     view.boundary_row_count = snapshot.boundary_row_count;
     view.boundary_jump_count = snapshot.boundary_jump_count;

@@ -392,6 +392,8 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
     AppendJsonBool(stream, snapshot.circle_v2.motion_arc_available);
     stream << ",\"geometry_available\":";
     AppendJsonBool(stream, snapshot.circle_v2.geometry_available);
+    stream << ",\"geometry_source\":";
+    AppendJsonString(stream, snapshot.circle_v2.geometry_source);
     stream << ",\"inner_trace_elapsed_ms\":"
            << snapshot.circle_v2.inner_trace_elapsed_ms;
     stream << ",\"directed_turn_angle_rad\":"
@@ -589,13 +591,33 @@ void AppendSteeringSnapshotJson(std::ostringstream& stream,
     stream << "}";
     stream << ",\"perception_tag\":";
     AppendJsonString(stream, snapshot.perception_tag);
-    stream << ",\"otsu\":{\"valid\":";
-    AppendJsonBool(stream, snapshot.otsu.valid);
-    stream << ",\"threshold\":" << snapshot.otsu.threshold;
+    stream << ",\"binary_model\":{\"valid\":";
+    AppendJsonBool(stream, snapshot.binary_model.valid);
+    stream << ",\"residual_threshold\":"
+           << snapshot.binary_model.residual_threshold;
+    stream << ",\"luma_scale\":" << port::kBinaryResidualLumaScale;
+    stream << ",\"illumination_weight\":"
+           << snapshot.binary_model.illumination_weight;
     stream << ",\"source\":";
-    AppendJsonString(stream, port::ToString(snapshot.otsu.source));
+    AppendJsonString(stream, port::ToString(snapshot.binary_model.source));
     stream << ",\"stale_frames\":"
-           << static_cast<unsigned int>(snapshot.otsu.stale_frames) << "}";
+           << static_cast<unsigned int>(snapshot.binary_model.stale_frames);
+    stream << ",\"scale\":" << port::kBinaryModelScale;
+    stream << ",\"illumination_width\":"
+           << port::kBinaryIlluminationColumns;
+    stream << ",\"illumination_height\":"
+           << port::kBinaryIlluminationRows;
+    stream << ",\"illumination\":[";
+    for (std::size_t index = 0;
+         index < snapshot.binary_model.illumination.size();
+         ++index) {
+        if (index != 0U) {
+            stream << ',';
+        }
+        stream << static_cast<unsigned int>(
+            snapshot.binary_model.illumination[index]);
+    }
+    stream << "]}";
     stream << ",\"boundary_row_count\":" << snapshot.boundary_row_count;
     stream << ",\"boundary_jump_count\":" << snapshot.boundary_jump_count;
     stream << ",\"boundary_span_count\":" << snapshot.boundary_span_count;
@@ -850,10 +872,16 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
                      snapshot.param_snapshot.bev_element.cross_boundary_expansion_min_m);
     header << ",\"CIRCLE_V2_ENABLED\":";
     AppendJsonBool(header, snapshot.param_snapshot.bev_element.circle_v2_enabled);
-    header << ",\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":";
-    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.circle_v2_exit_yaw_threshold_deg);
-    header << ",\"CIRCLE_V2_EXIT_HOLD_FRAMES\":"
-           << snapshot.param_snapshot.bev_element.circle_v2_exit_hold_frames;
+    header << ",\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.circle_v2_normal_trace_start_yaw_deg);
+    header << ",\"CIRCLE_V2_EXIT_TRACE_START_YAW_DEG\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.circle_v2_exit_trace_start_yaw_deg);
+    header << ",\"CIRCLE_V2_CALM_FALLBACK_YAW_DEG\":";
+    AppendJsonNumber(header, snapshot.param_snapshot.bev_element.circle_v2_calm_fallback_yaw_deg);
+    header << ",\"CIRCLE_V2_CALM_TRACE_MS\":"
+           << snapshot.param_snapshot.bev_element.circle_v2_calm_trace_ms;
+    header << ",\"CIRCLE_V2_COOLDOWN_MS\":"
+           << snapshot.param_snapshot.bev_element.circle_v2_cooldown_ms;
     header << ",\"CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS\":"
            << snapshot.param_snapshot.bev_element.circle_v2_inner_trace_stall_timeout_ms;
     header << ",\"CIRCLE_V2_INNER_TRACE_STALL_YAW_MIN_DEG\":";
@@ -893,6 +921,8 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header, circle.circle_v2_exit_geometry_forward_max_m);
     header << ",\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\":";
     AppendJsonNumber(header, circle.circle_v2_exit_straight_max_lateral_span_m);
+    header << ",\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":";
+    AppendJsonNumber(header, circle.circle_v2_exit_tangent_fit_span_m);
     header << "}";
     header << ",\"REFERENCE_TIME_ALIGNMENT\":{";
     header << "\"ENABLED\":";

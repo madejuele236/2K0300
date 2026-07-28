@@ -17,7 +17,10 @@ enum class CirclePhase {
     kIdle,
     kApproach,
     kInnerTrace,
+    kNormalTrace,
     kExitTrace,
+    kCalmTrace,
+    kCooldown,
 };
 
 enum class CircleV2ReferenceRole {
@@ -31,15 +34,19 @@ enum class CircleV2TelemetryReason {
     kPhase1CueLeft,
     kPhase1CueRight,
     kEntryGateReached,
-    kExitGateReached,
+    kNormalTraceStarted,
+    kExitTraceStarted,
+    kObservedOuterBoundary,
+    kFallbackYawReached,
+    kCalmTraceComplete,
+    kCooldownComplete,
     kInnerTraceYawStalled,
-    kExitHoldReleased,
     kGeometryUnavailable,
 };
 
 struct CircleV2StageClock {
-    uint64_t enter_capture_time_ms = 0;
-    int phase_frame_index = 0;
+    uint64_t phase_enter_capture_time_ms = 0;
+    uint64_t turn_origin_capture_time_ms = 0;
     float max_directed_turn_angle_rad = 0.0F;
 };
 
@@ -50,8 +57,11 @@ struct CircleV2Memory {
 };
 
 struct CircleV2Params {
-    float exit_yaw_threshold_rad = 5.75958653158F;
-    int exit_hold_frames = 60;
+    float normal_trace_start_yaw_rad = 1.57079632679F;
+    float exit_trace_start_yaw_rad = 4.71238898038F;
+    float calm_fallback_yaw_rad = 5.93411945678F;
+    int calm_trace_ms = 1000;
+    int cooldown_ms = 3000;
     int inner_trace_stall_timeout_ms = 4000;
     float inner_trace_stall_yaw_min_rad = 0.28797932658F;
     float inner_trace_path_offset_m = 0.0F;
@@ -69,7 +79,26 @@ struct CircleV2Params {
     float exit_geometry_forward_min_m = 0.05F;
     float exit_geometry_forward_max_m = 0.50F;
     float exit_straight_max_lateral_span_m = 0.13F;
+    float exit_tangent_fit_span_m = 0.10F;
 };
+
+enum class CircleV2GeometrySource {
+    kNone,
+    kObservedBoundary,
+    kFovTangent,
+};
+
+inline const char* CircleV2GeometrySourceToken(CircleV2GeometrySource source) {
+    switch (source) {
+        case CircleV2GeometrySource::kNone:
+            return "none";
+        case CircleV2GeometrySource::kObservedBoundary:
+            return "observed_boundary";
+        case CircleV2GeometrySource::kFovTangent:
+            return "fov_tangent";
+    }
+    return "none";
+}
 
 struct CircleV2ReferencePlan {
     CircleDir dir = CircleDir::kNone;
@@ -119,6 +148,7 @@ struct CircleV2Telemetry {
     CircleV2TelemetryReason reason = CircleV2TelemetryReason::kNone;
     bool motion_arc_available = false;
     bool geometry_available = false;
+    CircleV2GeometrySource geometry_source = CircleV2GeometrySource::kNone;
     uint64_t inner_trace_elapsed_ms = 0;
     float directed_turn_angle_rad = 0.0F;
     CircleOpeningPairObservation openings{};

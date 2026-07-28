@@ -43,7 +43,7 @@ constexpr float kPi = 3.14159265358979323846F;
 
 /// 构建感知结果结构：从各感知子阶段的结果组装最终的 PerceptionResult
 /// @param capture              相机捕获数据
-/// @param threshold             Otsu 二值化阈值
+/// @param boundary_facts        统一二值模型派生的 BEV 边界事实
 /// @param health                感知健康状态
 /// @param element_evidence      视觉元素证据帧
 /// @param visual_selection      视觉参考选择结果
@@ -75,8 +75,8 @@ port::PerceptionResult BuildPerceptionResult(
     perception.frame_id = capture.frame_id;
     perception.capture_time_ms = capture.capture_time_ms;
     perception.publish_time_ms = publish_time_ms;
-    perception.otsu = boundary_facts.otsu;
-    perception.perception_tag = "bev_sparse_otsu_binary";
+    perception.binary_model = boundary_facts.binary_model;
+    perception.perception_tag = "bev_sparse_illumination_compensated_binary";
     perception.boundary_row_count = boundary_facts.rows.size();
     perception.boundary_jump_count = boundary_facts.boundary_jump_count;
     perception.boundary_span_count = boundary_facts.boundary_span_count;
@@ -197,10 +197,14 @@ bool QueryMotionArcYawDelta(void* context, uint64_t from_ms, uint64_t to_ms, flo
 
 CircleV2Params BuildCircleV2Params(const port::RuntimeParameters& params) {
     CircleV2Params circle_params{};
-    circle_params.exit_yaw_threshold_rad =
-        params.bev_element.circle_v2_exit_yaw_threshold_deg * kPi / 180.0F;
-    circle_params.exit_hold_frames =
-        std::max(2, params.bev_element.circle_v2_exit_hold_frames);
+    circle_params.normal_trace_start_yaw_rad =
+        params.bev_element.circle_v2_normal_trace_start_yaw_deg * kPi / 180.0F;
+    circle_params.exit_trace_start_yaw_rad =
+        params.bev_element.circle_v2_exit_trace_start_yaw_deg * kPi / 180.0F;
+    circle_params.calm_fallback_yaw_rad =
+        params.bev_element.circle_v2_calm_fallback_yaw_deg * kPi / 180.0F;
+    circle_params.calm_trace_ms = params.bev_element.circle_v2_calm_trace_ms;
+    circle_params.cooldown_ms = params.bev_element.circle_v2_cooldown_ms;
     circle_params.inner_trace_stall_timeout_ms =
         std::max(1, params.bev_element.circle_v2_inner_trace_stall_timeout_ms);
     circle_params.inner_trace_stall_yaw_min_rad =
@@ -229,6 +233,8 @@ CircleV2Params BuildCircleV2Params(const port::RuntimeParameters& params) {
         params.bev_element.circle_v2_exit_geometry_forward_max_m;
     circle_params.exit_straight_max_lateral_span_m =
         params.bev_element.circle_v2_exit_straight_max_lateral_span_m;
+    circle_params.exit_tangent_fit_span_m =
+        params.bev_element.circle_v2_exit_tangent_fit_span_m;
     return circle_params;
 }
 
@@ -243,6 +249,7 @@ port::CircleV2TelemetrySnapshot BuildCircleV2TelemetrySnapshot(bool enabled,
     snapshot.reason = vision::ToString(telemetry.reason);
     snapshot.motion_arc_available = telemetry.motion_arc_available;
     snapshot.geometry_available = telemetry.geometry_available;
+    snapshot.geometry_source = port::CircleV2GeometrySourceToken(telemetry.geometry_source);
     snapshot.inner_trace_elapsed_ms = telemetry.inner_trace_elapsed_ms;
     snapshot.directed_turn_angle_rad = telemetry.directed_turn_angle_rad;
     snapshot.openings = telemetry.openings;
@@ -260,7 +267,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
     projector_configured_ = projector_.Configure(params.bev_projector);
     sample_lut_ = {};
     ml_rectangle_lut_ = {};
-    otsu_tracker_.Reset();
+    binary_model_tracker_.Reset();
     ml_classifier_ready_ = !params.ml.enabled || ml_classifier_.Initialize();
     const std::string ml_classifier_identity =
         !params.ml.enabled
@@ -292,7 +299,7 @@ bool SteeringFramePipeline::Configure(const port::RuntimeParameters& params,
 void SteeringFramePipeline::ResetReferenceMemory() {
     ResetSteeringReferenceHoldMemory(perception_memory_);
     vision::ml::ResetMlSceneMemory(perception_memory_.ml_scene);
-    otsu_tracker_.Reset();
+    binary_model_tracker_.Reset();
 }
 
 /// 处理一帧图像：V9 BEV 边界事实 → 元素检测 → 视觉参考选择 → 横向误差计算 → 参考控制就绪评估
@@ -316,11 +323,11 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
     port::VisualReferenceCandidatePathSet candidate_paths{};
     port::VisualReferenceSelection visual_selection{};
     vision::BEVSimplePerceptionResult current_facts{};
-    port::OtsuThresholdState otsu_state{};
+    port::BinaryModelState binary_model{};
     {
-        LS2K_PERF_SCOPE(port::PerfStage::kPerceptionOtsu);
-        otsu_state = otsu_tracker_.Update(
-            vision::ComputeSparseOtsuThreshold(capture.pixel_view));
+        LS2K_PERF_SCOPE(port::PerfStage::kPerceptionBinaryModel);
+        binary_model = binary_model_tracker_.Update(
+            vision::ComputeIlluminationBinaryModel(capture.pixel_view));
     }
     {
         LS2K_PERF_SCOPE(port::PerfStage::kPerceptionBev);
@@ -331,7 +338,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             LS2K_PERF_SCOPE(port::PerfStage::kBevSimple);
             current_facts =
                 vision::RunBEVSimplePerception(capture.pixel_view,
-                                               otsu_state,
+                                               binary_model,
                                                params,
                                                projector_,
                                                &sample_lut_);
@@ -346,7 +353,7 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
         const vision::BEVImageSegmentConnectivity segment_connectivity(
             capture.pixel_view,
             projector_,
-            current_facts.otsu);
+            current_facts.binary_model);
 
         vision::VisualElementPipelineResult element_result{};
         vision::ml::MlObserverInput ml_observer_input{};

@@ -319,8 +319,11 @@ int main(int argc, char** argv) {
                       "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 7,"
                       "\"CROSS_BOUNDARY_EXPANSION_MIN_M\": 0.071,"
                       "\"CIRCLE_V2_ENABLED\": 1,"
-                      "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\": 300,"
-                      "\"CIRCLE_V2_EXIT_HOLD_FRAMES\": 4,"
+                      "\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\": 95,"
+                      "\"CIRCLE_V2_EXIT_TRACE_START_YAW_DEG\": 260,"
+                      "\"CIRCLE_V2_CALM_FALLBACK_YAW_DEG\": 330,"
+                      "\"CIRCLE_V2_CALM_TRACE_MS\": 1200,"
+                      "\"CIRCLE_V2_COOLDOWN_MS\": 2400,"
                       "\"CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS\": 4500,"
                       "\"CIRCLE_V2_INNER_TRACE_STALL_YAW_MIN_DEG\": 12.5,"
                       "\"CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M\": 0.07,"
@@ -336,7 +339,8 @@ int main(int argc, char** argv) {
                       "\"CIRCLE_V2_INNER_GEOMETRY_FORWARD_MAX_M\": 0.52,"
                       "\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M\": 0.08,"
                       "\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M\": 0.53,"
-                      "\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\": 0.14}"));
+                      "\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\": 0.14,"
+                      "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\": 0.18}"));
         CaptureDiagnostics enabled_diagnostics{};
         const ls2k::port::RuntimeParameters enabled =
             LoadFixture(enabled_path, enabled_diagnostics);
@@ -418,11 +422,19 @@ int main(int argc, char** argv) {
                "CROSS_BOUNDARY_EXPANSION_MIN_M should parse");
         Expect(enabled.bev_element.circle_v2_enabled,
                "CIRCLE_V2_ENABLED=1 should parse true");
-        Expect(std::abs(enabled.bev_element.circle_v2_exit_yaw_threshold_deg - 300.0F) <
+        Expect(std::abs(enabled.bev_element.circle_v2_normal_trace_start_yaw_deg - 95.0F) <
                    1.0e-6F,
-               "CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG should parse");
-        Expect(enabled.bev_element.circle_v2_exit_hold_frames == 4,
-               "CIRCLE_V2_EXIT_HOLD_FRAMES should parse");
+               "CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG should parse");
+        Expect(std::abs(enabled.bev_element.circle_v2_exit_trace_start_yaw_deg - 260.0F) <
+                   1.0e-6F,
+               "CIRCLE_V2_EXIT_TRACE_START_YAW_DEG should parse");
+        Expect(std::abs(enabled.bev_element.circle_v2_calm_fallback_yaw_deg - 330.0F) <
+                   1.0e-6F,
+               "CIRCLE_V2_CALM_FALLBACK_YAW_DEG should parse");
+        Expect(enabled.bev_element.circle_v2_calm_trace_ms == 1200,
+               "CIRCLE_V2_CALM_TRACE_MS should parse");
+        Expect(enabled.bev_element.circle_v2_cooldown_ms == 2400,
+               "CIRCLE_V2_COOLDOWN_MS should parse");
         Expect(enabled.bev_element.circle_v2_inner_trace_stall_timeout_ms == 4500,
                "CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS should parse");
         Expect(std::abs(enabled.bev_element.circle_v2_inner_trace_stall_yaw_min_deg -
@@ -508,12 +520,18 @@ int main(int argc, char** argv) {
         Expect(absent.bev_element.circle_v2_enabled ==
                    builtin_defaults.bev_element.circle_v2_enabled,
                "missing BEV_ELEMENT should keep CircleV2 enabled");
-        Expect(std::abs(absent.bev_element.circle_v2_exit_yaw_threshold_deg -
-                        builtin_defaults.bev_element.circle_v2_exit_yaw_threshold_deg) < 1.0e-6F,
-               "missing BEV_ELEMENT should keep CircleV2 yaw threshold default");
-        Expect(absent.bev_element.circle_v2_exit_hold_frames ==
-                   builtin_defaults.bev_element.circle_v2_exit_hold_frames,
-               "missing BEV_ELEMENT should keep CircleV2 hold default");
+        Expect(std::abs(absent.bev_element.circle_v2_normal_trace_start_yaw_deg -
+                        builtin_defaults.bev_element.circle_v2_normal_trace_start_yaw_deg) < 1.0e-6F &&
+                   std::abs(absent.bev_element.circle_v2_exit_trace_start_yaw_deg -
+                            builtin_defaults.bev_element.circle_v2_exit_trace_start_yaw_deg) < 1.0e-6F &&
+                   std::abs(absent.bev_element.circle_v2_calm_fallback_yaw_deg -
+                            builtin_defaults.bev_element.circle_v2_calm_fallback_yaw_deg) < 1.0e-6F,
+               "missing BEV_ELEMENT should keep CircleV2 angle thresholds");
+        Expect(absent.bev_element.circle_v2_calm_trace_ms ==
+                   builtin_defaults.bev_element.circle_v2_calm_trace_ms &&
+                   absent.bev_element.circle_v2_cooldown_ms ==
+                       builtin_defaults.bev_element.circle_v2_cooldown_ms,
+               "missing BEV_ELEMENT should keep CircleV2 timed phases");
         Expect(absent.bev_element.circle_v2_inner_trace_stall_timeout_ms ==
                    builtin_defaults.bev_element.circle_v2_inner_trace_stall_timeout_ms,
                "missing BEV_ELEMENT should keep CircleV2 stall timeout default");
@@ -1176,10 +1194,15 @@ int main(int argc, char** argv) {
              "  \"BEV_CLASSIFICATION\": {\"UNKNOWN_CONFIDENCE_MIN\": 0}"},
             {"invalid_hold_cycles",
              "  \"BEV_CLASSIFICATION\": {\"HOLD_LAST_MAX_CYCLES\": -1}"},
-            {"invalid_v2_yaw",
-             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\": 0}"},
-            {"invalid_v2_hold",
-             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_EXIT_HOLD_FRAMES\": 1}"},
+            {"invalid_v2_angle_order",
+             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\": 300,"
+             "\"CIRCLE_V2_EXIT_TRACE_START_YAW_DEG\": 200}"},
+            {"invalid_v2_calm_time",
+             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_CALM_TRACE_MS\": 0}"},
+            {"invalid_v2_cooldown_time",
+             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_COOLDOWN_MS\": -1}"},
+            {"invalid_v2_tangent_span",
+             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\": 0}"},
             {"invalid_v2_stall_timeout",
              "  \"BEV_ELEMENT\": {\"CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS\": 0}"},
             {"invalid_v2_path_offset",

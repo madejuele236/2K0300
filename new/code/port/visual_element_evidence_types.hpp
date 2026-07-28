@@ -114,8 +114,11 @@ struct BEVElementParameters {
 
     // Circle V2 场景状态机参数
     bool circle_v2_enabled = true;                  ///< 是否注册 CircleV2Scene
-    float circle_v2_exit_yaw_threshold_deg = 400.0F; ///< B->C 出环角度阈值（度）
-    int circle_v2_exit_hold_frames = 120;             ///< C 状态保持帧数
+    float circle_v2_normal_trace_start_yaw_deg = 90.0F;
+    float circle_v2_exit_trace_start_yaw_deg = 270.0F;
+    float circle_v2_calm_fallback_yaw_deg = 340.0F;
+    int circle_v2_calm_trace_ms = 1000;
+    int circle_v2_cooldown_ms = 3000;
     int circle_v2_inner_trace_stall_timeout_ms = 2000; ///< InnerTrace 无明显 yaw 积分退回 Idle 超时
     float circle_v2_inner_trace_stall_yaw_min_deg = 60.0F; ///< InnerTrace 超时退回 Idle 的最小明显 yaw 积分
     float circle_v2_inner_trace_path_offset_m = 0.0F; ///< InnerTrace 从内圆边线向道路内部偏移的距离
@@ -132,6 +135,7 @@ struct BEVElementParameters {
     float circle_v2_exit_geometry_forward_min_m = 0.05F;
     float circle_v2_exit_geometry_forward_max_m = 0.50F;
     float circle_v2_exit_straight_max_lateral_span_m = 0.13F;
+    float circle_v2_exit_tangent_fit_span_m = 0.10F;
 };
 
 }  // namespace ls2k::port

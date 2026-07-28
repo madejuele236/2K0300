@@ -4,7 +4,7 @@
 #include <cstdint>
 
 #include "vision/bev/bev_boundary_row.hpp"
-#include "vision/image/luma_sampler.hpp"
+#include "vision/image/illumination_binary_model.hpp"
 
 namespace ls2k::vision {
 namespace {
@@ -16,11 +16,11 @@ std::size_t ActiveSparseRowCount(const port::RuntimeParameters& params) {
                    static_cast<int>(port::kBevReferenceSampleCount)));
 }
 
-// 扫描单条稀疏 BEV 行，产出该行的黑/白/未知/不可用计数以及白色连续区间。
+// 扫描单条稀疏 BEV 行，产出采样可见性、二值分类和白色连续区间。
 // 这些 row facts 同时服务基础 line reference 和 element evidence，是当前视觉事实的公共输入。
 // 这里不做 cross/circle 的语义判断，只描述这一行本身看到了什么。
 BEVSimpleRowScan ScanSparseRow(const port::CameraPixelFrameView& frame,
-                               const port::OtsuThresholdState& threshold,
+                               const port::BinaryModelState& binary_model,
                                const port::RuntimeParameters& params,
                                const BEVSampleProjectionLut& lut,
                                std::size_t row_index) {
@@ -44,50 +44,58 @@ BEVSimpleRowScan ScanSparseRow(const port::CameraPixelFrameView& frame,
             ++row.unavailable_count;
             continue;
         }
-        std::uint8_t gray = 0;
-        if (!SampleLumaAt(frame, entry.image_row_px, entry.image_col_px, gray)) {
-            ++row.unavailable_count;
-            continue;
-        }
-        const float lateral = entry.lateral_m;
         BEVRowLumaSample sample{};
         sample.sampleable = true;
         sample.forward_m = row.forward_m;
-        sample.lateral_m = lateral;
+        sample.lateral_m = entry.lateral_m;
         sample.lateral_index = static_cast<int>(lateral_index);
-        sample.y = gray;
+        std::uint8_t gray = 0U;
+        bool white = false;
+        if (binary_model.valid) {
+            if (!ClassifyImagePoint(frame,
+                                    entry.image_row_px,
+                                    entry.image_col_px,
+                                    binary_model,
+                                    gray,
+                                    white)) {
+                ++row.unavailable_count;
+                continue;
+            }
+            sample.classified = true;
+            sample.white = white;
+            sample.y = gray;
+        }
         luma_samples.push_back(sample);
         ++row.sampleable_count;
         if (!have_sampleable_lateral) {
-            row.sampleable_left_m = lateral;
-            row.sampleable_right_m = lateral;
+            row.sampleable_left_m = entry.lateral_m;
+            row.sampleable_right_m = entry.lateral_m;
             have_sampleable_lateral = true;
         } else {
-            row.sampleable_left_m = std::min(row.sampleable_left_m, lateral);
-            row.sampleable_right_m = std::max(row.sampleable_right_m, lateral);
+            row.sampleable_left_m =
+                std::min(row.sampleable_left_m, entry.lateral_m);
+            row.sampleable_right_m =
+                std::max(row.sampleable_right_m, entry.lateral_m);
         }
     }
     if (have_sampleable_lateral) {
         row.sampleable_width_m = std::max(0.0F, row.sampleable_right_m - row.sampleable_left_m);
     }
-    ExtractSparseBoundaryRowFacts(luma_samples,
-                                  threshold,
-                                  min_width_m,
-                                  row);
+    ExtractSparseBoundaryRowFacts(luma_samples, min_width_m, row);
     return row;
 }
 
 }  // namespace
 
 std::vector<BEVSimpleRowScan> ScanSparseRows(const port::CameraPixelFrameView& frame,
-                                             const port::OtsuThresholdState& threshold,
+                                             const port::BinaryModelState& binary_model,
                                              const port::RuntimeParameters& params,
                                              const BEVSampleProjectionLut& lut) {
     std::vector<BEVSimpleRowScan> rows;
     const std::size_t active_sparse_rows = ActiveSparseRowCount(params);
     rows.reserve(active_sparse_rows);
     for (std::size_t index = 0; index < active_sparse_rows; ++index) {
-        rows.push_back(ScanSparseRow(frame, threshold, params, lut, index));
+        rows.push_back(ScanSparseRow(frame, binary_model, params, lut, index));
     }
     return rows;
 }

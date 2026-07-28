@@ -12,7 +12,7 @@
 
 #include "platform/bootstrap.hpp"
 #include "vision/bev/bev_image_segment_connectivity.hpp"
-#include "vision/image/otsu_threshold.hpp"
+#include "vision/image/illumination_binary_model.hpp"
 
 namespace {
 
@@ -141,15 +141,6 @@ std::vector<PathPoint> ParseAcceptedLinePath(const std::string& metadata) {
     return points;
 }
 
-int ParsePublishedCurrentOtsu(const std::string& metadata) {
-    const std::regex otsu_re(
-        R"re("otsu":\{"valid":true,"threshold":([0-9]+),"source":"current","stale_frames":0\})re");
-    std::smatch match;
-    Require(std::regex_search(metadata, match, otsu_re),
-            "aligned frame does not publish current valid Otsu state");
-    return std::stoi(match[1].str());
-}
-
 std::vector<std::uint8_t> ExpandGray8ToYuyv(
     const std::vector<std::uint8_t>& gray) {
     std::vector<std::uint8_t> yuyv(gray.size() * 2U, 128U);
@@ -173,7 +164,7 @@ void WriteReport(
     const std::string& metadata_sha256,
     const std::string& raw_sha256,
     const std::string& params_sha256,
-    int otsu_threshold,
+    int residual_threshold,
     const std::vector<PathPoint>& points,
     const std::vector<ls2k::vision::BEVSegmentConnectivityResult>& edges) {
     std::ofstream out(path);
@@ -186,7 +177,8 @@ void WriteReport(
         << "  \"params\": {\"path\": \"new/config/default_params.json\", \"sha256\": \""
         << params_sha256 << "\"},\n"
         << "  \"alignment\": {\"frame_source\": \"snapshot_aligned\", \"width\": 320, \"height\": 240, \"pixel_format\": \"gray8\", \"payload_encoding\": \"raw\"},\n"
-        << "  \"otsu\": {\"valid\": true, \"threshold\": " << otsu_threshold
+        << "  \"binary_model\": {\"valid\": true, \"residual_threshold\": "
+        << residual_threshold
         << ", \"source\": \"current\", \"stale_frames\": 0},\n"
         << "  \"accepted_point_count\": " << points.size() << ",\n"
         << "  \"verified_edges\": [";
@@ -220,7 +212,6 @@ int main(int argc, char** argv) {
         Require(metadata.find("\"pixel_format\":\"gray8\"") != std::string::npos &&
                     metadata.find("\"payload_encoding\":\"raw\"") != std::string::npos,
                 "payload is not exact gray8/raw");
-        const int published_threshold = ParsePublishedCurrentOtsu(metadata);
         const std::vector<PathPoint> points = ParseAcceptedLinePath(metadata);
 
         Diagnostics diagnostics{};
@@ -244,14 +235,14 @@ int main(int argc, char** argv) {
         frame.width = width;
         frame.height = height;
         frame.stride = width * 2;
-        const ls2k::vision::OtsuThresholdResult computed =
-            ls2k::vision::ComputeSparseOtsuThreshold(frame);
-        Require(computed.valid, "aligned gray8 frame has no valid two-class Otsu threshold");
-        Require(computed.threshold == published_threshold,
-                "host replay Otsu differs from aligned board snapshot");
-        const ls2k::port::OtsuThresholdState otsu{
-            true, computed.threshold, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
-        const ls2k::vision::BEVImageSegmentConnectivity query(frame, projector, otsu);
+        ls2k::vision::BinaryModelTracker model_tracker{};
+        const ls2k::port::BinaryModelState binary_model =
+            model_tracker.Update(
+                ls2k::vision::ComputeIlluminationBinaryModel(frame));
+        Require(binary_model.valid,
+                "aligned gray8 frame has no valid binary model");
+        const ls2k::vision::BEVImageSegmentConnectivity query(
+            frame, projector, binary_model);
 
         std::vector<ls2k::vision::BEVSegmentConnectivityResult> edges;
         edges.reserve(points.size());
@@ -275,8 +266,9 @@ int main(int argc, char** argv) {
         }
 
         WriteReport(argv[4], argv[1], argv[2], argv[5], argv[6], argv[7],
-                    computed.threshold, points, edges);
-        std::cout << "PASS: aligned gray8 Otsu=" << computed.threshold
+                    binary_model.residual_threshold, points, edges);
+        std::cout << "PASS: aligned gray8 residual_threshold="
+                  << binary_model.residual_threshold
                   << " accepted_points=" << points.size()
                   << " verified_edges=" << edges.size() << '\n';
     } catch (const std::exception& error) {

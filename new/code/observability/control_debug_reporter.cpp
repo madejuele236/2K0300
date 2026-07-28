@@ -105,11 +105,17 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " frame_id=" << snapshot.steering.frame_id
                      << " capture_time_ms=" << snapshot.steering.capture_time_ms
                      << " perception_tag=" << snapshot.steering.perception_tag
-                     << " otsu.valid=" << BoolToken(snapshot.steering.otsu.valid)
-                     << " otsu.threshold=" << snapshot.steering.otsu.threshold
-                     << " otsu.source=" << port::ToString(snapshot.steering.otsu.source)
-                     << " otsu.stale_frames="
-                     << static_cast<unsigned int>(snapshot.steering.otsu.stale_frames)
+                     << " binary_model.valid="
+                     << BoolToken(snapshot.steering.binary_model.valid)
+                     << " binary_model.residual_threshold="
+                     << snapshot.steering.binary_model.residual_threshold
+                     << " binary_model.illumination_weight="
+                     << snapshot.steering.binary_model.illumination_weight
+                     << " binary_model.source="
+                     << port::ToString(snapshot.steering.binary_model.source)
+                     << " binary_model.stale_frames="
+                     << static_cast<unsigned int>(
+                            snapshot.steering.binary_model.stale_frames)
                      << " boundary_row_count=" << snapshot.steering.boundary_row_count
                      << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
                      << " boundary_span_count=" << snapshot.steering.boundary_span_count
@@ -191,6 +197,8 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << BoolToken(snapshot.steering.circle_v2.motion_arc_available)
                      << " circle_v2.geometry_available="
                      << BoolToken(snapshot.steering.circle_v2.geometry_available)
+                     << " circle_v2.geometry_source="
+                     << snapshot.steering.circle_v2.geometry_source
                      << " circle_v2.inner_trace_elapsed_ms="
                      << snapshot.steering.circle_v2.inner_trace_elapsed_ms
                      << " circle_v2.directed_turn_angle_rad="
@@ -366,11 +374,17 @@ void ControlDebugReporter::MaybeEmit(const ControlDebugSnapshot& snapshot, port:
                      << " yaw_control.curvature_term="
                      << snapshot.steering.yaw_control.curvature_term
                      << " perception_tag=" << snapshot.steering.perception_tag
-                     << " otsu.valid=" << BoolToken(snapshot.steering.otsu.valid)
-                     << " otsu.threshold=" << snapshot.steering.otsu.threshold
-                     << " otsu.source=" << port::ToString(snapshot.steering.otsu.source)
-                     << " otsu.stale_frames="
-                     << static_cast<unsigned int>(snapshot.steering.otsu.stale_frames)
+                     << " binary_model.valid="
+                     << BoolToken(snapshot.steering.binary_model.valid)
+                     << " binary_model.residual_threshold="
+                     << snapshot.steering.binary_model.residual_threshold
+                     << " binary_model.illumination_weight="
+                     << snapshot.steering.binary_model.illumination_weight
+                     << " binary_model.source="
+                     << port::ToString(snapshot.steering.binary_model.source)
+                     << " binary_model.stale_frames="
+                     << static_cast<unsigned int>(
+                            snapshot.steering.binary_model.stale_frames)
                      << " boundary_row_count=" << snapshot.steering.boundary_row_count
                      << " boundary_jump_count=" << snapshot.steering.boundary_jump_count
                      << " boundary_span_count=" << snapshot.steering.boundary_span_count

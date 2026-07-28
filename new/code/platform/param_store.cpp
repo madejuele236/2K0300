@@ -1029,8 +1029,15 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
            params.cross_connectivity_sample_index <
                static_cast<int>(port::kBevReferenceSampleCount) &&
            IsFiniteInRange(params.cross_boundary_expansion_min_m, 1.0e-6, 2.0) &&
-           IsFiniteInRange(params.circle_v2_exit_yaw_threshold_deg, 1.0, 720.0) &&
-           params.circle_v2_exit_hold_frames >= 2 &&
+           IsFiniteInRange(params.circle_v2_normal_trace_start_yaw_deg, 1.0, 720.0) &&
+           IsFiniteInRange(params.circle_v2_exit_trace_start_yaw_deg, 1.0, 720.0) &&
+           IsFiniteInRange(params.circle_v2_calm_fallback_yaw_deg, 1.0, 720.0) &&
+           params.circle_v2_normal_trace_start_yaw_deg <
+               params.circle_v2_exit_trace_start_yaw_deg &&
+           params.circle_v2_exit_trace_start_yaw_deg <
+               params.circle_v2_calm_fallback_yaw_deg &&
+           params.circle_v2_calm_trace_ms >= 1 &&
+           params.circle_v2_cooldown_ms >= 0 &&
            params.circle_v2_inner_trace_stall_timeout_ms >= 1 &&
            IsFiniteInRange(params.circle_v2_inner_trace_stall_yaw_min_deg, 0.0, 720.0) &&
            IsFiniteInRange(params.circle_v2_inner_trace_path_offset_m, 0.0, 2.0) &&
@@ -1052,7 +1059,8 @@ bool ValidateBEVElement(const port::BEVElementParameters& params) {
            IsFiniteInRange(params.circle_v2_exit_geometry_forward_max_m, 0.0, 2.0) &&
            params.circle_v2_exit_geometry_forward_max_m >=
                params.circle_v2_exit_geometry_forward_min_m &&
-           IsFiniteInRange(params.circle_v2_exit_straight_max_lateral_span_m, 1.0e-6, 2.0);
+           IsFiniteInRange(params.circle_v2_exit_straight_max_lateral_span_m, 1.0e-6, 2.0) &&
+           IsFiniteInRange(params.circle_v2_exit_tangent_fit_span_m, 1.0e-6, 2.0);
 }
 
 bool ValidateReferenceTimeAlignment(const port::ReferenceTimeAlignmentParameters& params,
@@ -1540,14 +1548,19 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
         root, "BEV_ELEMENT", "CIRCLE_V2_ENABLED", parsed.bev_element.circle_v2_enabled, optional_malformed);
     ReadOptionalNestedNumber(root,
                              "BEV_ELEMENT",
-                             "CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG",
-                             parsed.bev_element.circle_v2_exit_yaw_threshold_deg,
+                             "CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG",
+                             parsed.bev_element.circle_v2_normal_trace_start_yaw_deg,
                              optional_malformed);
-    ReadOptionalNestedInt(root,
-                          "BEV_ELEMENT",
-                          "CIRCLE_V2_EXIT_HOLD_FRAMES",
-                          parsed.bev_element.circle_v2_exit_hold_frames,
-                          optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_EXIT_TRACE_START_YAW_DEG",
+                             parsed.bev_element.circle_v2_exit_trace_start_yaw_deg,
+                             optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_CALM_FALLBACK_YAW_DEG",
+                             parsed.bev_element.circle_v2_calm_fallback_yaw_deg,
+                             optional_malformed);
+    ReadOptionalNestedInt(root, "BEV_ELEMENT", "CIRCLE_V2_CALM_TRACE_MS",
+                          parsed.bev_element.circle_v2_calm_trace_ms, optional_malformed);
+    ReadOptionalNestedInt(root, "BEV_ELEMENT", "CIRCLE_V2_COOLDOWN_MS",
+                          parsed.bev_element.circle_v2_cooldown_ms, optional_malformed);
     ReadOptionalNestedInt(root,
                           "BEV_ELEMENT",
                           "CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS",
@@ -1592,6 +1605,8 @@ void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& par
                              parsed.bev_element.circle_v2_exit_geometry_forward_max_m, optional_malformed);
     ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M",
                              parsed.bev_element.circle_v2_exit_straight_max_lateral_span_m, optional_malformed);
+    ReadOptionalNestedNumber(root, "BEV_ELEMENT", "CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M",
+                             parsed.bev_element.circle_v2_exit_tangent_fit_span_m, optional_malformed);
     if (!ValidateBEVElement(parsed.bev_element)) {
         optional_malformed = true;
     }

@@ -16,7 +16,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/platform/param_store.cpp" \
   "${REPO_ROOT}/new/code/port/perf_counter.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
-  "${REPO_ROOT}/new/code/vision/image/otsu_threshold.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/illumination_binary_model.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_sample_projection_lut.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_boundary_row.cpp" \
@@ -36,5 +36,9 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/vision/elements/circle_v2/detail/circle_v2_composer.cpp" \
   -o "${OUT_BIN}" \
   $(pkg-config --libs opencv4)
+
+if [[ "${BUILD_ONLY:-0}" == "1" ]]; then
+  exit 0
+fi
 
 "${OUT_BIN}" "${CAPTURE_DIR}/frames" "${PARAMS}" "${EVIDENCE_DIR}"

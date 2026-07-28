@@ -43,12 +43,12 @@ const char* ToString(port::BEVPathPointSource source) {
 }
 
 BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameView& frame,
-                                                 const port::OtsuThresholdState& threshold,
+                                                 const port::BinaryModelState& binary_model,
                                                  const port::RuntimeParameters& params,
                                                  const BEVProjector& projector,
                                                  BEVSampleProjectionLut* lut) {
     BEVSimplePerceptionResult result{};
-    result.otsu = threshold;
+    result.binary_model = binary_model;
     BEVSampleProjectionLut local_lut{};
     BEVSampleProjectionLut& active_lut = lut == nullptr ? local_lut : *lut;
     {
@@ -60,7 +60,7 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
 
     {
         LS2K_PERF_SCOPE(port::PerfStage::kBevSimpleScanRows);
-        result.rows = ScanSparseRows(frame, threshold, params, active_lut);
+        result.rows = ScanSparseRows(frame, binary_model, params, active_lut);
     }
     for (const BEVSimpleRowScan& row : result.rows) {
         result.boundary_jump_count += row.jumps.size();
@@ -68,7 +68,7 @@ BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameVie
     }
     {
         LS2K_PERF_SCOPE(port::PerfStage::kBevSimpleConnectivity);
-        const BEVImageSegmentConnectivity connectivity(frame, projector, threshold);
+        const BEVImageSegmentConnectivity connectivity(frame, projector, binary_model);
         for (BEVSimpleRowScan& row : result.rows) {
             for (BEVWhiteRun& run : row.white_runs) {
                 const BEVSegmentConnectivityResult status =

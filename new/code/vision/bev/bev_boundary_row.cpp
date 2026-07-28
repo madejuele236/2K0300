@@ -1,17 +1,14 @@
 #include "vision/bev/bev_boundary_row.hpp"
 
-#include "vision/image/otsu_threshold.hpp"
-
 namespace ls2k::vision {
 
 void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
-                                   const port::OtsuThresholdState& threshold,
                                    float min_span_width_m,
                                    BEVSimpleRowScan& row) {
     row.jumps.clear();
     row.spans.clear();
     row.white_runs.clear();
-    if (!threshold.valid || samples.empty()) {
+    if (samples.empty()) {
         return;
     }
 
@@ -19,13 +16,12 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
         const BEVRowLumaSample& previous = samples[index - 1U];
         const BEVRowLumaSample& current = samples[index];
         if (!previous.sampleable || !current.sampleable ||
+            !previous.classified || !current.classified ||
             current.lateral_index != previous.lateral_index + 1) {
             continue;
         }
         const int delta_y = static_cast<int>(current.y) - static_cast<int>(previous.y);
-        const bool previous_white = IsOtsuWhite(previous.y, threshold);
-        const bool current_white = IsOtsuWhite(current.y, threshold);
-        if (previous_white == current_white) {
+        if (previous.white == current.white) {
             continue;
         }
         BEVBoundaryJump jump{};
@@ -33,7 +29,7 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
         jump.lateral_m = 0.5F * (previous.lateral_m + current.lateral_m);
         jump.lateral_index = current.lateral_index;
         jump.delta_y = delta_y;
-        jump.polarity = current_white ? BEVBoundaryJumpPolarity::kRisingY
+        jump.polarity = current.white ? BEVBoundaryJumpPolarity::kRisingY
                                       : BEVBoundaryJumpPolarity::kFallingY;
         row.jumps.push_back(jump);
     }
@@ -63,7 +59,8 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
 
     std::size_t index = 0U;
     while (index < samples.size()) {
-        if (!samples[index].sampleable || !IsOtsuWhite(samples[index].y, threshold)) {
+        if (!samples[index].sampleable || !samples[index].classified ||
+            !samples[index].white) {
             ++index;
             continue;
         }
@@ -71,8 +68,9 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
         std::size_t end = index;
         while (end + 1U < samples.size() &&
                samples[end + 1U].sampleable &&
+               samples[end + 1U].classified &&
                samples[end + 1U].lateral_index == samples[end].lateral_index + 1 &&
-               IsOtsuWhite(samples[end + 1U].y, threshold)) {
+               samples[end + 1U].white) {
             ++end;
         }
 
@@ -86,8 +84,9 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
         if (begin == 0U) {
             run.left_endpoint = BEVWhiteRunEndpointState::kFovEdge;
         } else if (samples[begin - 1U].sampleable &&
+                   samples[begin - 1U].classified &&
                    samples[begin].lateral_index == samples[begin - 1U].lateral_index + 1 &&
-                   !IsOtsuWhite(samples[begin - 1U].y, threshold)) {
+                   !samples[begin - 1U].white) {
             run.left_endpoint = BEVWhiteRunEndpointState::kBoundary;
             run.left_m = 0.5F * (samples[begin - 1U].lateral_m + samples[begin].lateral_m);
             for (std::size_t jump_index = 0U; jump_index < row.jumps.size(); ++jump_index) {
@@ -103,8 +102,9 @@ void ExtractSparseBoundaryRowFacts(const std::vector<BEVRowLumaSample>& samples,
         if (end + 1U == samples.size()) {
             run.right_endpoint = BEVWhiteRunEndpointState::kFovEdge;
         } else if (samples[end + 1U].sampleable &&
+                   samples[end + 1U].classified &&
                    samples[end + 1U].lateral_index == samples[end].lateral_index + 1 &&
-                   !IsOtsuWhite(samples[end + 1U].y, threshold)) {
+                   !samples[end + 1U].white) {
             run.right_endpoint = BEVWhiteRunEndpointState::kBoundary;
             run.right_m = 0.5F * (samples[end].lateral_m + samples[end + 1U].lateral_m);
             for (std::size_t jump_index = 0U; jump_index < row.jumps.size(); ++jump_index) {

@@ -236,8 +236,10 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.valid = true;
     snapshot.steering.frame_id = 7;
     snapshot.steering.capture_time_ms = 88;
-    snapshot.steering.otsu = {
-        true, 91, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
+    snapshot.steering.binary_model.valid = true;
+    snapshot.steering.binary_model.residual_threshold = 91;
+    snapshot.steering.binary_model.source =
+        ls2k::port::BinaryModelSource::kCurrent;
     snapshot.steering.ml.enabled = true;
     snapshot.steering.ml.maneuver_enabled = true;
     snapshot.steering.ml.takeover_selected = true;
@@ -273,11 +275,12 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     snapshot.steering.element_evidence.cross_exit.reason = "present";
     snapshot.steering.circle_v2.enabled = true;
     snapshot.steering.circle_v2.frame_phase = "exit_trace";
-    snapshot.steering.circle_v2.next_phase = "idle";
+    snapshot.steering.circle_v2.next_phase = "calm_trace";
     snapshot.steering.circle_v2.dir = "left";
     snapshot.steering.circle_v2.reference_role = "exit_trace";
-    snapshot.steering.circle_v2.reason = "exit_hold_released";
+    snapshot.steering.circle_v2.reason = "observed_outer_boundary";
     snapshot.steering.circle_v2.geometry_available = true;
+    snapshot.steering.circle_v2.geometry_source = "observed_boundary";
     snapshot.steering.circle_v2.openings.left.available = true;
     snapshot.steering.circle_v2.openings.left.frontier_forward_m = 0.5F;
     snapshot.steering.circle_v2.openings.left.effective_lateral_m = -0.25F;
@@ -410,11 +413,12 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
     const std::string& message = diagnostics.events[1].message;
     Require(diagnostics.events[1].code == "control.steering_snapshot",
             "second diagnostic must be control.steering_snapshot");
-    Require(Contains(message, "otsu.valid=true") &&
-                Contains(message, "otsu.threshold=91") &&
-                Contains(message, "otsu.source=current") &&
-                Contains(message, "otsu.stale_frames=0"),
-            "steering snapshot must expose the complete Otsu state");
+    Require(Contains(message, "binary_model.valid=true") &&
+                Contains(message, "binary_model.residual_threshold=91") &&
+                Contains(message, "binary_model.illumination_weight=5") &&
+                Contains(message, "binary_model.source=current") &&
+                Contains(message, "binary_model.stale_frames=0"),
+            "steering snapshot must expose the complete binary model state");
     Require(Contains(message, "ml.detector_valid=true") &&
                 Contains(message, "ml.roi.valid=true") &&
                 Contains(message, "ml.classification.backend=tflite_int8") &&
@@ -460,14 +464,16 @@ void TestReporterEmitsMinimalSteeringSnapshot() {
             "steering snapshot must expose CircleV2 enablement");
     Require(Contains(message, "circle_v2.frame_phase=exit_trace"),
             "steering snapshot must expose CircleV2 current-frame phase");
-    Require(Contains(message, "circle_v2.next_phase=idle"),
+    Require(Contains(message, "circle_v2.next_phase=calm_trace"),
             "steering snapshot must expose CircleV2 next memory phase");
     Require(Contains(message, "circle_v2.reference_role=exit_trace"),
             "steering snapshot must expose CircleV2 reference role");
-    Require(Contains(message, "circle_v2.reason=exit_hold_released"),
+    Require(Contains(message, "circle_v2.reason=observed_outer_boundary"),
             "steering snapshot must expose CircleV2 reason");
     Require(Contains(message, "circle_v2.geometry_available=true"),
             "steering snapshot must expose CircleV2 geometry availability");
+    Require(Contains(message, "circle_v2.geometry_source=observed_boundary"),
+            "steering snapshot must expose CircleV2 geometry source");
     Require(Contains(message, "circle_v2.openings.left.available=true"),
             "steering snapshot must expose CircleV2 left opening availability");
     Require(Contains(message, "circle_v2.openings.left.frontier_forward_m=0.5"),
@@ -732,10 +738,15 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must not include removed cross white-ratio threshold");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
             "config snapshot must include CircleV2 enablement");
-    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":400"),
-            "config snapshot must include CircleV2 exit yaw threshold");
-    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_HOLD_FRAMES\":120"),
-            "config snapshot must include CircleV2 exit hold frames");
+    Require(Contains(header_json, "\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\":90") &&
+                Contains(header_json, "\"CIRCLE_V2_EXIT_TRACE_START_YAW_DEG\":270") &&
+                Contains(header_json, "\"CIRCLE_V2_CALM_FALLBACK_YAW_DEG\":340"),
+            "config snapshot must include ordered CircleV2 angle thresholds");
+    Require(Contains(header_json, "\"CIRCLE_V2_CALM_TRACE_MS\":1000") &&
+                Contains(header_json, "\"CIRCLE_V2_COOLDOWN_MS\":3000"),
+            "config snapshot must include CircleV2 timed phases");
+    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":"),
+            "config snapshot must include CircleV2 tangent fit span");
     Require(Contains(header_json, "\"CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M\":0"),
             "config snapshot must include CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
@@ -1068,8 +1079,12 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
     first_frame.width = 320;
     first_frame.height = 240;
     first_frame.motion_phase = "RUNNING";
-    first_frame.steering_snapshot.otsu = {
-        true, 91, ls2k::port::OtsuThresholdSource::kCached, 2U};
+    first_frame.steering_snapshot.binary_model.valid = true;
+    first_frame.steering_snapshot.binary_model.residual_threshold = 91;
+    first_frame.steering_snapshot.binary_model.source =
+        ls2k::port::BinaryModelSource::kCached;
+    first_frame.steering_snapshot.binary_model.stale_frames = 2U;
+    first_frame.steering_snapshot.binary_model.illumination.fill(33U);
     first_frame.steering_snapshot.reference_control.ready = true;
     first_frame.steering_snapshot.reference_time_alignment.enabled = true;
     first_frame.steering_snapshot.reference_time_alignment.valid = true;
@@ -1154,9 +1169,14 @@ void TestLinkQueuesLatestFrameOnBusySocket() {
             "image frame must expose frame-store lookup misses");
     Require(Contains(header_json, "\"reference_control\":{\"ready\":true"),
             "image frame snapshot must nest reference-control readiness");
-    Require(Contains(header_json,
-                     "\"otsu\":{\"valid\":true,\"threshold\":91,\"source\":\"cached\",\"stale_frames\":2}"),
-            "image frame snapshot must preserve Otsu value, source, and staleness");
+    Require(Contains(
+                header_json,
+                "\"binary_model\":{\"valid\":true,\"residual_threshold\":91,"
+                "\"luma_scale\":10,\"illumination_weight\":5,"
+                "\"source\":\"cached\",\"stale_frames\":2,\"scale\":16,"
+                "\"illumination_width\":20,\"illumination_height\":15,"
+                "\"illumination\":[33,33"),
+            "image frame snapshot must preserve the complete binary model");
     Require(Contains(header_json, "\"reference_time_alignment\":{\"enabled\":true"),
             "image frame snapshot must nest reference time alignment");
     Require(Contains(header_json, "\"control_effective_time_ms\":1045"),
@@ -1277,6 +1297,7 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
         state.control_debug_snapshot.steering.circle_v2.reference_role = "inner_trace";
         state.control_debug_snapshot.steering.circle_v2.reason = "none";
         state.control_debug_snapshot.steering.circle_v2.geometry_available = true;
+        state.control_debug_snapshot.steering.circle_v2.geometry_source = "observed_boundary";
         auto& left_opening =
             state.control_debug_snapshot.steering.circle_v2.openings.left;
         left_opening.available = true;
@@ -1438,10 +1459,15 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must expose cross expansion distance");
     Require(Contains(header_json, "\"CIRCLE_V2_ENABLED\":true"),
             "service config snapshot must expose CircleV2 enablement");
-    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG\":400"),
-            "service config snapshot must expose CircleV2 yaw threshold");
-    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_HOLD_FRAMES\":120"),
-            "service config snapshot must expose CircleV2 hold frames");
+    Require(Contains(header_json, "\"CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG\":90") &&
+                Contains(header_json, "\"CIRCLE_V2_EXIT_TRACE_START_YAW_DEG\":270") &&
+                Contains(header_json, "\"CIRCLE_V2_CALM_FALLBACK_YAW_DEG\":340"),
+            "service config snapshot must expose CircleV2 angle thresholds");
+    Require(Contains(header_json, "\"CIRCLE_V2_CALM_TRACE_MS\":1000") &&
+                Contains(header_json, "\"CIRCLE_V2_COOLDOWN_MS\":3000"),
+            "service config snapshot must expose CircleV2 timed phases");
+    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":"),
+            "service config snapshot must expose CircleV2 tangent fit span");
     Require(Contains(header_json, "\"CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M\":0"),
             "service config snapshot must expose CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
@@ -1510,6 +1536,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "image frame must expose CircleV2 reference role");
     Require(Contains(header_json, "\"geometry_available\":true"),
             "image frame must expose CircleV2 geometry availability");
+    Require(Contains(header_json, "\"geometry_source\":\"observed_boundary\""),
+            "image frame must expose CircleV2 geometry source");
     Require(Contains(header_json, "\"openings\":{\"left\":{\"available\":true,\"frontier_forward_m\":0.5,\"effective_lateral_m\":-0.25,\"source\":\"fov_edge_lower_bound\""),
             "image frame must expose CircleV2 left opening facts");
     Require(Contains(header_json, "\"right\":{\"available\":false,\"frontier_forward_m\":null,\"effective_lateral_m\":null,\"source\":\"none\""),

@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "port/ml_types.hpp"
-#include "port/otsu_threshold_types.hpp"
+#include "port/binary_model_types.hpp"
 #include "port/perception_result.hpp"
 #include "port/visual_element_evidence_types.hpp"
 
@@ -167,7 +167,7 @@ using AssistantElementEvidenceView = port::VisualElementEvidenceFrame;
 struct AssistantTelemetryView {
     std::string motion_phase = "DISARMED";       ///< 运动阶段描述
     std::string perception_tag = "none";         ///< 感知事实标签
-    port::OtsuThresholdState otsu{};              ///< 当前帧统一 Otsu 状态
+    port::BinaryModelState binary_model{};        ///< 当前帧统一空间二值模型
     std::uint64_t boundary_row_count = 0;         ///< sparse boundary row 数量
     std::uint64_t boundary_jump_count = 0;        ///< 二值转换边界数量
     std::uint64_t boundary_span_count = 0;        ///< 同行边界 span 数量

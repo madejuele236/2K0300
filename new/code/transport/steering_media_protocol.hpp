@@ -306,13 +306,13 @@ using SteeringMediaElementEvidenceView = port::VisualElementEvidenceFrame;
  * 转向媒体快照视图 —— 包含感知、参考、控制、安全和执行器状态的完整快照。
  */
 struct SteeringMediaSnapshotView {
-    /** 当前帧统一 Otsu 状态（用于调试和可视化） */
-    port::OtsuThresholdState otsu{};
+    /** 当前帧统一空间二值模型（用于调试和精确二值可视化） */
+    port::BinaryModelState binary_model{};
     /** 感知事实标签 */
     std::string perception_tag = "none";
     /** V9 sparse boundary row 数量 */
     std::size_t boundary_row_count = 0;
-    /** 稀疏 Otsu 二值转换边界数量 */
+    /** 稀疏二值转换边界数量 */
     std::size_t boundary_jump_count = 0;
     /** V9 同行边界 span 数量 */
     std::size_t boundary_span_count = 0;

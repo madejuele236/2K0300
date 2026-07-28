@@ -38,10 +38,10 @@ float CircleTurnSign(CircleDir dir) {
 }
 
 uint64_t InnerTraceElapsedMs(const CircleV2Memory& prior, CaptureStamp stamp) {
-    if (stamp.capture_time_ms < prior.clock.enter_capture_time_ms) {
+    if (stamp.capture_time_ms < prior.clock.turn_origin_capture_time_ms) {
         return 0;
     }
-    return stamp.capture_time_ms - prior.clock.enter_capture_time_ms;
+    return stamp.capture_time_ms - prior.clock.turn_origin_capture_time_ms;
 }
 
 bool StallTimeoutReached(uint64_t elapsed_ms, const CircleV2Params& params) {
@@ -54,6 +54,7 @@ bool StallTimeoutReached(uint64_t elapsed_ms, const CircleV2Params& params) {
 
 CircleV2Events ObserveCircleV2Events(const SceneFrameView& frame,
                                      const CircleSideExpansionObservation& expansion,
+                                     const CircleV2GeometryObservation& geometry,
                                      const CircleV2Memory& prior,
                                      const CircleV2Params& params) {
     CircleV2Events events{};
@@ -64,10 +65,16 @@ CircleV2Events ObserveCircleV2Events(const SceneFrameView& frame,
         case CirclePhase::kApproach:
             events.entry_gate_reached = EntryGateReached(expansion, prior.dir, params);
             break;
-        case CirclePhase::kInnerTrace: {
+        case CirclePhase::kInnerTrace:
+        case CirclePhase::kNormalTrace:
+        case CirclePhase::kExitTrace: {
             events.inner_trace_elapsed_ms = InnerTraceElapsedMs(prior, frame.stamp);
+            events.observed_outer_boundary =
+                prior.phase == CirclePhase::kExitTrace &&
+                geometry.outer.available &&
+                geometry.outer.source == CircleV2GeometrySource::kObservedBoundary;
             float yaw_delta = 0.0F;
-            if (!frame.motion_arc.TryYawDeltaRad(prior.clock.enter_capture_time_ms,
+            if (!frame.motion_arc.TryYawDeltaRad(prior.clock.turn_origin_capture_time_ms,
                                                  frame.stamp.capture_time_ms,
                                                  yaw_delta)) {
                 break;
@@ -77,15 +84,14 @@ CircleV2Events ObserveCircleV2Events(const SceneFrameView& frame,
             events.directed_turn_angle_rad = directed_turn_angle;
             const float progress_angle =
                 std::max(prior.clock.max_directed_turn_angle_rad, directed_turn_angle);
-            events.exit_gate_reached =
-                progress_angle >= params.exit_yaw_threshold_rad;
             events.inner_trace_stalled =
-                !events.exit_gate_reached &&
+                prior.phase == CirclePhase::kInnerTrace &&
                 StallTimeoutReached(events.inner_trace_elapsed_ms, params) &&
                 progress_angle < params.inner_trace_stall_yaw_min_rad;
             break;
         }
-        case CirclePhase::kExitTrace:
+        case CirclePhase::kCalmTrace:
+        case CirclePhase::kCooldown:
             break;
     }
     return events;

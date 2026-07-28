@@ -394,7 +394,10 @@ ls2k::vision::detail::CircleV2Events EventsFor(
     const ls2k::vision::CircleV2Params& params) {
     const ls2k::vision::detail::CircleSideExpansionObservation expansion =
         ls2k::vision::detail::ObserveCircleSideExpansion(frame, params);
-    return ls2k::vision::detail::ObserveCircleV2Events(frame, expansion, prior, params);
+    const ls2k::vision::detail::CircleV2GeometryObservation geometry =
+        ls2k::vision::detail::ObserveCircleV2Geometry(frame, prior.dir, params);
+    return ls2k::vision::detail::ObserveCircleV2Events(
+        frame, expansion, geometry, prior, params);
 }
 
 void TestMetricOpeningOwnerFacts() {
@@ -695,9 +698,13 @@ void TestApproachConsumesOnlyLockedDirectionExpansion() {
            "right Approach must ignore left-side expansion");
 }
 
-void TestReducerSequenceAndHold() {
+void TestReducerAngleTimeSequence() {
     ls2k::vision::CircleV2Params params{};
-    params.exit_hold_frames = 3;
+    params.normal_trace_start_yaw_rad = 1.0F;
+    params.exit_trace_start_yaw_rad = 2.0F;
+    params.calm_fallback_yaw_rad = 3.0F;
+    params.calm_trace_ms = 100;
+    params.cooldown_ms = 200;
     ls2k::vision::CircleV2Memory memory{};
     ls2k::vision::detail::CircleV2Events events{};
     events.detected_dir = ls2k::vision::CircleDir::kLeft;
@@ -714,55 +721,61 @@ void TestReducerSequenceAndHold() {
     decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {20}, params);
     Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kInnerTrace,
            "Approach must enter InnerTrace on entry gate");
+    Expect(decision.next_memory.clock.turn_origin_capture_time_ms == 20,
+           "entry gate must establish the only turn-angle origin");
 
     memory = decision.next_memory;
     events = {};
-    events.exit_gate_reached = true;
+    events.motion_arc_available = true;
+    events.directed_turn_angle_rad = 1.1F;
     decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {30}, params);
-    Expect(decision.reference.role == ls2k::vision::CircleV2ReferenceRole::kExitTrace,
-           "B->C frame must expose ExitTrace reference role");
-    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kExitTrace,
-           "exit_hold_frames=3 must not hide C after B->C frame");
+    Expect(decision.reference.role == ls2k::vision::CircleV2ReferenceRole::kNone,
+           "X-Y NormalTrace must publish no Circle-specific reference");
+    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kNormalTrace,
+           "X threshold must enter NormalTrace");
+    Expect(decision.next_memory.clock.turn_origin_capture_time_ms == 20,
+           "X transition must preserve the turn-angle origin");
 
     memory = decision.next_memory;
-    memory.clock.phase_frame_index = 2;
     events = {};
+    events.motion_arc_available = true;
+    events.directed_turn_angle_rad = 2.1F;
     decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {40}, params);
     Expect(decision.reference.role == ls2k::vision::CircleV2ReferenceRole::kExitTrace,
-           "final C hold frame must still expose ExitTrace role");
-    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kIdle,
-           "final C hold frame must write next Idle memory");
-    Expect(decision.next_memory.dir == ls2k::vision::CircleDir::kNone,
-           "EnterIdle must clear dir");
-}
-
-void TestDefaultExitHoldProvidesCooldownWindow() {
-    ls2k::vision::CircleV2Params params{};
-    Expect(params.exit_hold_frames == 60,
-           "default ExitTrace hold must provide a real cooldown window");
-
-    ls2k::vision::CircleV2Memory memory{};
-    memory.phase = ls2k::vision::CirclePhase::kInnerTrace;
-    memory.dir = ls2k::vision::CircleDir::kLeft;
-    ls2k::vision::detail::CircleV2Events events{};
-    events.exit_gate_reached = true;
-    ls2k::vision::detail::CircleV2Decision decision =
-        ls2k::vision::detail::ReduceCircleV2(memory, events, {30}, params);
+           "Y threshold must expose the outer-boundary reference role");
     Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kExitTrace,
-           "default hold must keep memory in ExitTrace after the B->C frame");
+           "Y threshold must enter ExitTrace");
+    Expect(decision.next_memory.clock.turn_origin_capture_time_ms == 20,
+           "Y transition must preserve the turn-angle origin");
 
     memory = decision.next_memory;
-    memory.clock.phase_frame_index = 58;
     events = {};
-    decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {40}, params);
-    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kExitTrace,
-           "default hold must not release before the 60th ExitTrace frame");
-
-    memory = decision.next_memory;
-    memory.clock.phase_frame_index = 59;
+    events.observed_outer_boundary = true;
     decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {50}, params);
-    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kIdle,
-           "default hold must release after the 60th ExitTrace frame");
+    Expect(decision.reference.role == ls2k::vision::CircleV2ReferenceRole::kExitTrace,
+           "CalmTrace must keep following the outer boundary");
+    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kCalmTrace,
+           "a real observed outer boundary must enter CalmTrace");
+
+    memory = decision.next_memory;
+    events = {};
+    decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {149}, params);
+    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kCalmTrace,
+           "CalmTrace must use capture time, not frame count");
+    decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {150}, params);
+    Expect(decision.reference.role == ls2k::vision::CircleV2ReferenceRole::kExitTrace &&
+               decision.next_memory.phase == ls2k::vision::CirclePhase::kCooldown,
+           "the final CalmTrace frame must still expose outer reference then enter Cooldown");
+
+    memory = decision.next_memory;
+    events.detected_dir = ls2k::vision::CircleDir::kRight;
+    decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {349}, params);
+    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kCooldown,
+           "Cooldown must ignore new Circle openings");
+    decision = ls2k::vision::detail::ReduceCircleV2(memory, events, {350}, params);
+    Expect(decision.next_memory.phase == ls2k::vision::CirclePhase::kIdle &&
+               decision.next_memory.dir == ls2k::vision::CircleDir::kNone,
+           "Cooldown completion must clear the Circle lifecycle");
 }
 
 void TestDirectedYaw() {
@@ -772,25 +785,26 @@ void TestDirectedYaw() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 5.0F;
     const ls2k::vision::SceneFrameView frame = Frame(rows, -5.5F);
     const ls2k::vision::detail::CircleV2Events events =
         EventsFor(frame, prior, params);
-    Expect(events.exit_gate_reached, "left circle negative yaw must satisfy directed exit");
+    Expect(events.motion_arc_available && std::abs(events.directed_turn_angle_rad - 5.5F) < 1.0e-5F,
+           "left circle negative yaw must produce positive directed progress");
 
     const ls2k::vision::SceneFrameView wobble = Frame(rows, 5.5F);
     const ls2k::vision::detail::CircleV2Events wobble_events =
         EventsFor(wobble, prior, params);
-    Expect(!wobble_events.exit_gate_reached, "left circle positive yaw must not pass by abs");
+    Expect(wobble_events.directed_turn_angle_rad < 0.0F,
+           "left circle positive yaw must not become positive progress by abs");
 
     prior.dir = ls2k::vision::CircleDir::kRight;
     const ls2k::vision::SceneFrameView right_frame = Frame(rows, 5.5F);
     const ls2k::vision::detail::CircleV2Events right_events =
         EventsFor(right_frame, prior, params);
-    Expect(right_events.exit_gate_reached,
-           "right circle positive yaw must satisfy directed exit");
+    Expect(std::abs(right_events.directed_turn_angle_rad - 5.5F) < 1.0e-5F,
+           "right circle positive yaw must produce positive directed progress");
 }
 
 void TestInnerTraceYawStallFallbackEvent() {
@@ -798,9 +812,9 @@ void TestInnerTraceYawStallFallbackEvent() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 5.0F;
+    params.calm_fallback_yaw_rad = 5.0F;
     params.inner_trace_stall_timeout_ms = 4000;
     params.inner_trace_stall_yaw_min_rad = 0.3F;
 
@@ -827,8 +841,8 @@ void TestInnerTraceYawStallFallbackEvent() {
            "InnerTrace stall fallback must respect the max yaw progress already reached");
     ls2k::vision::detail::CircleV2Decision yaw_drop_decision =
         ls2k::vision::detail::ReduceCircleV2(prior, yaw_drop_events, {6100}, params);
-    Expect(yaw_drop_decision.next_memory.phase == ls2k::vision::CirclePhase::kInnerTrace,
-           "InnerTrace must stay active after net yaw drops from prior progress");
+    Expect(yaw_drop_decision.next_memory.phase == ls2k::vision::CirclePhase::kNormalTrace,
+           "the monotonic turn progress must still advance into NormalTrace after net yaw drops");
     Expect(yaw_drop_decision.next_memory.clock.max_directed_turn_angle_rad >= 2.8F,
            "InnerTrace memory must retain max yaw progress after net yaw drops");
 
@@ -860,12 +874,12 @@ void TestMotionHistoryCoversDefaultInnerTraceStallWindow() {
 void TestActivePhasesSurviveMissingOrdinaryRoad() {
     std::vector<ls2k::vision::BEVSimpleRowScan> rows = StraightRows();
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     ls2k::vision::CircleV2Memory approach{};
     approach.phase = ls2k::vision::CirclePhase::kApproach;
     approach.dir = ls2k::vision::CircleDir::kLeft;
-    approach.clock.enter_capture_time_ms = 100;
+    approach.clock.turn_origin_capture_time_ms = 100;
     const ls2k::vision::CircleV2StepResult approach_result =
         ls2k::vision::CircleV2Scene{}.Step(FrameWithoutOrdinaryRoad(rows, 0.0F),
                                             approach,
@@ -880,7 +894,7 @@ void TestActivePhasesSurviveMissingOrdinaryRoad() {
     ls2k::vision::CircleV2Memory inner{};
     inner.phase = ls2k::vision::CirclePhase::kInnerTrace;
     inner.dir = ls2k::vision::CircleDir::kLeft;
-    inner.clock.enter_capture_time_ms = 100;
+    inner.clock.turn_origin_capture_time_ms = 100;
     const ls2k::vision::CircleV2StepResult inner_result =
         ls2k::vision::CircleV2Scene{}.Step(FrameWithoutOrdinaryRoad(rows, 0.0F),
                                             inner,
@@ -901,9 +915,9 @@ void TestInnerTraceSurvivesUnavailableMotionArc() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 0.1F;
+    params.calm_fallback_yaw_rad = 0.1F;
     ls2k::vision::SceneFrameView frame =
         FrameWithCenterPath(rows, 0.0F, EntryCenterPath());
     frame.motion_arc = ls2k::vision::MotionArcView(nullptr, QueryYawUnavailable);
@@ -922,8 +936,9 @@ void TestReferenceHoldResetPreservesCircleV2Memory() {
     memory.reference_hold.hold_cycles = 7;
     memory.circle_v2.phase = ls2k::vision::CirclePhase::kInnerTrace;
     memory.circle_v2.dir = ls2k::vision::CircleDir::kLeft;
-    memory.circle_v2.clock.enter_capture_time_ms = 100;
-    memory.circle_v2.clock.phase_frame_index = 3;
+    memory.circle_v2.clock.phase_enter_capture_time_ms = 90;
+    memory.circle_v2.clock.turn_origin_capture_time_ms = 100;
+    memory.circle_v2.clock.max_directed_turn_angle_rad = 0.7F;
 
     ls2k::runtime::ResetSteeringReferenceHoldMemory(memory);
 
@@ -933,10 +948,12 @@ void TestReferenceHoldResetPreservesCircleV2Memory() {
            "reference reset must preserve CircleV2 phase");
     Expect(memory.circle_v2.dir == ls2k::vision::CircleDir::kLeft,
            "reference reset must preserve CircleV2 dir");
-    Expect(memory.circle_v2.clock.enter_capture_time_ms == 100,
-           "reference reset must preserve CircleV2 enter time");
-    Expect(memory.circle_v2.clock.phase_frame_index == 3,
-           "reference reset must preserve CircleV2 frame index");
+    Expect(memory.circle_v2.clock.phase_enter_capture_time_ms == 90,
+           "reference reset must preserve CircleV2 phase enter time");
+    Expect(memory.circle_v2.clock.turn_origin_capture_time_ms == 100,
+           "reference reset must preserve CircleV2 turn origin");
+    Expect(std::fabs(memory.circle_v2.clock.max_directed_turn_angle_rad - 0.7F) < 1.0e-6F,
+           "reference reset must preserve CircleV2 turn progress");
 }
 
 void TestExitTraceRejectsNonStraightOuterEdge() {
@@ -949,7 +966,6 @@ void TestExitTraceRejectsNonStraightOuterEdge() {
     prior.phase = ls2k::vision::CirclePhase::kExitTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
     ls2k::vision::CircleV2Params params{};
-    params.exit_hold_frames = 2;
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(Frame(rows, 0.0F), prior, params);
     Expect(!result.reference_plan.has_value(),
@@ -958,6 +974,45 @@ void TestExitTraceRejectsNonStraightOuterEdge() {
            "non-straight ExitTrace geometry must report geometry unavailable");
     Expect(!result.telemetry.geometry_available,
            "ExitTrace telemetry must expose unavailable geometry");
+}
+
+void TestExitTraceUsesCurrentFrameFovTangent() {
+    using Endpoint = ls2k::vision::BEVWhiteRunEndpointState;
+    std::vector<ls2k::vision::BEVSimpleRowScan> rows{
+        WhiteRunOnlyRow(0.10F, -0.22F, 0.20F),
+        WhiteRunOnlyRow(0.15F, -0.22F, 0.36F),
+        WhiteRunOnlyRow(0.20F, -0.22F, 0.52F),
+        WhiteRunOnlyRow(0.25F, -0.22F, 0.80F, Endpoint::kBoundary, Endpoint::kFovEdge),
+        WhiteRunOnlyRow(0.30F, -0.22F, 0.80F, Endpoint::kBoundary, Endpoint::kFovEdge),
+    };
+    ls2k::vision::CircleV2Memory prior{};
+    prior.phase = ls2k::vision::CirclePhase::kExitTrace;
+    prior.dir = ls2k::vision::CircleDir::kLeft;
+    prior.clock.turn_origin_capture_time_ms = 100;
+    ls2k::vision::CircleV2Params params{};
+    params.exit_tangent_fit_span_m = 0.20F;
+
+    const auto result = ls2k::vision::CircleV2Scene{}.Step(
+        FrameWithCenterPath(rows, -5.0F, CenterPath()), prior, params);
+    Expect(result.reference_plan.has_value(),
+           "a visible outer cutpoint followed by FOV rows must produce an exit tangent");
+    Expect(result.telemetry.geometry_source ==
+               ls2k::vision::CircleV2GeometrySource::kFovTangent,
+           "the temporary ray must remain explicitly distinguishable from observed boundary");
+    Expect(result.next_memory.phase == ls2k::vision::CirclePhase::kExitTrace,
+           "a temporary FOV tangent must not masquerade as a found outer exit boundary");
+    const auto& samples = result.reference_plan->reference_path.sampled_path;
+    Expect(samples[3].present && samples[3].point.lateral_m > samples[2].point.lateral_m,
+           "the exit tangent must extend the terminal outer-boundary direction");
+
+    rows[2].valid = false;
+    const auto gap_result = ls2k::vision::CircleV2Scene{}.Step(
+        FrameWithCenterPath(rows, -5.0F, CenterPath()), prior, params);
+    Expect(!gap_result.reference_plan.has_value(),
+           "an internal unobservable row must break the current-frame tangent chain");
+    Expect(gap_result.telemetry.geometry_source ==
+               ls2k::vision::CircleV2GeometrySource::kNone,
+           "an interrupted boundary-to-FOV transition must not publish inferred geometry");
 }
 
 void TestExitTraceUsesOrdinaryRoadHalfWidthFact() {
@@ -970,7 +1025,6 @@ void TestExitTraceUsesOrdinaryRoadHalfWidthFact() {
     prior.phase = ls2k::vision::CirclePhase::kExitTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
     ls2k::vision::CircleV2Params params{};
-    params.exit_hold_frames = 2;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1000,7 +1054,6 @@ void TestExitTraceAcceptsNonSelectedBoundaryClippedInterval() {
     prior.phase = ls2k::vision::CirclePhase::kExitTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
     ls2k::vision::CircleV2Params params{};
-    params.exit_hold_frames = 2;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1029,7 +1082,6 @@ void TestExitTraceAcceptsSelectedBoundarySpanEdgePath() {
         prior.phase = ls2k::vision::CirclePhase::kExitTrace;
         prior.dir = ls2k::vision::CircleDir::kLeft;
         ls2k::vision::CircleV2Params params{};
-        params.exit_hold_frames = 2;
 
         const ls2k::vision::CircleV2StepResult result =
             ls2k::vision::CircleV2Scene{}.Step(
@@ -1056,7 +1108,6 @@ void TestExitTraceAcceptsSelectedBoundarySpanEdgePath() {
         prior.phase = ls2k::vision::CirclePhase::kExitTrace;
         prior.dir = ls2k::vision::CircleDir::kRight;
         ls2k::vision::CircleV2Params params{};
-        params.exit_hold_frames = 2;
 
         const ls2k::vision::CircleV2StepResult result =
             ls2k::vision::CircleV2Scene{}.Step(
@@ -1082,7 +1133,6 @@ void TestExitTraceIgnoresEntryBottomForwardRoi() {
     prior.phase = ls2k::vision::CirclePhase::kExitTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
     ls2k::vision::CircleV2Params params{};
-    params.exit_hold_frames = 2;
     params.entry_forward_min_m = 0.70F;
     params.entry_forward_max_m = 0.80F;
 
@@ -1103,9 +1153,9 @@ void TestInnerTraceUsesLockedSideInnerEdgePath() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1164,9 +1214,9 @@ void TestInnerTraceRejectsInsufficientRowGeometry() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(Frame(rows, 0.0F), prior, params);
@@ -1186,9 +1236,9 @@ void TestInnerTraceUsesTwoPointMathematicalMinimum() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     const auto result = ls2k::vision::CircleV2Scene{}.Step(
         FrameWithoutOrdinaryRoad(rows, 0.0F), prior, params);
@@ -1218,9 +1268,9 @@ void TestInnerTraceAcceptsNonSelectedBoundaryClippedInterval() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1247,9 +1297,9 @@ void TestInnerTraceAcceptsSelectedBoundarySpanEdgePath() {
         ls2k::vision::CircleV2Memory prior{};
         prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
         prior.dir = ls2k::vision::CircleDir::kLeft;
-        prior.clock.enter_capture_time_ms = 100;
+        prior.clock.turn_origin_capture_time_ms = 100;
         ls2k::vision::CircleV2Params params{};
-        params.exit_yaw_threshold_rad = 10.0F;
+        params.calm_fallback_yaw_rad = 10.0F;
 
         const ls2k::vision::CircleV2StepResult result =
             ls2k::vision::CircleV2Scene{}.Step(
@@ -1274,9 +1324,9 @@ void TestInnerTraceAcceptsSelectedBoundarySpanEdgePath() {
         ls2k::vision::CircleV2Memory prior{};
         prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
         prior.dir = ls2k::vision::CircleDir::kRight;
-        prior.clock.enter_capture_time_ms = 100;
+        prior.clock.turn_origin_capture_time_ms = 100;
         ls2k::vision::CircleV2Params params{};
-        params.exit_yaw_threshold_rad = 10.0F;
+        params.calm_fallback_yaw_rad = 10.0F;
 
         const ls2k::vision::CircleV2StepResult result =
             ls2k::vision::CircleV2Scene{}.Step(
@@ -1300,9 +1350,9 @@ void TestInnerTraceRejectsGappedRowGeometry() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(Frame(rows, 0.0F), prior, params);
@@ -1321,9 +1371,9 @@ void TestInnerTraceIgnoresEntryBottomForwardRoi() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
     params.entry_forward_min_m = 0.70F;
     params.entry_forward_max_m = 0.80F;
 
@@ -1350,9 +1400,9 @@ void TestInnerTraceSkipsOneInvalidRow() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
 
     const ls2k::vision::CircleV2StepResult result =
         ls2k::vision::CircleV2Scene{}.Step(
@@ -1374,9 +1424,9 @@ void TestSceneGeometryAndAdapter() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kLeft;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
     const ls2k::vision::SceneFrameView inner_frame =
         FrameWithCenterPath(rows, 0.0F, EntryCenterPath());
     const ls2k::vision::CircleV2StepResult inner =
@@ -1404,8 +1454,7 @@ void TestSceneGeometryAndAdapter() {
            "left InnerTrace adapter must preserve parameterized inner offset");
 
     prior.phase = ls2k::vision::CirclePhase::kExitTrace;
-    prior.clock.phase_frame_index = 1;
-    params.exit_hold_frames = 2;
+    prior.clock.phase_enter_capture_time_ms = 100;
     std::vector<ls2k::vision::BEVSimpleRowScan> exit_rows{
         Row(0.3F, -0.5F, -0.4F, 0.4F, 0.5F),
         Row(0.4F, -0.5F, -0.4F, 0.4F, 0.5F),
@@ -1417,10 +1466,13 @@ void TestSceneGeometryAndAdapter() {
     const float exit_lateral = exit.reference_plan->reference_path.sampled_path[0].point.lateral_m;
     Expect(std::fabs(exit_lateral - 0.2F) < 1.0e-5F,
            "left ExitTrace must offset the observed right boundary by half width");
-    Expect(exit.telemetry.frame_phase == ls2k::vision::CirclePhase::kExitTrace,
-           "ExitTrace final frame telemetry frame phase mismatch");
-    Expect(exit.telemetry.next_phase == ls2k::vision::CirclePhase::kIdle,
-           "ExitTrace final frame telemetry next phase mismatch");
+    Expect(exit.telemetry.frame_phase == ls2k::vision::CirclePhase::kCalmTrace,
+           "the first frame with a real outer boundary must enter CalmTrace immediately");
+    Expect(exit.telemetry.next_phase == ls2k::vision::CirclePhase::kCalmTrace,
+           "a real outer boundary must move ExitTrace into CalmTrace");
+    Expect(exit.telemetry.geometry_source ==
+               ls2k::vision::CircleV2GeometrySource::kObservedBoundary,
+           "ExitTrace telemetry must identify a real outer boundary");
 }
 
 void TestRightInnerTraceInnerEdgePath() {
@@ -1428,9 +1480,9 @@ void TestRightInnerTraceInnerEdgePath() {
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kInnerTrace;
     prior.dir = ls2k::vision::CircleDir::kRight;
-    prior.clock.enter_capture_time_ms = 100;
+    prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_yaw_threshold_rad = 10.0F;
+    params.calm_fallback_yaw_rad = 10.0F;
     params.inner_trace_path_offset_m = 0.05F;
     const ls2k::vision::SceneFrameView frame =
         FrameWithCenterPath(rows, 0.0F, EntryCenterPath());
@@ -1470,8 +1522,7 @@ int main() {
     TestDisconnectedFarSideArtifactDoesNotCreateCircleCue();
     TestApproachWaitsForBottomEntryGate();
     TestApproachConsumesOnlyLockedDirectionExpansion();
-    TestReducerSequenceAndHold();
-    TestDefaultExitHoldProvidesCooldownWindow();
+    TestReducerAngleTimeSequence();
     TestDirectedYaw();
     TestInnerTraceYawStallFallbackEvent();
     TestMotionHistoryCoversDefaultInnerTraceStallWindow();
@@ -1479,6 +1530,7 @@ int main() {
     TestInnerTraceSurvivesUnavailableMotionArc();
     TestReferenceHoldResetPreservesCircleV2Memory();
     TestExitTraceRejectsNonStraightOuterEdge();
+    TestExitTraceUsesCurrentFrameFovTangent();
     TestExitTraceUsesOrdinaryRoadHalfWidthFact();
     TestExitTraceAcceptsNonSelectedBoundaryClippedInterval();
     TestExitTraceAcceptsSelectedBoundarySpanEdgePath();

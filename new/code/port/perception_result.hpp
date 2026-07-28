@@ -13,7 +13,7 @@
 #include <string>
 
 #include "port/bev_reference_types.hpp"
-#include "port/otsu_threshold_types.hpp"
+#include "port/binary_model_types.hpp"
 #include "port/circle_v2_types.hpp"
 #include "port/ml_types.hpp"
 #include "port/reference_control_readiness_types.hpp"
@@ -45,6 +45,7 @@ struct CircleV2TelemetrySnapshot {
     std::string reason = "none";              ///< 稳定原因枚举文本
     bool motion_arc_available = false;        ///< 本帧 InnerTrace yaw 积分是否可查询
     bool geometry_available = false;          ///< 本帧 CircleV2 reference geometry 是否可用
+    std::string geometry_source = "none";     ///< observed_boundary / fov_tangent / none
     uint64_t inner_trace_elapsed_ms = 0;       ///< InnerTrace 已持续时间
     float directed_turn_angle_rad = 0.0F;      ///< 按锁存方向归一化后的 yaw 积分
     CircleOpeningPairObservation openings{};  ///< 本帧左右开口观测
@@ -64,10 +65,10 @@ struct PerceptionResult {
     uint64_t capture_time_ms = 0;  ///< 图像捕获时间戳
     uint64_t publish_time_ms = 0;  ///< 结果发布时间戳
 
-    OtsuThresholdState otsu{};               ///< 当前帧实际使用的统一 Otsu 状态
+    BinaryModelState binary_model{};          ///< 当前帧实际使用的统一空间二值模型
     std::string perception_tag = "none";      ///< 感知标记（用于调试）
     std::size_t boundary_row_count = 0;       ///< V9 sparse boundary row 数量
-    std::size_t boundary_jump_count = 0;      ///< 稀疏 Otsu 二值转换边界数量
+    std::size_t boundary_jump_count = 0;      ///< 稀疏二值转换边界数量
     std::size_t boundary_span_count = 0;      ///< V9 同行边界 span 数量
 
     std::string reference_source = "none";    ///< 参考路径来源描述

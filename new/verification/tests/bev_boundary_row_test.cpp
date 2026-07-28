@@ -23,15 +23,13 @@ ls2k::vision::BEVRowLumaSample Sample(float lateral_m,
                                       std::uint8_t y) {
     ls2k::vision::BEVRowLumaSample sample{};
     sample.sampleable = true;
+    sample.classified = true;
+    sample.white = y > 60U;
     sample.forward_m = 0.4F;
     sample.lateral_m = lateral_m;
     sample.lateral_index = lateral_index;
     sample.y = y;
     return sample;
-}
-
-ls2k::port::OtsuThresholdState Threshold(int value = 60) {
-    return {true, value, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
 }
 
 void TestDoubleBoundarySpan() {
@@ -44,7 +42,7 @@ void TestDoubleBoundarySpan() {
     ls2k::vision::BEVSimpleRowScan row{};
     row.valid = true;
     row.forward_m = 0.4F;
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
 
     Expect(row.jumps.size() == 2U, "double boundary span must have two jumps");
     Expect(row.spans.size() == 1U, "double boundary span must form one span");
@@ -72,7 +70,7 @@ void TestWhiteRunAtSampleableEdges() {
             Sample(0.00F, 2, 20U),
         };
         ls2k::vision::BEVSimpleRowScan row{};
-        ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+        ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
         Expect(row.white_runs.size() == 1U, "left-edge white area must publish one run");
         Expect(row.white_runs[0].left_endpoint ==
                    ls2k::vision::BEVWhiteRunEndpointState::kFovEdge &&
@@ -90,7 +88,7 @@ void TestWhiteRunAtSampleableEdges() {
             Sample(0.00F, 2, 95U),
         };
         ls2k::vision::BEVSimpleRowScan row{};
-        ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+        ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
         Expect(row.white_runs.size() == 1U, "right-edge white area must publish one run");
         Expect(row.white_runs[0].left_endpoint ==
                    ls2k::vision::BEVWhiteRunEndpointState::kBoundary &&
@@ -109,7 +107,7 @@ void TestInternalGapIsNotFov() {
     };
     samples[2].sampleable = false;
     ls2k::vision::BEVSimpleRowScan row{};
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
     Expect(row.white_runs.size() == 1U,
            "internal unobservable point must terminate the visible white run");
     Expect(row.white_runs[0].left_endpoint ==
@@ -125,7 +123,7 @@ void TestAllWhitePublishesTwoFovEndpoints() {
         Sample(0.00F, 1, 95U),
     };
     ls2k::vision::BEVSimpleRowScan row{};
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
     Expect(row.white_runs.size() == 1U, "all-white row must publish its observable run");
     Expect(row.white_runs[0].left_endpoint ==
                ls2k::vision::BEVWhiteRunEndpointState::kFovEdge &&
@@ -149,7 +147,7 @@ void TestMultipleSpansAndUnpairedJump() {
     ls2k::vision::BEVSimpleRowScan row{};
     row.valid = true;
     row.forward_m = 0.5F;
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
 
     Expect(row.jumps.size() == 5U, "row must keep unpaired jump facts");
     Expect(row.spans.size() == 2U, "row must form two paired spans");
@@ -166,7 +164,7 @@ void TestUnsampleableBreaksLocalConnectivity() {
     ls2k::vision::BEVSimpleRowScan row{};
     row.valid = true;
     row.forward_m = 0.6F;
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
 
     Expect(row.jumps.size() == 1U, "unsampleable gap must prevent cross-gap jump");
     Expect(row.spans.empty(), "unsampleable gap must prevent paired span");
@@ -180,7 +178,7 @@ void TestMissingLateralIndexBreaksConnectivity() {
     };
     ls2k::vision::BEVSimpleRowScan row{};
     row.valid = true;
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
     Expect(row.jumps.size() == 1U,
            "a removed unsampleable index must not create a cross-gap transition");
     Expect(row.spans.empty(),
@@ -197,11 +195,11 @@ void TestThresholdClassOwnsBoundary() {
     };
     ls2k::vision::BEVSimpleRowScan row{};
     row.valid = true;
-    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, Threshold(60), 0.01F, row);
+    ls2k::vision::ExtractSparseBoundaryRowFacts(samples, 0.01F, row);
     Expect(row.jumps.size() == 2U,
            "only binary class transitions may create boundaries");
     Expect(row.jumps[0].delta_y == 2,
-           "a small luma delta crossing Otsu must remain a boundary");
+           "a small luma delta crossing classes must remain a boundary");
     Expect(row.jumps[1].delta_y == -190,
            "Y equal to threshold must be classified as black");
 }

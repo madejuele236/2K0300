@@ -38,8 +38,11 @@ ls2k::observability::ControlDebugSnapshot MakeSnapshot() {
     ls2k::observability::ControlDebugSnapshot snapshot{};
     snapshot.valid = true;
     snapshot.motion_phase = ls2k::control::MotionPhase::kRunning;
-    snapshot.steering.otsu = {
-        true, 87, ls2k::port::OtsuThresholdSource::kCached, 3U};
+    snapshot.steering.binary_model.valid = true;
+    snapshot.steering.binary_model.residual_threshold = 87;
+    snapshot.steering.binary_model.source =
+        ls2k::port::BinaryModelSource::kCached;
+    snapshot.steering.binary_model.stale_frames = 3U;
     snapshot.steering.element_evidence.cross_exit.present = true;
     snapshot.steering.element_evidence.cross_exit.forward_min_m = 0.20;
     snapshot.steering.element_evidence.cross_exit.forward_max_m = 0.42;
@@ -224,10 +227,12 @@ void TestSnapshotFactsMapToAssistantView() {
     Expect(telemetry.visual_reference.rejected_candidate_reason ==
                "none_candidate_not_visual",
            "visual reference rejection reason must be copied");
-    Expect(telemetry.otsu.valid && telemetry.otsu.threshold == 87 &&
-               telemetry.otsu.source == ls2k::port::OtsuThresholdSource::kCached &&
-               telemetry.otsu.stale_frames == 3U,
-           "complete Otsu state must be copied");
+    Expect(telemetry.binary_model.valid &&
+               telemetry.binary_model.residual_threshold == 87 &&
+               telemetry.binary_model.source ==
+                   ls2k::port::BinaryModelSource::kCached &&
+               telemetry.binary_model.stale_frames == 3U,
+           "complete binary model state must be copied");
     Expect(telemetry.reference.mode == "interval_center",
            "selected reference mode must be copied");
     Expect(telemetry.reference.source == "roadblock_bypass",
@@ -275,9 +280,12 @@ void TestAssistantTelemetryJsonEmitsVisualReferenceFacts() {
         ls2k::observability::BuildAssistantTelemetryView(MakeSnapshot());
     const std::string json = ls2k::transport::EncodeAssistantTelemetry(telemetry);
     WriteStrictJsonArtifact("assistant_telemetry.json", json);
-    Expect(Contains(json,
-                    "\"otsu\":{\"valid\":true,\"threshold\":87,\"source\":\"cached\",\"stale_frames\":3}"),
-           "assistant telemetry must serialize the complete Otsu state");
+    Expect(Contains(
+               json,
+               "\"binary_model\":{\"valid\":true,\"residual_threshold\":87,"
+               "\"luma_scale\":10,\"illumination_weight\":5,"
+               "\"source\":\"cached\",\"stale_frames\":3}"),
+           "assistant telemetry must serialize the complete binary model state");
     Expect(Contains(json, "\"element_evidence\":{\"cross_exit\":{\"present\":true"),
            "assistant telemetry must include element evidence object");
     Expect(!Contains(json, "\"cross_exit\":{\"present\":true,\"confidence\":"),

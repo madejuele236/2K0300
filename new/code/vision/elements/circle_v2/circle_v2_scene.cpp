@@ -28,8 +28,14 @@ const char* ToString(CirclePhase phase) {
             return "approach";
         case CirclePhase::kInnerTrace:
             return "inner_trace";
+        case CirclePhase::kNormalTrace:
+            return "normal_trace";
         case CirclePhase::kExitTrace:
             return "exit_trace";
+        case CirclePhase::kCalmTrace:
+            return "calm_trace";
+        case CirclePhase::kCooldown:
+            return "cooldown";
     }
     return "idle";
 }
@@ -56,12 +62,20 @@ const char* ToString(CircleV2TelemetryReason reason) {
             return "phase1_cue_right";
         case CircleV2TelemetryReason::kEntryGateReached:
             return "entry_gate_reached";
-        case CircleV2TelemetryReason::kExitGateReached:
-            return "exit_gate_reached";
+        case CircleV2TelemetryReason::kNormalTraceStarted:
+            return "normal_trace_started";
+        case CircleV2TelemetryReason::kExitTraceStarted:
+            return "exit_trace_started";
+        case CircleV2TelemetryReason::kObservedOuterBoundary:
+            return "observed_outer_boundary";
+        case CircleV2TelemetryReason::kFallbackYawReached:
+            return "fallback_yaw_reached";
+        case CircleV2TelemetryReason::kCalmTraceComplete:
+            return "calm_trace_complete";
+        case CircleV2TelemetryReason::kCooldownComplete:
+            return "cooldown_complete";
         case CircleV2TelemetryReason::kInnerTraceYawStalled:
             return "inner_trace_yaw_stalled";
-        case CircleV2TelemetryReason::kExitHoldReleased:
-            return "exit_hold_released";
         case CircleV2TelemetryReason::kGeometryUnavailable:
             return "geometry_unavailable";
     }
@@ -77,12 +91,18 @@ CircleV2StepResult CircleV2Scene::Step(const SceneFrameView& frame,
                                        const CircleV2Params& params) const {
     const detail::CircleSideExpansionObservation expansion =
         detail::ObserveCircleSideExpansion(frame, params);
+    const detail::CircleV2GeometryObservation geometry_observation =
+        detail::ObserveCircleV2Geometry(frame, prior.dir, params);
     const detail::CircleV2Events events =
-        detail::ObserveCircleV2Events(frame, expansion, prior, params);
+        detail::ObserveCircleV2Events(frame,
+                                      expansion,
+                                      geometry_observation,
+                                      prior,
+                                      params);
     const detail::CircleV2Decision decision =
         detail::ReduceCircleV2(prior, events, frame.stamp, params);
-    const detail::CircleV2Geometry geometry =
-        detail::ObserveCircleV2Geometry(frame, decision.reference, expansion, params);
+    const detail::CircleV2Geometry& geometry =
+        detail::SelectCircleV2Geometry(geometry_observation, decision.reference.role);
 
     CircleV2StepResult result{};
     result.next_memory = decision.next_memory;

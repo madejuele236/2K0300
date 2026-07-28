@@ -391,7 +391,7 @@ ControlDebugSnapshot BuildControlDebugSnapshot(const ControlDebugSnapshotInputs&
     debug_snapshot.steering.valid = inputs.steering_terms_valid;
     debug_snapshot.steering.frame_id = perception.frame_id;
     debug_snapshot.steering.capture_time_ms = perception.capture_time_ms;
-    debug_snapshot.steering.otsu = perception.otsu;
+    debug_snapshot.steering.binary_model = perception.binary_model;
     debug_snapshot.steering.perception_tag = perception.perception_tag;
     debug_snapshot.steering.boundary_row_count = perception.boundary_row_count;
     debug_snapshot.steering.boundary_jump_count = perception.boundary_jump_count;

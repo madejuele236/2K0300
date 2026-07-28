@@ -12,7 +12,7 @@
 #include "vision/bev/bev_simple_perception.hpp"
 #include "vision/elements/cross_exit_element_evidence.hpp"
 #include "vision/elements/cross_straight_path_planner.hpp"
-#include "vision/image/otsu_threshold.hpp"
+#include "vision/image/illumination_binary_model.hpp"
 
 namespace {
 
@@ -91,30 +91,25 @@ int main(int argc, char** argv) {
         frame.height = 240;
         frame.stride = 640;
 
-        const ls2k::vision::OtsuThresholdResult threshold =
-            ls2k::vision::ComputeSparseOtsuThreshold(frame);
-        Require(threshold.valid, "Otsu invalid");
-        const ls2k::port::OtsuThresholdState state{
-            true,
-            threshold.threshold,
-            ls2k::port::OtsuThresholdSource::kCurrent,
-            0U,
-        };
+        ls2k::vision::BinaryModelTracker model_tracker{};
+        const ls2k::port::BinaryModelState model = model_tracker.Update(
+            ls2k::vision::ComputeIlluminationBinaryModel(frame));
+        Require(model.valid, "binary model invalid");
         ls2k::vision::BEVSampleProjectionLut lut{};
         const ls2k::vision::BEVSimplePerceptionResult result =
-            ls2k::vision::RunBEVSimplePerception(frame, state, params, projector, &lut);
+            ls2k::vision::RunBEVSimplePerception(frame, model, params, projector, &lut);
         const auto cross = ls2k::vision::DetectCrossExitEvidence(
             result.rows,
             result.origin_to_cross_sample_midpoint_connectivity,
             params);
         const ls2k::vision::BEVImageSegmentConnectivity connectivity(frame,
                                                                       projector,
-                                                                      state);
+                                                                      model);
         const auto cross_candidate = ls2k::vision::BuildCrossStraightPathCandidate(
             result.rows, cross, params, connectivity);
 
         std::cout << std::fixed << std::setprecision(6)
-                  << "otsu=" << threshold.threshold
+                  << "residual_threshold=" << model.residual_threshold
                   << " cross=" << cross.present
                   << " cross_path=" << cross_candidate.present
                   << " cross_reason=" << cross_candidate.reason

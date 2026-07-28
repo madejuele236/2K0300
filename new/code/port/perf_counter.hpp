@@ -45,12 +45,12 @@ enum class PerfStage : std::size_t {
     kCameraStoreSubmit,     ///< 相机帧提交到 Frame Store
     kCameraFrameAge,        ///< 消费相机帧年龄统计
     kPerceptionPublish,     ///< 感知结果发布到共享状态
-    kPerceptionOtsu,        ///< 80x60 sparse full-frame Otsu threshold
+    kPerceptionBinaryModel, ///< 20x15 illumination model and residual Otsu threshold
     kPerceptionBev,         ///< BEV投影
     kBevSimple,             ///< 基础稀疏 BEV 寻线事实
     kBevSimpleLut,          ///< 基础稀疏 BEV LUT 准备
     kBevSimpleScanRows,     ///< 基础稀疏 BEV 行扫描
-    kBevSimpleConnectivity, ///< Otsu binary segment connectivity
+    kBevSimpleConnectivity, ///< Unified binary-model segment connectivity
     kBevSimpleBuildReference, ///< 基础稀疏 BEV reference 构建
     kCirclePhase1Rows,      ///< circle Phase1 sparse row evidence
     kCirclePhase2RoiScan,   ///< circle Phase2 ROI scan

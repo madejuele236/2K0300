@@ -7,6 +7,11 @@
 
 namespace ls2k::vision {
 
+bool SampleLumaPixelAt(const port::CameraPixelFrameView& frame,
+                       int row,
+                       int col,
+                       std::uint8_t& y);
+
 bool SampleLumaAt(const port::CameraPixelFrameView& frame,
                   float row_px,
                   float col_px,

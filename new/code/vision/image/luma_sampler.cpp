@@ -44,6 +44,18 @@ bool SampleYuyvLumaAt(const port::CameraPixelFrameView& frame,
 
 }  // namespace
 
+bool SampleLumaPixelAt(const port::CameraPixelFrameView& frame,
+                       int row,
+                       int col,
+                       std::uint8_t& y) {
+    if (!frame.Valid() || frame.format != port::CameraFrameFormat::kYuyv ||
+        row < 0 || row >= frame.height || col < 0 || col >= frame.width) {
+        return false;
+    }
+    y = YuyvLumaAtUnchecked(frame, row, col);
+    return true;
+}
+
 bool SampleLumaAt(const port::CameraPixelFrameView& frame,
                   float row_px,
                   float col_px,

@@ -192,7 +192,7 @@ set(NEW_SRCS
     ../code/control/wheel_target_mixer.cpp
     ../code/control/wheel_pid.cpp
     ../code/vision/image/luma_sampler.cpp
-    ../code/vision/image/otsu_threshold.cpp
+    ../code/vision/image/illumination_binary_model.cpp
     ../code/vision/image/color_sampler.cpp
     ../code/vision/ml/red_rectangle_detector.cpp
     ../code/vision/ml/roi_sampler.cpp
@@ -337,7 +337,7 @@ if(LS2K_BUILD_VERIFICATION_HELPERS)
         ../code/vision/bev/bev_reference_path_builder.cpp
         ../code/vision/bev/bev_simple_perception.cpp
         ../code/vision/image/luma_sampler.cpp
-        ../code/vision/image/otsu_threshold.cpp
+        ../code/vision/image/illumination_binary_model.cpp
         ../code/vision/elements/visual_element_evidence.cpp
         ../code/vision/elements/cross_exit_element_evidence.cpp
         ../code/vision/elements/visual_element_pipeline.cpp

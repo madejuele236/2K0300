@@ -12,14 +12,14 @@
 #include "vision/bev/bev_segment_connectivity.hpp"
 #include "port/bev_reference_types.hpp"
 #include "port/camera_frame_types.hpp"
-#include "port/otsu_threshold_types.hpp"
+#include "port/binary_model_types.hpp"
 #include "port/runtime_parameter_types.hpp"
 
 namespace ls2k::vision {
 
 /// 简单BEV感知结果，包含行扫描结果和构建的参考路径
 struct BEVSimplePerceptionResult {
-    port::OtsuThresholdState otsu{};             ///< 本帧实际使用的统一二值阈值
+    port::BinaryModelState binary_model{};       ///< 本帧实际使用的统一空间二值模型
     std::vector<BEVSimpleRowScan> rows{};        ///< 各行的扫描结果
     std::size_t boundary_jump_count = 0;         ///< 黑白转换边界数量
     std::size_t boundary_span_count = 0;         ///< 同行边界 span 数量
@@ -44,7 +44,7 @@ const char* ToString(port::BEVPathPointSource source);
 /// @param lut 可选的外部查找表指针（为nullptr时自动创建临时表）
 /// @return 感知结果（行扫描、参考路径等）
 BEVSimplePerceptionResult RunBEVSimplePerception(const port::CameraPixelFrameView& frame,
-                                                 const port::OtsuThresholdState& threshold,
+                                                 const port::BinaryModelState& binary_model,
                                                  const port::RuntimeParameters& params,
                                                  const BEVProjector& projector,
                                                  BEVSampleProjectionLut* lut);

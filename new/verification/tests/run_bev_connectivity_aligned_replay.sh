@@ -22,9 +22,13 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_image_segment_connectivity.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
-  "${REPO_ROOT}/new/code/vision/image/otsu_threshold.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/illumination_binary_model.cpp" \
   -o "${OUT_BIN}" \
   $(pkg-config --libs opencv4)
+
+if [[ "${BUILD_ONLY:-0}" == "1" ]]; then
+  exit 0
+fi
 
 METADATA_SHA256="$(sha256sum "${METADATA}" | awk '{print $1}')"
 RAW_SHA256="$(sha256sum "${RAW_FRAME}" | awk '{print $1}')"

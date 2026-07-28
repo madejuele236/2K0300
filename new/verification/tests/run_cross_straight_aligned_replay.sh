@@ -23,8 +23,12 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror \
   "${REPO_ROOT}/new/code/vision/elements/cross_exit_element_evidence.cpp" \
   "${REPO_ROOT}/new/code/vision/elements/cross_straight_path_planner.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
-  "${REPO_ROOT}/new/code/vision/image/otsu_threshold.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/illumination_binary_model.cpp" \
   -lopencv_core \
   -o "${OUT_BIN}"
+
+if [[ "${BUILD_ONLY:-0}" == "1" ]]; then
+  exit 0
+fi
 
 "${OUT_BIN}" "$@"

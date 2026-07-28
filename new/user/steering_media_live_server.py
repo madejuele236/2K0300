@@ -754,7 +754,7 @@ def _viewer_html(display_mode: str = "bev", view_mode: str = "camera") -> bytes:
       <div class="control-chip"><span class="metric-label">Reference</span><strong class="metric-value" id="referenceSummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">Safety</span><strong class="metric-value" id="safetySummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">Camera</span><strong class="metric-value" id="cameraSummary">-</strong></div>
-      <div class="control-chip"><span class="metric-label">Otsu</span><strong class="metric-value" id="otsuSummary">-</strong></div>
+      <div class="control-chip"><span class="metric-label">Binary model</span><strong class="metric-value" id="binaryModelSummary">-</strong></div>
       <div class="control-chip"><span class="metric-label">ML</span><strong class="metric-value" id="mlSummary">-</strong></div>
     </section>
     <section class="viewer-panel">
@@ -934,7 +934,7 @@ const fields = {
   referenceSummary: document.getElementById("referenceSummary"),
   safetySummary: document.getElementById("safetySummary"),
   cameraSummary: document.getElementById("cameraSummary"),
-  otsuSummary: document.getElementById("otsuSummary"),
+  binaryModelSummary: document.getElementById("binaryModelSummary"),
   mlSummary: document.getElementById("mlSummary"),
   displayFps: document.getElementById("displayFps"),
   latency: document.getElementById("latency"),
@@ -1365,14 +1365,42 @@ function renderGray(header, payload) {
   if (!decoded) return null;
   if (binaryEnabled) {
     const bits = packedGrayBits(header);
-    const otsu = nested(header, ["steering_snapshot", "otsu"], null);
-    const threshold = numberOrNull(otsu?.threshold);
+    const model = nested(header, ["steering_snapshot", "binary_model"], null);
+    const threshold = numberOrNull(model?.residual_threshold);
+    const lumaScale = numberOrNull(model?.luma_scale);
+    const illuminationWeight = numberOrNull(model?.illumination_weight);
+    const scale = numberOrNull(model?.scale);
+    const illuminationWidth = numberOrNull(model?.illumination_width);
+    const illuminationHeight = numberOrNull(model?.illumination_height);
+    const illumination = model?.illumination;
+    const sourceWidth = numberOrNull(header.source_width);
+    const sourceHeight = numberOrNull(header.source_height);
+    const aligned = nested(header, ["snapshot_alignment", "aligned"], false) === true;
     const exactGray8 = bits == null &&
-      (header.payload_encoding === "gray8" || header.pixel_format === "gray8");
-    if (exactGray8 && otsu?.valid === true && threshold != null) {
+      (header.payload_encoding === "gray8" || header.pixel_format === "gray8") &&
+      decoded.width === sourceWidth && decoded.height === sourceHeight &&
+      aligned;
+    const exactModel = model?.valid === true && threshold != null &&
+      lumaScale != null && illuminationWeight != null &&
+      scale === 16 && illuminationWidth === 20 && illuminationHeight === 15 &&
+      Array.isArray(illumination) &&
+      illumination.length === illuminationWidth * illuminationHeight &&
+      decoded.width === illuminationWidth * scale &&
+      decoded.height === illuminationHeight * scale;
+    if (exactGray8 && exactModel) {
       const binary = new Uint8ClampedArray(decoded.pixels.length);
-      for (let index = 0; index < decoded.pixels.length; ++index) {
-        binary[index] = decoded.pixels[index] > threshold ? 255 : 0;
+      for (let row = 0; row < decoded.height; ++row) {
+        const illuminationRow = Math.floor(row / scale);
+        for (let col = 0; col < decoded.width; ++col) {
+          const index = row * decoded.width + col;
+          const illuminationCol = Math.floor(col / scale);
+          const localIllumination =
+            illumination[illuminationRow * illuminationWidth + illuminationCol];
+          const residual =
+            lumaScale * decoded.pixels[index] -
+            illuminationWeight * localIllumination;
+          binary[index] = residual > threshold ? 255 : 0;
+        }
       }
       const rendered = renderRawFrame({
         width: decoded.width,
@@ -1380,14 +1408,18 @@ function renderGray(header, payload) {
         pixels: binary,
         stats: imageStats(binary),
       });
-      return { ...rendered, display: `binary raw Y>${threshold}` };
+      return {
+        ...rendered,
+        display:
+          `binary raw ${lumaScale}Y-${illuminationWeight}L>${threshold}`,
+      };
     }
     const raw = renderRawFrame(decoded);
     return {
       ...raw,
-      display: exactGray8
-        ? "binary unavailable: otsu invalid"
-        : "binary unavailable: requires gray8",
+      display: !exactGray8
+        ? "binary unavailable: requires aligned full-resolution gray8"
+        : "binary unavailable: binary model invalid",
     };
   }
   if (initialDisplayMode === "bev") {
@@ -1631,10 +1663,14 @@ function handleEnvelope(buffer, transport) {
       `${nested(steering, ["safety_gate", "reason"])}`;
     fields.cameraSummary.textContent =
       `${camera.source ?? "-"} / seq=${camera.v4l2_sequence ?? "-"}`;
-    const otsu = steering.otsu || {};
-    fields.otsuSummary.textContent =
-      `${otsu.valid === true ? otsu.threshold : "none"} / ` +
-      `${otsu.source ?? "none"} / stale=${otsu.stale_frames ?? 0}`;
+    const binaryModel = steering.binary_model || {};
+    fields.binaryModelSummary.textContent =
+      `${binaryModel.valid === true
+        ? binaryModel.residual_threshold
+        : "none"} / ` +
+      `${binaryModel.source ?? "none"} / ` +
+      `w=${binaryModel.illumination_weight ?? "-"} / ` +
+      `stale=${binaryModel.stale_frames ?? 0}`;
     fields.mlSummary.textContent =
       `${ml.phase ?? "-"} / ${ml.mapped_action ?? "-"} / ` +
       `takeover=${formatBool(ml.takeover_selected ?? null)}`;
@@ -1667,7 +1703,8 @@ function handleEnvelope(buffer, transport) {
     fields.circleFsm.textContent =
       `${circle.enabled === false ? "off" : circle.frame_phase ?? "-"} -> ${circle.next_phase ?? "-"}` +
       ` / ${circle.dir ?? "-"} / ${circle.reference_role ?? "-"}`;
-    fields.circleGeometry.textContent = formatBool(circle.geometry_available ?? null);
+    fields.circleGeometry.textContent =
+      `${formatBool(circle.geometry_available ?? null)} / ${circle.geometry_source ?? "none"}`;
     fields.circleOpeningLeft.textContent = formatCircleOpening(nested(circle, ["openings", "left"], null));
     fields.circleOpeningRight.textContent = formatCircleOpening(nested(circle, ["openings", "right"], null));
     fields.circleReason.textContent = circle.reason ?? "-";

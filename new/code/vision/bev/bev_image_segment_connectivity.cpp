@@ -3,8 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "vision/image/luma_sampler.hpp"
-#include "vision/image/otsu_threshold.hpp"
+#include "vision/image/illumination_binary_model.hpp"
 
 namespace ls2k::vision {
 namespace {
@@ -71,20 +70,18 @@ int PixelIndex(float coordinate, int extent) {
 }
 
 bool VisitPixel(const port::CameraPixelFrameView& frame,
-                const port::OtsuThresholdState& threshold,
+                const port::BinaryModelState& binary_model,
                 int row,
                 int col,
                 BEVSegmentConnectivityResult& result) {
     std::uint8_t y = 0U;
-    if (!SampleLumaAt(frame,
-                      static_cast<float>(row),
-                      static_cast<float>(col),
-                      y)) {
+    bool white = false;
+    if (!ClassifyImagePixel(frame, row, col, binary_model, y, white)) {
         result.status = BEVSegmentConnectivityStatus::kUnobservable;
         return false;
     }
     ++result.sampled_point_count;
-    if (!IsOtsuWhite(y, threshold)) {
+    if (!white) {
         result.status = BEVSegmentConnectivityStatus::kBlocked;
         return false;
     }
@@ -92,7 +89,7 @@ bool VisitPixel(const port::CameraPixelFrameView& frame,
 }
 
 bool ImageSegmentIsWhite(const port::CameraPixelFrameView& frame,
-                         const port::OtsuThresholdState& threshold,
+                         const port::BinaryModelState& binary_model,
                          const port::ImagePoint& from,
                          const port::ImagePoint& to,
                          BEVSegmentConnectivityResult& result) {
@@ -127,7 +124,7 @@ bool ImageSegmentIsWhite(const port::CameraPixelFrameView& frame,
 
     constexpr float kTieTolerance = 1.0e-6F;
     while (true) {
-        if (!VisitPixel(frame, threshold, row, col, result)) {
+        if (!VisitPixel(frame, binary_model, row, col, result)) {
             return false;
         }
         if (row == end_row && col == end_col) {
@@ -135,11 +132,11 @@ bool ImageSegmentIsWhite(const port::CameraPixelFrameView& frame,
         }
         if (std::fabs(next_t_col - next_t_row) <= kTieTolerance) {
             if (step_col != 0 &&
-                !VisitPixel(frame, threshold, row, col + step_col, result)) {
+                !VisitPixel(frame, binary_model, row, col + step_col, result)) {
                 return false;
             }
             if (step_row != 0 &&
-                !VisitPixel(frame, threshold, row + step_row, col, result)) {
+                !VisitPixel(frame, binary_model, row + step_row, col, result)) {
                 return false;
             }
             col += step_col;
@@ -163,7 +160,7 @@ BEVSegmentConnectivityResult BEVImageSegmentConnectivity::Evaluate(
     const port::BEVPoint& to,
     BEVSegmentVisibilityPolicy policy) const {
     BEVSegmentConnectivityResult result{};
-    if (!frame_.Valid() || !threshold_.valid) {
+    if (!frame_.Valid() || !binary_model_.valid) {
         return result;
     }
 
@@ -200,7 +197,7 @@ BEVSegmentConnectivityResult BEVImageSegmentConnectivity::Evaluate(
     }
 
     if (!ImageSegmentIsWhite(frame_,
-                             threshold_,
+                             binary_model_,
                              from_image,
                              to_image,
                              result)) {

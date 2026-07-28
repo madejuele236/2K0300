@@ -5,7 +5,7 @@
 #include "vision/bev/bev_sample_projection_lut.hpp"
 #include "vision/ml/red_rectangle_detector.hpp"
 #include "vision/ml/selected_ml_classifier.hpp"
-#include "vision/image/otsu_threshold.hpp"
+#include "vision/image/illumination_binary_model.hpp"
 #include "port/diagnostics.hpp"
 #include "port/motion_history_types.hpp"
 #include "port/perception_result.hpp"
@@ -40,7 +40,7 @@ private:
     vision::BEVSampleProjectionLut sample_lut_{};               ///< 采样投影查找表
     vision::ml::MlRedRectangleProjectionLut ml_rectangle_lut_{}; ///< ML 红框网格投影表
     vision::ml::SelectedMlClassifier ml_classifier_{};          ///< 编译期选中的唯一 ML 分类器
-    vision::OtsuThresholdTracker otsu_tracker_{};                ///< 最多跨3个无效帧的统一阈值 owner
+    vision::BinaryModelTracker binary_model_tracker_{};          ///< 最多跨3个无效帧的统一空间二值模型 owner
     port::SteeringPerceptionMemory perception_memory_{};        ///< 感知记忆（参考连续性）
     bool projector_configured_ = false;                         ///< 投影器是否已配置
     bool ml_classifier_ready_ = false;                          ///< 选中分类器初始化状态

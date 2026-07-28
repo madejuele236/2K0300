@@ -63,7 +63,7 @@ void TestExplicitInitializationAndWindowReset() {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     {
-        LS2K_PERF_SCOPE(ls2k::port::PerfStage::kPerceptionOtsu);
+        LS2K_PERF_SCOPE(ls2k::port::PerfStage::kPerceptionBinaryModel);
         std::this_thread::sleep_for(std::chrono::microseconds(100));
     }
     {
@@ -76,12 +76,14 @@ void TestExplicitInitializationAndWindowReset() {
     Expect(!diagnostics.events.empty(), "perf window emit must report recorded stages");
     bool saw_control_tick = false;
     bool saw_bev_simple = false;
-    bool saw_otsu = false;
+    bool saw_binary_model = false;
     bool saw_connectivity = false;
     for (const ls2k::port::DiagnosticEvent& event : diagnostics.events) {
         saw_control_tick = saw_control_tick || Contains(event.message, "stage=control.tick");
         saw_bev_simple = saw_bev_simple || Contains(event.message, "stage=bev.simple");
-        saw_otsu = saw_otsu || Contains(event.message, "stage=perception.otsu");
+        saw_binary_model =
+            saw_binary_model ||
+            Contains(event.message, "stage=perception.binary_model");
         saw_connectivity =
             saw_connectivity || Contains(event.message, "stage=bev.connectivity");
         if (Contains(event.message, "stage=control.tick")) {
@@ -95,7 +97,8 @@ void TestExplicitInitializationAndWindowReset() {
     }
     Expect(saw_control_tick, "perf report must include fixed control.tick stage name");
     Expect(saw_bev_simple, "perf report must include BEV simple stage name");
-    Expect(saw_otsu, "perf report must include perception.otsu stage name");
+    Expect(saw_binary_model,
+           "perf report must include perception.binary_model stage name");
     Expect(saw_connectivity, "perf report must include bev.connectivity stage name");
 
     diagnostics.events.clear();

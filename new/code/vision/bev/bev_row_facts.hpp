@@ -14,6 +14,8 @@ enum class BEVBoundaryJumpPolarity {
 
 struct BEVRowLumaSample {
     bool sampleable = false;
+    bool classified = false;
+    bool white = false;
     float forward_m = 0.0F;
     float lateral_m = 0.0F;
     int lateral_index = 0;

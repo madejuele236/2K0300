@@ -102,8 +102,8 @@ std::atomic<std::uint64_t> g_event_sequence{0};    ///< 全局 perf 事件序号
             return "camera.frame_age";
         case PerfStage::kPerceptionPublish:
             return "perception.publish";
-        case PerfStage::kPerceptionOtsu:
-            return "perception.otsu";
+        case PerfStage::kPerceptionBinaryModel:
+            return "perception.binary_model";
         case PerfStage::kPerceptionBev:
             return "perception.bev";
         case PerfStage::kBevSimple:

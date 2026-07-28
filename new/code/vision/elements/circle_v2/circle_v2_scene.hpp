@@ -16,6 +16,7 @@ using port::CircleOpeningPairObservation;
 using port::CircleOpeningSource;
 using port::CirclePhase;
 using port::CircleV2Memory;
+using port::CircleV2GeometrySource;
 using port::CircleV2Params;
 using port::CircleV2ReferencePlan;
 using port::CircleV2ReferenceRole;

@@ -5,7 +5,7 @@
 当前闭环固定为：
 
 ```text
-frame -> 80x60 full-frame Otsu -> sparse BEV binary boundary facts -> visual reference facts -> reference usability -> tracking geometry
+frame -> 20x15 illumination-compensated residual binary model -> sparse BEV boundary facts -> visual reference facts -> reference usability -> tracking geometry
 -> reference-control readiness -> safety gate -> yaw-control terms -> actuator
 ```
 
@@ -266,21 +266,23 @@ rtk bash new/verification/tests/run_perf_counter_test.sh
 
 原图到 BEV 的关系只用于采样事实：原图提供 Y 值，BEV row facts 和 BEV metric 几何负责路径判断。不要新增“原图和 BEV 是否匹配”的业务防御判断。
 
-## 10. Sparse Otsu Boundary
+## 10. Illumination-compensated Binary Boundary
 
-active runtime 对原始 YUYV 帧划分 `80x60` 个等面积单元，只读取每个单元中心的 Y，用固定 4800 点直方图计算全帧 Otsu。唯一分类合同是 `Y > threshold` 为白、`Y <= threshold` 为黑。相邻横向 BEV 样本发生黑白转换时产生 jump，rising/falling 配对形成 span；采样索引缺口会中断邻接，不会跨不可观测区域造边界。
+active runtime 只接受 `320x240 YUYV`。它把图像划分为 `20x15` 个 `16x16` 单元，读取每个单元中心的 Y，并在缩小图上执行与 Python 参考一致的 Gaussian blur（原图半径 `35px`，缩小图半径 `35/16`），形成局部 illumination `L`。随后在固定 300 个中心样本的残差 `10Y-5L` 上计算二类 Otsu，并把固定 margin `22` 加到阈值上。全图唯一分类合同为 `10Y-5L > residual_threshold` 判白，等于阈值判黑。权重 `5/10` 保留一半局部照明补偿，避免旧 `9/10` 把白路面中的轻微灰度下降放大为按 `16x16` 网格对齐的黑色阶梯。
 
-Otsu 无效时最多沿用最近有效阈值 3 帧，第 4 帧起不发布二值边界。`source=current|cached|none` 和 `stale_frames` 必须与 threshold 一起读取。边界生成和原图逐像素连通性检验共享同一状态；不存在 `BEV_BOUNDARY` 参数或局部亮度差回退。
+`BinaryModelState` 同时包含 `residual_threshold` 和完整 `20x15 illumination`，不得把阈值脱离局部照明单独解释。残差直方图不能形成两个非空类别时本帧模型无效；此时最多沿用最近一份完整模型 3 帧，第 4 帧清空。稀疏行分类和原图 supercover 连通性检验共享同一对象和同一谓词；边界 owner 只消费 scanner 发布的黑白事实，不重复分类，也不存在旧全帧亮度阈值或局部亮度差回退。
+
+相邻横向 BEV 样本发生黑白转换时产生 jump，rising/falling 配对形成 span；采样索引缺口会中断邻接，不会跨不可观测区域造边界。上位机只有在媒体帧为快照对齐、全分辨率 `gray8` 且携带完整 binary model 时才生成精确二值层。
 
 ## 11. BEV Classification 与 hold
 
 | 参数 | 当前 JSON 值 | 作用层 | 调参方法与证据 |
 | --- | ---: | --- | --- |
-| `BEV_CLASSIFICATION.WHITE_CONFIDENCE_MIN` | `0.55` | debug/legacy classification | active sparse Otsu line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
-| `BEV_CLASSIFICATION.UNKNOWN_CONFIDENCE_MIN` | `0.25` | debug/legacy classification | active sparse Otsu line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
+| `BEV_CLASSIFICATION.WHITE_CONFIDENCE_MIN` | `0.55` | debug/legacy classification | active binary-model line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
+| `BEV_CLASSIFICATION.UNKNOWN_CONFIDENCE_MIN` | `0.25` | debug/legacy classification | active binary-model line/cross/CircleV2 不读取该值；仅保留给显式 debug/legacy/test 分类入口。不要用它调当前寻线。 |
 | `BEV_CLASSIFICATION.HOLD_LAST_MAX_CYCLES` | `64` | reference continuity | 当前视觉 facts 不 usable 时最多 hold 上次路径的周期数。短暂丢点可增大；不想让旧路径影响控制就减小。hold 点必须显示 `reference.mode=hold_last`、`reference.source=hold`。 |
 
-`BEV_CLASSIFICATION` 不再是 active sparse row 二值 authority；line/cross/CircleV2 优先看 Otsu 状态、boundary jumps/spans/traces 和相关 element evidence。
+`BEV_CLASSIFICATION` 不再是 active sparse row 二值 authority；line/cross/CircleV2 读取 binary model 派生的 boundary jumps/spans/traces 和相关 element evidence。
 
 ## 12. BEV Control Model
 
@@ -312,7 +314,7 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 
 | 参数 | 当前 JSON 值 | owner 与精确语义 | 增大时 | 减小时 | 当前建议与证据 |
 | --- | ---: | --- | --- | --- | --- |
-| `BEV_ELEMENT.CROSS_MIN_SAMPLEABLE_PER_ROW` | `8` | open row 可参与 Cross 连续游程前所需的最少可采样点数；合法值 `>=1`。它不改变固定的连续 3 行门槛。 | 行观测要求更严格，远端/FOV 较窄行更易变成 `insufficient_sampleable_support`，漏检增加。 | 允许观测支撑更少的行进入开口判定，灵敏度提高，但局部不可观测更易被当成开口。 | 保持 `8`，直到 aligned evidence 能给出误判/漏判行的逐行 `sampleable_count`。若误判行长期只有少量样本，逐级试 `10/12`；若真实十字因支撑不足被拒，逐级试 `6`，不要同时改 Otsu 或连通性。 |
+| `BEV_ELEMENT.CROSS_MIN_SAMPLEABLE_PER_ROW` | `8` | open row 可参与 Cross 连续游程前所需的最少可采样点数；合法值 `>=1`。它不改变固定的连续 3 行门槛。 | 行观测要求更严格，远端/FOV 较窄行更易变成 `insufficient_sampleable_support`，漏检增加。 | 允许观测支撑更少的行进入开口判定，灵敏度提高，但局部不可观测更易被当成开口。 | 保持 `8`，直到 aligned evidence 能给出误判/漏判行的逐行 `sampleable_count`。若误判行长期只有少量样本，逐级试 `10/12`；若真实十字因支撑不足被拒，逐级试 `6`，不要同时改 binary model 或连通性。 |
 | `BEV_ELEMENT.CROSS_CONNECTIVITY_SAMPLE_INDEX` | `9` | Cross 连通性 owner 从固定 24 个 `BEV_GEOMETRY.forward_samples_m` 中选择第 N 点，并检验 `(0,0)` 到 `(forward_samples_m[N],0)` 的 supercover 连通性。合法值 `0..23`，且不受 `SPARSE_ROW_COUNT` 的启用前缀影响。该参数只定义 Cross 判定的前向连通性护栏。 | 护栏更深入路口，车辆存在航向偏差时更容易离开入口走廊而被阻断。 | 护栏过近时只能证明较短的入口走廊。 | 当前使用 `9`（约 `0.287m`），验证入口连通性而不把固定车体中轴延伸到路口深处。 |
 | `BEV_ELEMENT.CROSS_BOUNDARY_EXPANSION_MIN_M` | `0.055` | 单侧真实边界相对此前连续同侧边界拟合直线的最小向外垂距；合法值 `(0,2]m`。至少需要两个前序真实边界点，且另一侧端点必须为真实 FOV。 | 更严格，弱外扩漏检增加。 | 更灵敏，边界抖动和渐弯更容易触发。 | 保持 `0.055m`，调参前先查看 `present_left_boundary_expansion` / `present_right_boundary_expansion` 对齐帧。 |
 
@@ -334,8 +336,11 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 
 | 参数 | 当前 JSON 值 | owner 与精确语义 | 增大时 | 减小时 | 当前建议与证据 |
 | --- | ---: | --- | --- | --- | --- |
-| `BEV_ELEMENT.CIRCLE_V2_EXIT_YAW_THRESHOLD_DEG` | `360` | InnerTrace 进入后，对锁存方向归一化的历史最大 directed yaw 达到该值时进入 ExitTrace；不是 `abs(yaw_delta)`。合法值 `[1,720]deg`。 | 延后出环，减少未绕足就退出，可能错过真实出口。 | 提前出环，可能在环内切到 ExitTrace。 | 保持 `360deg`，直到一次从空 Idle 开始的动态完整绕环能给出真实出口处 `directed_turn_angle_rad`。本次推车只覆盖 Approach 后段和约 2.8s InnerTrace，不能调该值。 |
-| `BEV_ELEMENT.CIRCLE_V2_EXIT_HOLD_FRAMES` | `120` | ExitTrace reference 保持及 cooldown 的 **Circle/perception 帧数**；合法值 `>=2`。它不按 `control_period_ms` 计数。 | 出口参考保持更久，普通寻线恢复更晚。 | 更快回 Idle，若出口边界尚未稳定可能重复触发或过早切回普通参考。 | 保持 `120`。当前约 60Hz 感知下约为 `2s`，实际时长应以相邻 Circle telemetry 的 capture time 计算，而不是用 5ms 控制周期换算。 |
+| `BEV_ELEMENT.CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG` | `90` | 从进入 InnerTrace 的 yaw 原点起，方向归一化的历史最大 directed yaw 达到 X 后进入 NormalTrace。NormalTrace 不发布 Circle reference，恢复普通双边/单边寻线。 | 延长仅寻内线阶段。 | 更早恢复普通寻线。 | `90deg` 是本次状态语义的初始假设；必须用完整动态绕环证据校准。 |
+| `BEV_ELEMENT.CIRCLE_V2_EXIT_TRACE_START_YAW_DEG` | `270` | 同一 yaw 事实达到 Y 后进入 ExitTrace，仅发布外线参考；必须满足 `X < Y < Z`。 | 延后仅寻外线。 | 更早切到外线。 | `270deg` 是初始假设，不由静态 Y 点图片校准。 |
+| `BEV_ELEMENT.CIRCLE_V2_CALM_FALLBACK_YAW_DEG` | `340` | 达到 Z 时无条件从角度阶段进入 CalmTrace；真实外线在 ExitTrace 被观察到也可提前进入 CalmTrace。 | 延后保底退出。 | 更早保底退出。 | `340deg` 是保底初值；FOV tangent 不属于真实外线，不能触发该提前转移。 |
+| `BEV_ELEMENT.CIRCLE_V2_CALM_TRACE_MS` | `1000` | CalmTrace 按 capture time 持续寻外线的时间，结束后进入 Cooldown。 | 出环后保持外线更久。 | 更早交还普通寻线。 | 初值 `1000ms`；以动态出环轨迹校准。 |
+| `BEV_ELEMENT.CIRCLE_V2_COOLDOWN_MS` | `3000` | Cooldown 按 capture time 屏蔽新 Circle 入口，期间不发布 Circle reference；结束回 Idle。 | 更不易重复进环，但下一环岛识别更晚。 | 更快允许再次进入。 | 初值 `3000ms`。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS` | `2000` | InnerTrace 已持续至少该时间且历史最大 directed yaw 仍小于 stall yaw 门槛时，退回 Idle；合法值 `>=1ms`。 | 给慢速/起步更多时间，错误 InnerTrace 也会滞留更久。 | 更快清除假进入，但低速车辆可能尚未积累足够 yaw 就被退出。 | 保持 `2000ms`。调该值必须同时读取 `inner_trace_elapsed_ms` 和 `directed_turn_angle_rad`；不要只看最终 phase。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_STALL_YAW_MIN_DEG` | `60` | stall timeout 到达后，“仍未明显转弯”的 directed yaw 上限；条件是 `progress < threshold`。合法值 `[0,720]deg`。 | 更容易满足 stall 条件并退回 Idle；这与“容忍更多 yaw”直觉相反。 | 只有更小 yaw 才退回，错误 InnerTrace 更难被清除；设为 `0` 时非负 progress 不会因该条件退出。 | 保持 `60deg`。若真实低速入环在 2s 内达不到 60deg，应优先增加 timeout，而不是降低此值掩盖时序问题。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M` | `0.0` | InnerTrace 路径从真实内圆边线向道路内部的偏移；合法值 `[0,2]m`，不参与任何 Circle 判定。正值左环岛向右偏、右环岛向左偏。 | 路径离内圆边线更远。 | 更贴近内圆边线。 | 保持 `0.0m` 直到动态轨迹证明偏内/偏外；之后以 `0.01m` 单步调整，并同时看实际轨迹与 control snapshot。 |
@@ -344,14 +349,15 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M` | `0.05` | ExitTrace 从该距离起收集真实对侧边界。 | 排除近端噪声，但直线点减少。 | 纳入更多近端点，可能受车头附近透视/遮挡影响。 | 保持 `0.05m`，等待真实 ExitTrace aligned evidence。 |
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M` | `0.5` | ExitTrace 真实对侧边界几何 ROI 远端上限。 | 增加直线判定范围和点数，也更容易累计弯曲横向跨度。 | 判定更局部，可能只剩不足两点。 | 保持 `0.50m`；应与 straight span 一起观察但一次只改一个参数。 |
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M` | `0.13` | Exit ROI 内真实对侧边界 `max(lateral)-min(lateral)` 的上限；至少需要 2 个连续真实点。合法值 `(0,2]m`。 | Exit geometry 更宽松，弯曲边界也可能被视为直线。 | 更严格，出口抖动/轻微弯曲会使 geometry unavailable。 | 保持 `0.13m`。若真实出口持续 `geometry_available=false`，先核对点数、端点真实性和实际 lateral span；只有 span 略超阈值时才以 `0.01m` 步长增加。 |
+| `BEV_ELEMENT.CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M` | `0.1` | Exit ROI 内，外圆真实边界末端紧邻该侧 FOV edge 时，用末端最多这段弧长的当前帧真实点拟合切线并向远端延伸。射线仅是 Circle 私有几何，`geometry_source=fov_tangent`，不写回公共边界，也不触发“找到真实外线”。 | 拟合更平滑但更不局部。 | 更贴近切点局部方向，但点数可能不足两点。 | `0.10m` 是初值；以同帧 row facts/replay 检查切点邻接和射线方向后再调。 |
 
 ### 13.5 推荐调参顺序
 
-1. 先用 raw gray8 与同帧 Otsu/jump/white-run 证明上游边界事实正确。
+1. 先用 raw gray8 与同帧 binary model/jump/white-run 证明上游边界事实正确。
 2. Circle 不触发时依次看 `origin_connected`、`opposite_straight`、`source`、`outward_distance_m`、`confirmed_forward_span_m`；只调整第一处不满足的 owner 参数。
 3. opening 已正确但状态切换早/晚，只调 Entry ROI；不要反向改变 opening distance。
 4. InnerTrace 已进入但参考不可用，只调 geometry ROI 或修复真实边界事实；不要放宽 opening。
-5. 动态完整绕环后才能调 exit yaw、stall 和 ExitTrace 参数。路径偏移最后调，并与判定参数分轮验证。
+5. 动态完整绕环后才能调 X/Y/Z、Calm/Cooldown、stall 和 ExitTrace 参数。路径偏移最后调，并与判定参数分轮验证。
 6. 每轮只改一个责任相同的参数，保存 JSON/config snapshot、逐帧 telemetry 和 aligned raw frame；恢复默认值时以本表“当前 JSON 值”为准。
 
 `cross_exit` 当前只发布检测证据，不生成 visual-reference candidate，也不改变普通路径、CircleV2、actuator、yaw、safety 或 hold。现场先在 no-motion capture 中确认 `element_evidence.cross_exit.{present,reason,sampleable_count,boundary_jump_count,boundary_span_count,boundary_absent_row_count}` 与 raw/BEV 画面对齐。新的 Cross 路径规划应由独立 owner 消费这份证据。

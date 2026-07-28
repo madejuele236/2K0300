@@ -11,6 +11,7 @@ c++ -std=c++17 -Wall -Wextra -Werror -pthread \
   "${REPO_ROOT}/new/verification/tests/bev_segment_connectivity_test.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_image_segment_connectivity.cpp" \
   "${REPO_ROOT}/new/code/vision/bev/bev_projector.cpp" \
+  "${REPO_ROOT}/new/code/vision/image/illumination_binary_model.cpp" \
   "${REPO_ROOT}/new/code/vision/image/luma_sampler.cpp" \
   -o "${OUT_BIN}"
 

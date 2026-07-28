@@ -14,7 +14,7 @@ inline transport::AssistantTelemetryView BuildAssistantTelemetryView(
     transport::AssistantTelemetryView telemetry{};
     telemetry.motion_phase = ToString(snapshot.motion_phase);
     telemetry.perception_tag = snapshot.steering.perception_tag;
-    telemetry.otsu = snapshot.steering.otsu;
+    telemetry.binary_model = snapshot.steering.binary_model;
     telemetry.boundary_row_count = snapshot.steering.boundary_row_count;
     telemetry.boundary_jump_count = snapshot.steering.boundary_jump_count;
     telemetry.boundary_span_count = snapshot.steering.boundary_span_count;

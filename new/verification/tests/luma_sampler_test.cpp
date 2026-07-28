@@ -29,6 +29,17 @@ void ExpectSample(const ls2k::port::CameraPixelFrameView& frame,
     Expect(y == expected, message + ": unexpected luma");
 }
 
+void ExpectPixelSample(const ls2k::port::CameraPixelFrameView& frame,
+                       int row,
+                       int col,
+                       std::uint8_t expected,
+                       const std::string& message) {
+    std::uint8_t y = 0U;
+    Expect(ls2k::vision::SampleLumaPixelAt(frame, row, col, y),
+           message + ": sample failed");
+    Expect(y == expected, message + ": unexpected luma");
+}
+
 ls2k::port::CameraPixelFrameView MakeYuyvFrameView(std::vector<std::uint8_t>& yuyv) {
     yuyv.assign(3U * 10U, 0U);
     const auto set_y = [&yuyv](int row, int col, std::uint8_t y) {
@@ -63,6 +74,7 @@ void TestYuyvSamplingWithStride() {
     const ls2k::port::CameraPixelFrameView frame = MakeYuyvFrameView(yuyv);
 
     ExpectSample(frame, 1.0F, 2.0F, 70U, "yuyv integer sample");
+    ExpectPixelSample(frame, 1, 2, 70U, "yuyv pixel sample");
     ExpectSample(frame, 0.5F, 0.5F, 35U, "yuyv bilinear sample");
 }
 
@@ -81,6 +93,8 @@ void TestBoundariesAndFormatContract() {
     std::uint8_t y = 0U;
     Expect(!ls2k::vision::SampleLumaAt(invalid_stride, 0.0F, 0.0F, y),
            "invalid yuyv stride must fail");
+    Expect(!ls2k::vision::SampleLumaPixelAt(invalid_stride, 0, 0, y),
+           "pixel sampler must reject invalid yuyv stride");
 
     ls2k::port::CameraPixelFrameView gray_frame{};
     gray_frame.valid = true;
@@ -91,11 +105,17 @@ void TestBoundariesAndFormatContract() {
     gray_frame.stride = 2;
     Expect(!ls2k::vision::SampleLumaAt(gray_frame, 0.0F, 0.0F, y),
            "gray frame must not be accepted by the YUYV luma sampler");
+    Expect(!ls2k::vision::SampleLumaPixelAt(gray_frame, 0, 0, y),
+           "pixel sampler must reject non-YUYV input");
 
     Expect(!ls2k::vision::SampleLumaAt(frame, -0.1F, 0.0F, y),
            "negative row must fail");
     Expect(!ls2k::vision::SampleLumaAt(frame, 0.0F, 4.0F, y),
            "outside col must fail");
+    Expect(!ls2k::vision::SampleLumaPixelAt(frame, -1, 0, y),
+           "pixel sampler negative row must fail");
+    Expect(!ls2k::vision::SampleLumaPixelAt(frame, 0, 4, y),
+           "pixel sampler outside col must fail");
 }
 
 }  // namespace

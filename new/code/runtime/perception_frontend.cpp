@@ -79,7 +79,7 @@ void PerceptionFrontend::ConsumeMemoryResetRequest() {
     consumed_perception_memory_reset_generation_ = generation;
 }
 
-/// 处理一帧图像：故障注入 → 空帧处理 → Otsu → sparse BEV 感知 → 结果缓存。
+/// 处理一帧图像：故障注入 → 空帧处理 → 二值模型 → sparse BEV 感知 → 结果缓存。
 /// 支持通过环境变量 LS2K_FAULT_INJECT_DROP_FRAME_EVERY_N 模拟帧丢失。
 /// @param params  运行时参数
 bool PerceptionFrontend::ProcessOneFrame(const port::RuntimeParameters& params) {

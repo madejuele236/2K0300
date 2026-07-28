@@ -247,6 +247,8 @@ void AppendCircleV2TelemetryJson(std::ostringstream& stream,
     AppendJsonBool(stream, circle.motion_arc_available);
     stream << ",\"geometry_available\":";
     AppendJsonBool(stream, circle.geometry_available);
+    stream << ",\"geometry_source\":";
+    AppendJsonString(stream, circle.geometry_source);
     stream << ",\"inner_trace_elapsed_ms\":" << circle.inner_trace_elapsed_ms;
     stream << ",\"directed_turn_angle_rad\":";
     AppendJsonNumber(stream, circle.directed_turn_angle_rad);
@@ -594,13 +596,18 @@ std::string EncodeAssistantTelemetry(const AssistantTelemetryView& telemetry) {
     AppendJsonString(stream, telemetry.motion_phase);
     stream << ",\"perception_tag\":";
     AppendJsonString(stream, telemetry.perception_tag);
-    stream << ",\"otsu\":{\"valid\":";
-    AppendJsonBool(stream, telemetry.otsu.valid);
-    stream << ",\"threshold\":" << telemetry.otsu.threshold;
+    stream << ",\"binary_model\":{\"valid\":";
+    AppendJsonBool(stream, telemetry.binary_model.valid);
+    stream << ",\"residual_threshold\":"
+           << telemetry.binary_model.residual_threshold;
+    stream << ",\"luma_scale\":" << port::kBinaryResidualLumaScale;
+    stream << ",\"illumination_weight\":"
+           << telemetry.binary_model.illumination_weight;
     stream << ",\"source\":";
-    AppendJsonString(stream, port::ToString(telemetry.otsu.source));
+    AppendJsonString(stream, port::ToString(telemetry.binary_model.source));
     stream << ",\"stale_frames\":"
-           << static_cast<unsigned int>(telemetry.otsu.stale_frames) << "}";
+           << static_cast<unsigned int>(telemetry.binary_model.stale_frames)
+           << "}";
     stream << ",\"boundary_row_count\":" << telemetry.boundary_row_count;
     stream << ",\"boundary_jump_count\":" << telemetry.boundary_jump_count;
     stream << ",\"boundary_span_count\":" << telemetry.boundary_span_count;

@@ -167,7 +167,7 @@ struct SteeringDebugSnapshot {
     bool valid = false;                       ///< 转向快照是否有效
     std::uint64_t frame_id = 0;              ///< 关联的相机帧 ID
     std::uint64_t capture_time_ms = 0;       ///< 帧捕获时间戳（ms）
-    port::OtsuThresholdState otsu{};           ///< 当前帧统一 Otsu 状态
+    port::BinaryModelState binary_model{};     ///< 当前帧统一空间二值模型
     std::string perception_tag = "none";      ///< 感知事实标签
     std::size_t boundary_row_count = 0;        ///< sparse boundary row 数量
     std::size_t boundary_jump_count = 0;       ///< 二值转换边界数量

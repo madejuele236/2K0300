@@ -14,7 +14,7 @@
 #include "vision/bev/bev_simple_perception.hpp"
 #include "vision/elements/cross_exit_element_evidence.hpp"
 #include "vision/elements/cross_straight_path_planner.hpp"
-#include "vision/image/otsu_threshold.hpp"
+#include "vision/image/illumination_binary_model.hpp"
 
 namespace {
 
@@ -109,16 +109,17 @@ ReplayResult Replay(const std::vector<std::uint8_t>& gray,
     frame.height = 240;
     frame.stride = 640;
 
-    const auto otsu = ls2k::vision::ComputeSparseOtsuThreshold(frame);
-    Require(otsu.valid, "Otsu invalid");
-    const ls2k::port::OtsuThresholdState state{
-        true, otsu.threshold, ls2k::port::OtsuThresholdSource::kCurrent, 0U};
+    ls2k::vision::BinaryModelTracker model_tracker{};
+    const ls2k::port::BinaryModelState model = model_tracker.Update(
+        ls2k::vision::ComputeIlluminationBinaryModel(frame));
+    Require(model.valid, "binary model invalid");
     ls2k::vision::BEVSampleProjectionLut lut{};
     const auto facts =
-        ls2k::vision::RunBEVSimplePerception(frame, state, params, projector, &lut);
+        ls2k::vision::RunBEVSimplePerception(frame, model, params, projector, &lut);
     auto evidence = ls2k::vision::DetectCrossExitEvidence(
         facts.rows, facts.origin_to_cross_sample_midpoint_connectivity, params);
-    const ls2k::vision::BEVImageSegmentConnectivity connectivity(frame, projector, state);
+    const ls2k::vision::BEVImageSegmentConnectivity connectivity(
+        frame, projector, model);
     ReplayResult result{};
     result.cross_present = evidence.present;
     result.ordinary_path = facts.reference_path;
