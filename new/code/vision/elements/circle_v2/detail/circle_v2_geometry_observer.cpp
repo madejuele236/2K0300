@@ -10,6 +10,7 @@ namespace ls2k::vision::detail {
 namespace {
 
 constexpr std::size_t kMinimumLinePointCount = 2U;
+constexpr float kFixedExitRayLateralPerForward = 1.73205080757F;
 
 CircleDir Opposite(CircleDir dir) {
     if (dir == CircleDir::kLeft) {
@@ -138,85 +139,23 @@ bool IsStraightEnough(const port::BEVReferencePath& edge_path,
            max_lateral - min_lateral <= max_lateral_span_m;
 }
 
-bool FitTerminalTangent(const std::vector<port::BEVPoint>& points,
-                        float fit_span_m,
-                        port::BEVPoint& direction) {
-    if (points.size() < kMinimumLinePointCount || fit_span_m <= 0.0F) {
-        return false;
-    }
-
-    std::vector<float> distance_to_end(points.size(), 0.0F);
-    std::size_t first = points.size() - 1U;
-    float accumulated_m = 0.0F;
-    while (first > 0U) {
-        const port::BEVPoint& a = points[first - 1U];
-        const port::BEVPoint& b = points[first];
-        const float segment_m = std::hypot(b.forward_m - a.forward_m,
-                                           b.lateral_m - a.lateral_m);
-        if (accumulated_m + segment_m > fit_span_m) {
-            break;
-        }
-        accumulated_m += segment_m;
-        --first;
-        distance_to_end[first] = accumulated_m;
-    }
-    if (points.size() - first < kMinimumLinePointCount) {
-        return false;
-    }
-
-    double weight_sum = 0.0;
-    double mean_forward = 0.0;
-    double mean_lateral = 0.0;
-    for (std::size_t index = first; index < points.size(); ++index) {
-        const double weight = 1.0 +
-            static_cast<double>(fit_span_m - distance_to_end[index]) /
-                static_cast<double>(fit_span_m);
-        weight_sum += weight;
-        mean_forward += weight * points[index].forward_m;
-        mean_lateral += weight * points[index].lateral_m;
-    }
-    mean_forward /= weight_sum;
-    mean_lateral /= weight_sum;
-
-    double covariance_ff = 0.0;
-    double covariance_fl = 0.0;
-    double covariance_ll = 0.0;
-    for (std::size_t index = first; index < points.size(); ++index) {
-        const double weight = 1.0 +
-            static_cast<double>(fit_span_m - distance_to_end[index]) /
-                static_cast<double>(fit_span_m);
-        const double df = points[index].forward_m - mean_forward;
-        const double dl = points[index].lateral_m - mean_lateral;
-        covariance_ff += weight * df * df;
-        covariance_fl += weight * df * dl;
-        covariance_ll += weight * dl * dl;
-    }
-    const double angle = 0.5 * std::atan2(2.0 * covariance_fl,
-                                          covariance_ff - covariance_ll);
-    direction.forward_m = static_cast<float>(std::cos(angle));
-    direction.lateral_m = static_cast<float>(std::sin(angle));
-
-    const port::BEVPoint& first_point = points[first];
-    const port::BEVPoint& last_point = points.back();
-    const float orientation =
-        direction.forward_m * (last_point.forward_m - first_point.forward_m) +
-        direction.lateral_m * (last_point.lateral_m - first_point.lateral_m);
-    if (orientation < 0.0F) {
-        direction.forward_m = -direction.forward_m;
-        direction.lateral_m = -direction.lateral_m;
-    }
-    return std::isfinite(direction.forward_m) &&
-           std::isfinite(direction.lateral_m) &&
-           direction.forward_m > 1.0e-4F;
+bool IsFartherTowardExit(CircleDir dir, float candidate_m, float current_m) {
+    return dir == CircleDir::kRight ? candidate_m > current_m
+                                    : candidate_m < current_m;
 }
 
-bool BuildFovTangentBoundaryPath(const SceneFrameView& frame,
-                                 CircleDir side,
-                                 const CircleV2Params& params,
-                                 port::BEVReferencePath& edge_path) {
+bool BuildFixedExitRayBoundaryPath(const SceneFrameView& frame,
+                                   CircleDir dir,
+                                   const CircleV2Params& params,
+                                   port::BEVReferencePath& edge_path) {
+    const CircleDir side = Opposite(dir);
+    if (side == CircleDir::kNone) {
+        return false;
+    }
+
     std::vector<port::BEVPoint> observed_points;
     observed_points.reserve(frame.rows.rows.size());
-    std::size_t first_fov_row = frame.rows.rows.size();
+    bool ended_at_fov = false;
     float previous_forward_m = 0.0F;
 
     for (std::size_t row_index = 0; row_index < frame.rows.rows.size(); ++row_index) {
@@ -228,7 +167,7 @@ bool BuildFovTangentBoundaryPath(const SceneFrameView& frame,
         const BEVWhiteRun* run = row.valid ? UniqueOriginConnectedRun(row) : nullptr;
         if (run == nullptr) {
             if (!observed_points.empty()) {
-                return false;
+                break;
             }
             continue;
         }
@@ -241,58 +180,67 @@ bool BuildFovTangentBoundaryPath(const SceneFrameView& frame,
             }
             if (!observed_points.empty() &&
                 row.forward_m - previous_forward_m > params.max_adjacent_distance_m) {
-                return false;
+                break;
             }
             observed_points.push_back({row.forward_m, lateral_m});
             previous_forward_m = row.forward_m;
             continue;
         }
-        if (endpoint == BEVWhiteRunEndpointState::kFovEdge &&
-            observed_points.size() >= kMinimumLinePointCount &&
-            row.forward_m - previous_forward_m <= params.max_adjacent_distance_m) {
-            first_fov_row = row_index;
-            break;
-        }
         if (!observed_points.empty()) {
-            return false;
+            ended_at_fov =
+                endpoint == BEVWhiteRunEndpointState::kFovEdge &&
+                row.forward_m - previous_forward_m <= params.max_adjacent_distance_m;
+            break;
         }
     }
 
-    if (first_fov_row >= frame.rows.rows.size()) {
+    if (observed_points.size() < kMinimumLinePointCount) {
         return false;
     }
-    port::BEVPoint tangent{};
-    if (!FitTerminalTangent(observed_points, params.exit_tangent_fit_span_m, tangent)) {
+
+    std::size_t cutpoint_index = 0U;
+    for (std::size_t index = 1U; index < observed_points.size(); ++index) {
+        if (IsFartherTowardExit(dir,
+                                observed_points[index].lateral_m,
+                                observed_points[cutpoint_index].lateral_m)) {
+            cutpoint_index = index;
+        }
+    }
+    const bool visible_turn = cutpoint_index + 1U < observed_points.size();
+    const bool terminal_fov =
+        ended_at_fov && cutpoint_index + 1U == observed_points.size();
+    if ((!visible_turn && !terminal_fov) ||
+        cutpoint_index + 1U < kMinimumLinePointCount) {
         return false;
     }
 
     edge_path.mode = port::ReferenceMode::kIntervalCenter;
     std::size_t point_count = 0U;
-    for (const port::BEVPoint& point : observed_points) {
-        AppendBoundaryPoint(edge_path, point_count, point, 0.8F);
+    for (std::size_t index = 0U; index <= cutpoint_index; ++index) {
+        AppendBoundaryPoint(edge_path,
+                            point_count,
+                            observed_points[index],
+                            0.8F);
     }
-    const port::BEVPoint cutpoint = observed_points.back();
+    const port::BEVPoint cutpoint = observed_points[cutpoint_index];
     const std::size_t observed_count = point_count;
-    for (std::size_t row_index = first_fov_row;
-         row_index < frame.rows.rows.size() && point_count < edge_path.sampled_path.size();
+    const float lateral_per_forward_m =
+        dir == CircleDir::kRight ? kFixedExitRayLateralPerForward
+                                 : -kFixedExitRayLateralPerForward;
+    for (std::size_t row_index = 0U;
+         row_index < frame.rows.rows.size();
          ++row_index) {
-        const float forward_m = frame.rows.rows[row_index].forward_m;
+        const BEVSimpleRowScan& row = frame.rows.rows[row_index];
+        const float forward_m = row.forward_m;
         if (forward_m <= cutpoint.forward_m ||
             forward_m > params.exit_geometry_forward_max_m) {
             continue;
         }
-        const float ray_distance_m =
-            (forward_m - cutpoint.forward_m) / tangent.forward_m;
-        if (!(ray_distance_m > 0.0F)) {
-            continue;
-        }
         const port::BEVPoint point{
             forward_m,
-            cutpoint.lateral_m + ray_distance_m * tangent.lateral_m,
+            cutpoint.lateral_m +
+                lateral_per_forward_m * (forward_m - cutpoint.forward_m),
         };
-        if (!std::isfinite(point.lateral_m)) {
-            return false;
-        }
         AppendBoundaryPoint(edge_path, point_count, point, 0.7F);
     }
     return point_count > observed_count;
@@ -345,13 +293,11 @@ CircleV2GeometryObservation ObserveCircleV2Geometry(const SceneFrameView& frame,
         params.exit_geometry_forward_max_m,
         params.max_adjacent_distance_m,
         outer.edge_path);
-    port::BEVReferencePath tangent_path{};
-    // A real-boundary -> FOV transition means the published path contains inferred
-    // geometry, even when the visible prefix is locally straight.
-    if (BuildFovTangentBoundaryPath(frame, outer_side, params, tangent_path)) {
+    port::BEVReferencePath exit_ray_path{};
+    if (BuildFixedExitRayBoundaryPath(frame, dir, params, exit_ray_path)) {
         outer.available = true;
-        outer.source = CircleV2GeometrySource::kFovTangent;
-        outer.edge_path = tangent_path;
+        outer.source = CircleV2GeometrySource::kFixedExitRay;
+        outer.edge_path = exit_ray_path;
     } else if (IsStraightEnough(outer.edge_path,
                                 outer_point_count,
                                 params.exit_straight_max_lateral_span_m)) {

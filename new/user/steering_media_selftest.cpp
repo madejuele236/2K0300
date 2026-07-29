@@ -779,8 +779,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     Require(Contains(header_json, "\"CIRCLE_V2_CALM_TRACE_MS\":1000") &&
                 Contains(header_json, "\"CIRCLE_V2_COOLDOWN_MS\":3000"),
             "config snapshot must include CircleV2 timed phases");
-    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":"),
-            "config snapshot must include CircleV2 tangent fit span");
+    Require(!Contains(header_json, "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":"),
+            "config snapshot must not expose removed CircleV2 tangent fit span");
     Require(Contains(header_json, "\"CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M\":0"),
             "config snapshot must include CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),
@@ -1524,8 +1524,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
     Require(Contains(header_json, "\"CIRCLE_V2_CALM_TRACE_MS\":1000") &&
                 Contains(header_json, "\"CIRCLE_V2_COOLDOWN_MS\":3000"),
             "service config snapshot must expose CircleV2 timed phases");
-    Require(Contains(header_json, "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":"),
-            "service config snapshot must expose CircleV2 tangent fit span");
+    Require(!Contains(header_json, "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":"),
+            "service config snapshot must not expose removed CircleV2 tangent fit span");
     Require(Contains(header_json, "\"CIRCLE_V2_INNER_TRACE_PATH_OFFSET_M\":0"),
             "service config snapshot must expose CircleV2 inner path offset");
     Require(Contains(header_json, "\"CIRCLE_V2_OPPOSITE_STRAIGHT_CONFIDENCE_MIN\":0.699999988079"),

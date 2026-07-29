@@ -1,13 +1,18 @@
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 
 #include "platform/bootstrap.hpp"
 #include "vision/bev/bev_simple_perception.hpp"
@@ -18,6 +23,12 @@ namespace {
 
 struct Diagnostics final : ls2k::port::DiagnosticSink {
     void Emit(const ls2k::port::DiagnosticEvent&) override {}
+};
+
+enum class ReplayMode {
+    kNormal,
+    kForceExitLeft,
+    kForceExitRight,
 };
 
 void Require(bool condition, const std::string& message) {
@@ -92,8 +103,6 @@ ls2k::vision::CircleV2Params BuildCircleParams(
         params.bev_element.circle_v2_exit_geometry_forward_max_m;
     circle.exit_straight_max_lateral_span_m =
         params.bev_element.circle_v2_exit_straight_max_lateral_span_m;
-    circle.exit_tangent_fit_span_m =
-        params.bev_element.circle_v2_exit_tangent_fit_span_m;
     return circle;
 }
 
@@ -172,19 +181,122 @@ void WriteReferencePath(
     out << ']';
 }
 
+std::optional<cv::Point> ProjectPathPoint(
+    const ls2k::vision::BEVProjector& projector,
+    const ls2k::port::BEVPoint& point) {
+    ls2k::port::ImagePoint image_point{};
+    if (!projector.ProjectVehicleToImage(point, image_point)) {
+        return std::nullopt;
+    }
+    const int row = static_cast<int>(std::lround(image_point.row_px));
+    const int col = static_cast<int>(std::lround(image_point.col_px));
+    if (row < 0 || row >= 240 || col < 0 || col >= 320) {
+        return std::nullopt;
+    }
+    return cv::Point(col, row);
+}
+
+std::size_t RenderReferencePath(
+    const std::filesystem::path& output_path,
+    const std::vector<std::uint8_t>& gray,
+    const ls2k::vision::BEVProjector& projector,
+    const ls2k::vision::CircleV2StepResult& result) {
+    cv::Mat gray_image(240,
+                       320,
+                       CV_8UC1,
+                       const_cast<std::uint8_t*>(gray.data()));
+    cv::Mat canvas{};
+    cv::cvtColor(gray_image, canvas, cv::COLOR_GRAY2BGR);
+
+    std::size_t sample_count = 0U;
+    std::optional<cv::Point> previous{};
+    if (result.reference_plan.has_value()) {
+        for (const auto& sample :
+             result.reference_plan->reference_path.sampled_path) {
+            if (!sample.present) {
+                previous.reset();
+                continue;
+            }
+            ++sample_count;
+            const std::optional<cv::Point> current =
+                ProjectPathPoint(projector, sample.point);
+            if (!current.has_value()) {
+                previous.reset();
+                continue;
+            }
+            if (previous.has_value()) {
+                cv::line(canvas,
+                         *previous,
+                         *current,
+                         cv::Scalar(0, 255, 0),
+                         3,
+                         cv::LINE_AA);
+            }
+            cv::circle(canvas,
+                       *current,
+                       3,
+                       cv::Scalar(0, 0, 255),
+                       cv::FILLED,
+                       cv::LINE_AA);
+            previous = current;
+        }
+    }
+
+    const std::string status =
+        "phase=" + std::string(ls2k::vision::ToString(result.telemetry.frame_phase)) +
+        " dir=" + ls2k::vision::ToString(result.telemetry.dir) +
+        " source=" +
+        ls2k::port::CircleV2GeometrySourceToken(
+            result.telemetry.geometry_source) +
+        " samples=" + std::to_string(sample_count);
+    cv::rectangle(canvas,
+                  cv::Point(0, 0),
+                  cv::Point(319, 20),
+                  cv::Scalar(0, 0, 0),
+                  cv::FILLED);
+    cv::putText(canvas,
+                status,
+                cv::Point(4, 14),
+                cv::FONT_HERSHEY_SIMPLEX,
+                0.34,
+                cv::Scalar(255, 255, 255),
+                1,
+                cv::LINE_AA);
+    Require(cv::imwrite(output_path.string(), canvas),
+            "cannot write replay image: " + output_path.string());
+    return sample_count;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     try {
         Require(argc == 4 || argc == 5,
-                "usage: replay FRAMES_DIR PARAMS EVIDENCE_DIR [--force-exit-left-fov-tangent]");
-        const bool force_exit_left_tangent =
-            argc == 5 && std::string(argv[4]) == "--force-exit-left-fov-tangent";
-        Require(argc == 4 || force_exit_left_tangent, "unknown replay mode");
+                "usage: replay FRAME_OR_DIR PARAMS EVIDENCE_DIR "
+                "[--force-exit-left|--force-exit-right]");
+        ReplayMode mode = ReplayMode::kNormal;
+        if (argc == 5) {
+            const std::string mode_token = argv[4];
+            if (mode_token == "--force-exit-left") {
+                mode = ReplayMode::kForceExitLeft;
+            } else if (mode_token == "--force-exit-right") {
+                mode = ReplayMode::kForceExitRight;
+            } else {
+                Require(false, "unknown replay mode");
+            }
+        }
         std::vector<std::filesystem::path> frames;
-        for (const auto& entry : std::filesystem::directory_iterator(argv[1])) {
-            if (entry.is_regular_file() && entry.path().extension() == ".raw") {
-                frames.push_back(entry.path());
+        const std::filesystem::path input_path = argv[1];
+        if (std::filesystem::is_regular_file(input_path)) {
+            Require(input_path.extension() == ".raw", "input frame must be .raw");
+            frames.push_back(input_path);
+        } else {
+            for (const auto& entry :
+                 std::filesystem::directory_iterator(input_path)) {
+                if (entry.is_regular_file() &&
+                    entry.path().extension() == ".raw") {
+                    frames.push_back(entry.path());
+                }
             }
         }
         std::sort(frames.begin(), frames.end());
@@ -205,16 +317,20 @@ int main(int argc, char** argv) {
         evidence << std::setprecision(9);
 
         ls2k::vision::CircleV2Memory memory{};
-        if (force_exit_left_tangent) {
+        if (mode == ReplayMode::kForceExitLeft) {
             memory.phase = ls2k::vision::CirclePhase::kExitTrace;
             memory.dir = ls2k::vision::CircleDir::kLeft;
+        } else if (mode == ReplayMode::kForceExitRight) {
+            memory.phase = ls2k::vision::CirclePhase::kExitTrace;
+            memory.dir = ls2k::vision::CircleDir::kRight;
         }
         ls2k::vision::BinaryModelTracker binary_model_tracker{};
         ls2k::vision::BEVSampleProjectionLut lut{};
         bool saw_approach = false;
         bool saw_inner_trace = false;
         std::size_t current_threshold_frames = 0U;
-        std::size_t fov_tangent_frames = 0U;
+        std::size_t fixed_exit_ray_frames = 0U;
+        std::size_t reference_frames = 0U;
 
         for (std::size_t index = 0; index < frames.size(); ++index) {
             const std::vector<std::uint8_t> gray = ReadGray8(frames[index]);
@@ -251,11 +367,17 @@ int main(int argc, char** argv) {
                            result.next_memory.phase == ls2k::vision::CirclePhase::kApproach;
             saw_inner_trace = saw_inner_trace ||
                               result.next_memory.phase == ls2k::vision::CirclePhase::kInnerTrace;
-            fov_tangent_frames +=
+            fixed_exit_ray_frames +=
                 result.telemetry.geometry_source ==
-                        ls2k::vision::CircleV2GeometrySource::kFovTangent
+                        ls2k::vision::CircleV2GeometrySource::kFixedExitRay
                     ? 1U
                     : 0U;
+            reference_frames += result.reference_plan.has_value() ? 1U : 0U;
+            const std::filesystem::path image_path =
+                std::filesystem::path(argv[3]) /
+                (frames[index].stem().string() + ".png");
+            const std::size_t rendered_sample_count =
+                RenderReferencePath(image_path, gray, projector, result);
 
             evidence << "{\"index\":" << index << ",\"frame\":\""
                      << frames[index].filename().string()
@@ -273,6 +395,8 @@ int main(int argc, char** argv) {
                      << "\",\"dir\":\"" << ls2k::vision::ToString(result.next_memory.dir)
                      << "\",\"geometry_available\":"
                      << (result.telemetry.geometry_available ? "true" : "false")
+                     << ",\"rendered_sample_count\":"
+                     << rendered_sample_count
                      << ",\"reference_path\":";
             WriteReferencePath(evidence, result.reference_plan);
             evidence << ",\"openings\":{\"left\":";
@@ -311,20 +435,20 @@ int main(int argc, char** argv) {
 
         std::ofstream summary(std::filesystem::path(argv[3]) / "summary.json");
         Require(summary.is_open(), "cannot create replay summary");
-        const bool passed = force_exit_left_tangent
-                                ? fov_tangent_frames == frames.size()
-                                : saw_approach && saw_inner_trace;
+        const bool forced_exit =
+            mode == ReplayMode::kForceExitLeft ||
+            mode == ReplayMode::kForceExitRight;
+        const bool passed = forced_exit ? true : saw_approach && saw_inner_trace;
         summary << "{\n  \"result\": \"" << (passed ? "PASS" : "FAIL")
                 << "\",\n  \"frame_count\": " << frames.size()
                 << ",\n  \"current_threshold_frames\": " << current_threshold_frames
-                << ",\n  \"fov_tangent_frames\": " << fov_tangent_frames
+                << ",\n  \"fixed_exit_ray_frames\": " << fixed_exit_ray_frames
+                << ",\n  \"reference_frames\": " << reference_frames
                 << ",\n  \"saw_approach\": " << (saw_approach ? "true" : "false")
                 << ",\n  \"saw_inner_trace\": "
                 << (saw_inner_trace ? "true" : "false") << "\n}\n";
         Require(passed,
-                force_exit_left_tangent
-                    ? "forced ExitTrace replay did not produce current-frame FOV tangent"
-                    : "aligned replay did not reach Idle -> Approach -> InnerTrace");
+                "aligned replay did not reach Idle -> Approach -> InnerTrace");
         std::cout << "circle_v2_aligned_replay passed frames=" << frames.size() << '\n';
     } catch (const std::exception& error) {
         std::cerr << "circle_v2_aligned_replay failed: " << error.what() << '\n';

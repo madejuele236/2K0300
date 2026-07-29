@@ -92,13 +92,12 @@ struct CircleV2Params {
     float exit_geometry_forward_min_m = 0.05F;
     float exit_geometry_forward_max_m = 0.50F;
     float exit_straight_max_lateral_span_m = 0.13F;
-    float exit_tangent_fit_span_m = 0.10F;
 };
 
 enum class CircleV2GeometrySource {
     kNone,
     kObservedBoundary,
-    kFovTangent,
+    kFixedExitRay,
 };
 
 inline const char* CircleV2GeometrySourceToken(CircleV2GeometrySource source) {
@@ -107,8 +106,8 @@ inline const char* CircleV2GeometrySourceToken(CircleV2GeometrySource source) {
             return "none";
         case CircleV2GeometrySource::kObservedBoundary:
             return "observed_boundary";
-        case CircleV2GeometrySource::kFovTangent:
-            return "fov_tangent";
+        case CircleV2GeometrySource::kFixedExitRay:
+            return "fixed_exit_ray";
     }
     return "none";
 }

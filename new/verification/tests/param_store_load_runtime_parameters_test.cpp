@@ -346,8 +346,7 @@ int main(int argc, char** argv) {
                       "\"CIRCLE_V2_INNER_GEOMETRY_FORWARD_MAX_M\": 0.52,"
                       "\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M\": 0.08,"
                       "\"CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M\": 0.53,"
-                      "\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\": 0.14,"
-                      "\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\": 0.18}"));
+                      "\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\": 0.14}"));
         CaptureDiagnostics enabled_diagnostics{};
         const ls2k::port::RuntimeParameters enabled =
             LoadFixture(enabled_path, enabled_diagnostics);
@@ -1244,8 +1243,6 @@ int main(int argc, char** argv) {
              "  \"BEV_ELEMENT\": {\"CIRCLE_V2_CALM_TRACE_MS\": 0}"},
             {"invalid_v2_cooldown_time",
              "  \"BEV_ELEMENT\": {\"CIRCLE_V2_COOLDOWN_MS\": -1}"},
-            {"invalid_v2_tangent_span",
-             "  \"BEV_ELEMENT\": {\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\": 0}"},
             {"invalid_v2_stall_timeout",
              "  \"BEV_ELEMENT\": {\"CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS\": 0}"},
             {"invalid_v2_path_offset",

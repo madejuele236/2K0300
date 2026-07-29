@@ -981,8 +981,6 @@ bool EncodeSteeringMediaConfigSnapshot(const SteeringMediaConfigSnapshot& snapsh
     AppendJsonNumber(header, circle.circle_v2_exit_geometry_forward_max_m);
     header << ",\"CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M\":";
     AppendJsonNumber(header, circle.circle_v2_exit_straight_max_lateral_span_m);
-    header << ",\"CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M\":";
-    AppendJsonNumber(header, circle.circle_v2_exit_tangent_fit_span_m);
     header << "}";
     header << ",\"REFERENCE_TIME_ALIGNMENT\":{";
     header << "\"ENABLED\":";

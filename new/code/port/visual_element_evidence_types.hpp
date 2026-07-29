@@ -144,7 +144,6 @@ struct BEVElementParameters {
     float circle_v2_exit_geometry_forward_min_m = 0.05F;
     float circle_v2_exit_geometry_forward_max_m = 0.50F;
     float circle_v2_exit_straight_max_lateral_span_m = 0.13F;
-    float circle_v2_exit_tangent_fit_span_m = 0.10F;
 };
 
 }  // namespace ls2k::port

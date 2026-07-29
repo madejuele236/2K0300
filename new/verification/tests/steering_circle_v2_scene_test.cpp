@@ -1074,43 +1074,60 @@ void TestExitTraceRejectsNonStraightOuterEdge() {
            "ExitTrace telemetry must expose unavailable geometry");
 }
 
-void TestExitTraceUsesCurrentFrameFovTangent() {
-    using Endpoint = ls2k::vision::BEVWhiteRunEndpointState;
+void TestExitTraceUsesFixedRayAtVisibleCutpoint() {
+    constexpr float kExpectedLateralPerForward = 1.73205080757F;
     std::vector<ls2k::vision::BEVSimpleRowScan> rows{
-        WhiteRunOnlyRow(0.10F, -0.22F, 0.20F),
-        WhiteRunOnlyRow(0.15F, -0.22F, 0.36F),
-        WhiteRunOnlyRow(0.20F, -0.22F, 0.52F),
-        WhiteRunOnlyRow(0.25F, -0.22F, 0.80F, Endpoint::kBoundary, Endpoint::kFovEdge),
-        WhiteRunOnlyRow(0.30F, -0.22F, 0.80F, Endpoint::kBoundary, Endpoint::kFovEdge),
+        WhiteRunOnlyRow(0.10F, -0.30F, 0.20F),
+        WhiteRunOnlyRow(0.15F, -0.25F, 0.20F),
+        WhiteRunOnlyRow(0.20F, -0.20F, 0.20F),
+        WhiteRunOnlyRow(0.25F, -0.25F, 0.20F),
+        WhiteRunOnlyRow(0.30F, -0.30F, 0.20F),
     };
     ls2k::vision::CircleV2Memory prior{};
     prior.phase = ls2k::vision::CirclePhase::kExitTrace;
-    prior.dir = ls2k::vision::CircleDir::kLeft;
+    prior.dir = ls2k::vision::CircleDir::kRight;
     prior.clock.turn_origin_capture_time_ms = 100;
     ls2k::vision::CircleV2Params params{};
-    params.exit_tangent_fit_span_m = 0.20F;
 
     const auto result = ls2k::vision::CircleV2Scene{}.Step(
         FrameWithCenterPath(rows, -5.0F, CenterPath()), prior, params);
     Expect(result.reference_plan.has_value(),
-           "a visible outer cutpoint followed by FOV rows must produce an exit tangent");
+           "a visible outer-boundary turn must produce a fixed exit ray without FOV");
     Expect(result.telemetry.geometry_source ==
-               ls2k::vision::CircleV2GeometrySource::kFovTangent,
-           "the temporary ray must remain explicitly distinguishable from observed boundary");
+               ls2k::vision::CircleV2GeometrySource::kFixedExitRay,
+           "the temporary fixed ray must remain distinguishable from observed boundary");
     Expect(result.next_memory.phase == ls2k::vision::CirclePhase::kExitTrace,
-           "a temporary FOV tangent must not masquerade as a found outer exit boundary");
+           "a temporary fixed ray must not masquerade as a found outer exit boundary");
     const auto& samples = result.reference_plan->reference_path.sampled_path;
-    Expect(samples[3].present && samples[3].point.lateral_m > samples[2].point.lateral_m,
-           "the exit tangent must extend the terminal outer-boundary direction");
+    Expect(samples[3].present && samples[4].present &&
+               std::fabs((samples[4].point.lateral_m -
+                          samples[3].point.lateral_m) -
+                         kExpectedLateralPerForward *
+                             (samples[4].point.forward_m -
+                              samples[3].point.forward_m)) < 1.0e-5F,
+           "right-circle exit ray must extend toward upper-right at 60 degrees");
 
-    rows[2].valid = false;
-    const auto gap_result = ls2k::vision::CircleV2Scene{}.Step(
+    for (auto& row : rows) {
+        const float left_m = row.white_runs.front().left_m;
+        row.white_runs.front().left_m = -0.20F;
+        row.white_runs.front().right_m = -left_m;
+    }
+    prior.dir = ls2k::vision::CircleDir::kLeft;
+    const auto mirrored = ls2k::vision::CircleV2Scene{}.Step(
         FrameWithCenterPath(rows, -5.0F, CenterPath()), prior, params);
-    Expect(!gap_result.reference_plan.has_value(),
-           "an internal unobservable row must break the current-frame tangent chain");
-    Expect(gap_result.telemetry.geometry_source ==
-               ls2k::vision::CircleV2GeometrySource::kNone,
-           "an interrupted boundary-to-FOV transition must not publish inferred geometry");
+    Expect(mirrored.reference_plan.has_value() &&
+               mirrored.telemetry.geometry_source ==
+                   ls2k::vision::CircleV2GeometrySource::kFixedExitRay,
+           "mirrored left-circle cutpoint must also produce a fixed exit ray");
+    const auto& mirrored_samples =
+        mirrored.reference_plan->reference_path.sampled_path;
+    Expect(mirrored_samples[3].present && mirrored_samples[4].present &&
+               std::fabs((mirrored_samples[4].point.lateral_m -
+                          mirrored_samples[3].point.lateral_m) +
+                         kExpectedLateralPerForward *
+                             (mirrored_samples[4].point.forward_m -
+                              mirrored_samples[3].point.forward_m)) < 1.0e-5F,
+           "left-circle exit ray must extend toward upper-left at 60 degrees");
 }
 
 void TestExitTraceUsesOrdinaryRoadHalfWidthFact() {
@@ -1630,7 +1647,7 @@ int main() {
     TestInnerTraceSurvivesUnavailableMotionArc();
     TestReferenceHoldResetPreservesCircleV2Memory();
     TestExitTraceRejectsNonStraightOuterEdge();
-    TestExitTraceUsesCurrentFrameFovTangent();
+    TestExitTraceUsesFixedRayAtVisibleCutpoint();
     TestExitTraceUsesOrdinaryRoadHalfWidthFact();
     TestExitTraceAcceptsNonSelectedBoundaryClippedInterval();
     TestExitTraceAcceptsSelectedBoundarySpanEdgePath();

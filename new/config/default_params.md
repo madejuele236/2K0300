@@ -338,7 +338,7 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 | --- | ---: | --- | --- | --- | --- |
 | `BEV_ELEMENT.CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG` | `90` | 从进入 InnerTrace 的 yaw 原点起，方向归一化的历史最大 directed yaw 达到 X 后进入 NormalTrace。NormalTrace 不发布 Circle reference，恢复普通双边/单边寻线。 | 延长仅寻内线阶段。 | 更早恢复普通寻线。 | `90deg` 是本次状态语义的初始假设；必须用完整动态绕环证据校准。 |
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_TRACE_START_YAW_DEG` | `270` | 同一 yaw 事实达到 Y 后进入 ExitTrace，仅发布外线参考；必须满足 `X < Y < Z`。 | 延后仅寻外线。 | 更早切到外线。 | `270deg` 是初始假设，不由静态 Y 点图片校准。 |
-| `BEV_ELEMENT.CIRCLE_V2_CALM_FALLBACK_YAW_DEG` | `340` | 达到 Z 时无条件从角度阶段进入 CalmTrace；真实外线在 ExitTrace 被观察到也可提前进入 CalmTrace。 | 延后保底退出。 | 更早保底退出。 | `340deg` 是保底初值；FOV tangent 不属于真实外线，不能触发该提前转移。 |
+| `BEV_ELEMENT.CIRCLE_V2_CALM_FALLBACK_YAW_DEG` | `340` | 达到 Z 时无条件从角度阶段进入 CalmTrace；真实外线在 ExitTrace 被观察到也可提前进入 CalmTrace。 | 延后保底退出。 | 更早保底退出。 | `340deg` 是保底初值；固定出环射线属于 Circle 私有推断几何，不能触发该提前转移。 |
 | `BEV_ELEMENT.CIRCLE_V2_CALM_TRACE_MS` | `1000` | CalmTrace 按 capture time 持续寻外线的时间，结束后进入 Cooldown。 | 出环后保持外线更久。 | 更早交还普通寻线。 | 初值 `1000ms`；以动态出环轨迹校准。 |
 | `BEV_ELEMENT.CIRCLE_V2_COOLDOWN_MS` | `3000` | Cooldown 按 capture time 屏蔽新 Circle 入口，期间不发布 Circle reference；结束回 Idle。 | 更不易重复进环，但下一环岛识别更晚。 | 更快允许再次进入。 | 初值 `3000ms`。 |
 | `BEV_ELEMENT.CIRCLE_V2_INNER_TRACE_STALL_TIMEOUT_MS` | `2000` | InnerTrace 已持续至少该时间且历史最大 directed yaw 仍小于 stall yaw 门槛时，退回 Idle；合法值 `>=1ms`。 | 给慢速/起步更多时间，错误 InnerTrace 也会滞留更久。 | 更快清除假进入，但低速车辆可能尚未积累足够 yaw 就被退出。 | 保持 `2000ms`。调该值必须同时读取 `inner_trace_elapsed_ms` 和 `directed_turn_angle_rad`；不要只看最终 phase。 |
@@ -349,7 +349,6 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MIN_M` | `0.05` | ExitTrace 从该距离起收集真实对侧边界。 | 排除近端噪声，但直线点减少。 | 纳入更多近端点，可能受车头附近透视/遮挡影响。 | 保持 `0.05m`，等待真实 ExitTrace aligned evidence。 |
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_GEOMETRY_FORWARD_MAX_M` | `0.5` | ExitTrace 真实对侧边界几何 ROI 远端上限。 | 增加直线判定范围和点数，也更容易累计弯曲横向跨度。 | 判定更局部，可能只剩不足两点。 | 保持 `0.50m`；应与 straight span 一起观察但一次只改一个参数。 |
 | `BEV_ELEMENT.CIRCLE_V2_EXIT_STRAIGHT_MAX_LATERAL_SPAN_M` | `0.13` | Exit ROI 内真实对侧边界 `max(lateral)-min(lateral)` 的上限；至少需要 2 个连续真实点。合法值 `(0,2]m`。 | Exit geometry 更宽松，弯曲边界也可能被视为直线。 | 更严格，出口抖动/轻微弯曲会使 geometry unavailable。 | 保持 `0.13m`。若真实出口持续 `geometry_available=false`，先核对点数、端点真实性和实际 lateral span；只有 span 略超阈值时才以 `0.01m` 步长增加。 |
-| `BEV_ELEMENT.CIRCLE_V2_EXIT_TANGENT_FIT_SPAN_M` | `0.1` | Exit ROI 内，外圆真实边界末端紧邻该侧 FOV edge 时，用末端最多这段弧长的当前帧真实点拟合切线并向远端延伸。射线仅是 Circle 私有几何，`geometry_source=fov_tangent`，不写回公共边界，也不触发“找到真实外线”。 | 拟合更平滑但更不局部。 | 更贴近切点局部方向，但点数可能不足两点。 | `0.10m` 是初值；以同帧 row facts/replay 检查切点邻接和射线方向后再调。 |
 
 ### 13.5 推荐调参顺序
 

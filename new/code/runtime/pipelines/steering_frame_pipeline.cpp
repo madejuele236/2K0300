@@ -247,8 +247,6 @@ CircleV2Params BuildCircleV2Params(const port::RuntimeParameters& params) {
         params.bev_element.circle_v2_exit_geometry_forward_max_m;
     circle_params.exit_straight_max_lateral_span_m =
         params.bev_element.circle_v2_exit_straight_max_lateral_span_m;
-    circle_params.exit_tangent_fit_span_m =
-        params.bev_element.circle_v2_exit_tangent_fit_span_m;
     return circle_params;
 }
 
