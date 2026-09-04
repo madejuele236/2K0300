@@ -108,6 +108,7 @@ struct VisualElementEvidenceFrame {
  */
 struct BEVElementParameters {
     // 十字路口出口检测参数
+    bool cross_takeover_enabled = true;          ///< Cross 证据是否允许接管视觉参考路径
     int cross_min_sampleable_per_row = 8;       ///< cross 判定每行最少可采样点数
     int cross_connectivity_sample_index = 9;    ///< 原点连通性目标的 BEV 前向采样点索引，[0,23]
     float cross_boundary_expansion_min_m = 0.055F;  ///< 单侧边界相对前段基线的最小向外垂距

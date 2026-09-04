@@ -461,13 +461,15 @@ port::PerceptionResult SteeringFramePipeline::ProcessFrame(
             }
             const bool zebra_present = ZebraDetected(element_evidence);
             const bool cross_present = element_evidence.cross_exit.present;
+            const bool cross_takeover_active =
+                params.bev_element.cross_takeover_enabled && cross_present;
             if (zebra_present) {
                 candidates[candidate_count++] = line_candidate;
             } else if (ml_snapshot.active) {
                 if (ml_result.candidate.present) {
                     candidates[candidate_count++] = ml_result.candidate;
                 }
-            } else if (cross_present) {
+            } else if (cross_takeover_active) {
                 if (element_result.cross_candidate.present) {
                     candidates[candidate_count++] = element_result.cross_candidate;
                 }

@@ -624,6 +624,7 @@ void TestConfigEnvelopeIsMinimalBevContract() {
     config.param_snapshot.bev_control_model.heading_error_to_wheel_delta_gain = 12.0;
     config.param_snapshot.bev_control_model.curvature_to_wheel_delta_gain = 34.0;
     config.param_snapshot.bev_control_model.tracking_fit_min_samples = 5;
+    config.param_snapshot.bev_element.cross_takeover_enabled = false;
     config.param_snapshot.bev_element.cross_min_sampleable_per_row = 9;
     config.param_snapshot.bev_element.cross_connectivity_sample_index = 6;
     config.param_snapshot.bev_element.cross_boundary_expansion_min_m = 0.071F;
@@ -750,8 +751,8 @@ void TestConfigEnvelopeIsMinimalBevContract() {
             "config snapshot must include tracking fit minimum");
     Require(Contains(header_json, "\"BEV_ELEMENT\""),
             "config snapshot must include BEV element group");
-    Require(!Contains(header_json, "\"CROSS_EXIT_TAKEOVER_ENABLED\""),
-            "config snapshot must not expose removed cross-exit takeover");
+    Require(Contains(header_json, "\"CROSS_TAKEOVER_ENABLED\":false"),
+            "config snapshot must include Cross takeover enablement");
     Require(Contains(header_json, "\"CROSS_MIN_SAMPLEABLE_PER_ROW\":9"),
             "config snapshot must include cross per-row sampleable minimum");
     Require(Contains(header_json, "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\":6"),
@@ -1507,6 +1508,8 @@ void TestServicePublishesConfigSnapshotOnReadyTransition() {
             "service config snapshot must not expose removed local Y boundary settings");
     Require(!Contains(header_json, "\"CROSS_WIDE_ROW_WHITE_RATIO_MIN\""),
             "service config snapshot must not expose removed cross white-ratio settings");
+    Require(Contains(header_json, "\"CROSS_TAKEOVER_ENABLED\":true"),
+            "service config snapshot must expose Cross takeover enablement");
     Require(Contains(header_json, "\"CROSS_BOUNDARY_EXPANSION_MIN_M\":"),
             "service config snapshot must expose cross expansion distance");
     Require(Contains(header_json, "\"ZEBRA_FORWARD_MIN_M\":") &&

@@ -314,6 +314,7 @@ Circle V2 架构见 `new/docs/visual-element-sparse-circle-v2.zh-CN.md`。运行
 
 | 参数 | 当前 JSON 值 | owner 与精确语义 | 增大时 | 减小时 | 当前建议与证据 |
 | --- | ---: | --- | --- | --- | --- |
+| `BEV_ELEMENT.CROSS_TAKEOVER_ENABLED` | `1` | Cross 路径接管开关。`0` 时 Cross 检测、证据与调试输出保持运行，但 Cross candidate 不进入视觉参考选择；普通路径与 Circle 按非 Cross 分支工作。 | 仅布尔开关。 | 设为 `0` 可隔离 Cross 路径接管，不改变检测事实。 | 默认保持 `1` 以维持既有行为；需要关闭 Cross 接管时设为 `0`。 |
 | `BEV_ELEMENT.CROSS_MIN_SAMPLEABLE_PER_ROW` | `8` | open row 可参与 Cross 连续游程前所需的最少可采样点数；合法值 `>=1`。它不改变固定的连续 3 行门槛。 | 行观测要求更严格，远端/FOV 较窄行更易变成 `insufficient_sampleable_support`，漏检增加。 | 允许观测支撑更少的行进入开口判定，灵敏度提高，但局部不可观测更易被当成开口。 | 保持 `8`，直到 aligned evidence 能给出误判/漏判行的逐行 `sampleable_count`。若误判行长期只有少量样本，逐级试 `10/12`；若真实十字因支撑不足被拒，逐级试 `6`，不要同时改 binary model 或连通性。 |
 | `BEV_ELEMENT.CROSS_CONNECTIVITY_SAMPLE_INDEX` | `9` | Cross 连通性 owner 从固定 24 个 `BEV_GEOMETRY.forward_samples_m` 中选择第 N 点，并检验 `(0,0)` 到 `(forward_samples_m[N],0)` 的 supercover 连通性。合法值 `0..23`，且不受 `SPARSE_ROW_COUNT` 的启用前缀影响。该参数只定义 Cross 判定的前向连通性护栏。 | 护栏更深入路口，车辆存在航向偏差时更容易离开入口走廊而被阻断。 | 护栏过近时只能证明较短的入口走廊。 | 当前使用 `9`（约 `0.287m`），验证入口连通性而不把固定车体中轴延伸到路口深处。 |
 | `BEV_ELEMENT.CROSS_BOUNDARY_EXPANSION_MIN_M` | `0.055` | 单侧真实边界相对此前连续同侧边界拟合直线的最小向外垂距；合法值 `(0,2]m`。至少需要两个前序真实边界点，且另一侧端点必须为真实 FOV。 | 更严格，弱外扩漏检增加。 | 更灵敏，边界抖动和渐弯更容易触发。 | 保持 `0.055m`，调参前先查看 `present_left_boundary_expansion` / `present_right_boundary_expansion` 对齐帧。 |

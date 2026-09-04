@@ -315,6 +315,7 @@ int main(int argc, char** argv) {
                       "\"CURVATURE_TO_WHEEL_DELTA_GAIN\": 67,"
                       "\"TRACKING_FIT_MIN_SAMPLES\": 5},\n"
                       "  \"BEV_ELEMENT\": {"
+                      "\"CROSS_TAKEOVER_ENABLED\": 0,"
                       "\"CROSS_MIN_SAMPLEABLE_PER_ROW\": 11,"
                       "\"CROSS_CONNECTIVITY_SAMPLE_INDEX\": 7,"
                       "\"CROSS_BOUNDARY_EXPANSION_MIN_M\": 0.071,"
@@ -419,6 +420,8 @@ int main(int argc, char** argv) {
                "BEV_CONTROL_MODEL.CURVATURE_TO_WHEEL_DELTA_GAIN should parse");
         Expect(enabled.bev_control_model.tracking_fit_min_samples == 5,
                "BEV_CONTROL_MODEL.TRACKING_FIT_MIN_SAMPLES should parse");
+        Expect(!enabled.bev_element.cross_takeover_enabled,
+               "CROSS_TAKEOVER_ENABLED=0 should parse false");
         Expect(enabled.bev_element.cross_min_sampleable_per_row == 11,
                "CROSS_MIN_SAMPLEABLE_PER_ROW should parse");
         Expect(enabled.bev_element.cross_connectivity_sample_index == 7,
@@ -525,6 +528,9 @@ int main(int argc, char** argv) {
         Expect(absent.drive_pwm_step_limit == 1000 &&
                    builtin_defaults.drive_pwm_step_limit == 1000,
                "missing drive_pwm_step_limit should keep safe global default");
+        Expect(absent.bev_element.cross_takeover_enabled &&
+                   builtin_defaults.bev_element.cross_takeover_enabled,
+               "missing BEV_ELEMENT should keep Cross takeover enabled");
         Expect(absent.bev_element.cross_min_sampleable_per_row ==
                    builtin_defaults.bev_element.cross_min_sampleable_per_row,
                "missing BEV_ELEMENT should keep cross sampleable threshold default");

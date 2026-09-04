@@ -1539,6 +1539,11 @@ void ReadBevControlModelParams(const cv::FileNode& root,
 }
 
 void ReadBevElementParams(const cv::FileNode& root, port::RuntimeParameters& parsed, bool& optional_malformed) {
+    ReadOptionalNestedBool(root,
+                           "BEV_ELEMENT",
+                           "CROSS_TAKEOVER_ENABLED",
+                           parsed.bev_element.cross_takeover_enabled,
+                           optional_malformed);
     ReadOptionalNestedInt(root,
                           "BEV_ELEMENT",
                           "CROSS_MIN_SAMPLEABLE_PER_ROW",

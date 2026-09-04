@@ -25,9 +25,9 @@
   "pwm_limit": 5000,
   "raw_turn_output_limit": 20000,
   "wheel_turn_accel_delta_scale": 1.0,
-  "wheel_turn_decel_delta_scale": 1.8,
+  "wheel_turn_decel_delta_scale": 1.5,
   "pwm_floor": 0,
-  "prohibit_reverse_pwm": 0,
+  "prohibit_reverse_pwm": 1,
   "drive_pwm_step_limit": 1000,
   "brushless_debug_fixed_pwm_enabled": 0,
   "brushless_debug_fixed_pwm": 900,
@@ -107,13 +107,14 @@
     "HOLD_LAST_MAX_CYCLES": 128
   },
   "BEV_CONTROL_MODEL": {
-    "LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN": 160,
-    "HEADING_ERROR_TO_WHEEL_DELTA_GAIN": 80,
-    "CURVATURE_TO_WHEEL_DELTA_GAIN": 10,
+    "LATERAL_OFFSET_TO_WHEEL_DELTA_GAIN": 190,
+    "HEADING_ERROR_TO_WHEEL_DELTA_GAIN": 70,
+    "CURVATURE_TO_WHEEL_DELTA_GAIN": 5,
     "MIN_LEADING_REFERENCE_SAMPLES": 3,
     "TRACKING_FIT_MIN_SAMPLES": 3
   },
   "BEV_ELEMENT": {
+    "CROSS_TAKEOVER_ENABLED": 1,
     "CROSS_MIN_SAMPLEABLE_PER_ROW": 8,
     "CROSS_CONNECTIVITY_SAMPLE_INDEX": 9,
     "CROSS_BOUNDARY_EXPANSION_MIN_M": 0.055,
@@ -122,9 +123,9 @@
     "ZEBRA_MIN_JUMPS_PER_ROW": 6,
     "ZEBRA_MAX_ADJACENT_FORWARD_GAP_M": 0.12,
     "ZEBRA_MIN_SUPPORT_FORWARD_SPAN_M": 0.04,
-    "ZEBRA_REENTRY_ARM_ABSENCE_MS": 5000,
-    "ZEBRA_CONTROLLED_STOP_DELAY_MS": 5000,
-    "CIRCLE_V2_ENABLED": 1,
+    "ZEBRA_REENTRY_ARM_ABSENCE_MS": 500000,
+    "ZEBRA_CONTROLLED_STOP_DELAY_MS": 500000,
+    "CIRCLE_V2_ENABLED": 0,
     "CIRCLE_V2_NORMAL_TRACE_START_YAW_DEG": 60,
     "CIRCLE_V2_EXIT_TRACE_START_YAW_DEG": 331,
     "CIRCLE_V2_CALM_FALLBACK_YAW_DEG": 362,
@@ -137,7 +138,7 @@
     "CIRCLE_V2_MIN_SAMPLEABLE_WIDTH_M": 0.35,
     "CIRCLE_V2_OPENING_FORWARD_MIN_M": 0.05,
     "CIRCLE_V2_OPENING_FORWARD_MAX_M": 1.5,
-    "CIRCLE_V2_OPENING_DISTANCE_MIN_M": 0.065,
+    "CIRCLE_V2_OPENING_DISTANCE_MIN_M": 0.055,
     "CIRCLE_V2_OPENING_CONFIRM_FORWARD_SPAN_M": 0.1,
     "CIRCLE_V2_ENTRY_FORWARD_MIN_M": 0.1,
     "CIRCLE_V2_ENTRY_FORWARD_MAX_M": 0.5,
@@ -209,9 +210,9 @@
       "SCORE_ORIENTATION_WEIGHT": 1.0
     },
     "V9": {
-      "MIN_MARGIN": 1,
+      "MIN_MARGIN": 0,
       "MAX_BEST_DISTANCE": 126,
-      "CONFIRM_FRAMES": 3
+      "CONFIRM_FRAMES": 1
     },
     "TFLITE_IDENTITY": {
       "MIN_MARGIN": 1,
@@ -219,17 +220,17 @@
       "CONFIRM_FRAMES": 1
     },
     "CLASS_MAPPING": {
-      "CLASS_0_ACTION": "straight",
-      "CLASS_1_ACTION": "left",
-      "CLASS_2_ACTION": "right"
+      "CLASS_0_ACTION": "right",
+      "CLASS_1_ACTION": "straight",
+      "CLASS_2_ACTION": "left"
     },
     "MANEUVER": {
-      "ENABLED": 1,
-      "SPEED_TARGET": 200.0,
+      "ENABLED": 0,
+      "SPEED_TARGET": 150.0,
       "MIN_BOUNDARY_SAMPLES": 3,
       "PATH_OUTWARD_OFFSET_M": 0.1,
       "EXIT_FORWARD_M": 2.0,
-      "MAX_DURATION_MS": 1000,
+      "MAX_DURATION_MS": 1500,
       "MAX_INTEGRATION_GAP_MS": 1000,
       "COOLDOWN_MS": 2000
     }
